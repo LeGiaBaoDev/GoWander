@@ -22,6 +22,20 @@ GoWander gợi ý hành trình có đoạn đi bộ và thời gian chờ ngoài
    - Thời tiết không làm thay đổi thứ tự hay nội dung tuyến do OTP trả về; nó chỉ là thông tin kèm theo.
    - Cảnh báo dùng chữ và biểu tượng, không chỉ dùng màu.
 
+## Dự kiến làm sau: điều chỉnh thời gian đi bộ khi mưa (bổ sung 11-11-2026)
+
+Chủ dự án đồng ý đưa việc này vào kế hoạch. Nó thay thế một phần quy tắc "thời tiết không làm thay đổi nội dung tuyến" ở trên: thứ tự tuyến vẫn không đổi, nhưng thời gian đoạn đi bộ được điều chỉnh.
+
+- **Cách làm:** khi dự báo có mưa tại thời điểm khởi hành, Go API gửi yêu cầu tìm tuyến tới OTP với tốc độ đi bộ thấp hơn bình thường.
+- **Chỉ áp dụng cho đoạn đi bộ.** Thời gian trên metro không đổi. Xe buýt chậm vì mưa chỉ xử lý được khi có dữ liệu thời gian thực, hiện chưa có.
+- **Hiển thị:** tuyến đã điều chỉnh phải ghi rõ "đã tính thêm thời gian vì có thể mưa (ước tính)", và ở chi tiết tuyến hiện cả thời gian thường lẫn thời gian đã điều chỉnh.
+- **Khi không có dữ liệu thời tiết:** không điều chỉnh, không ghi chú.
+- **Điều kiện bắt đầu:** sau khi M02 chạy được, vì cần OTP thật để thử.
+- **Chưa xác định:**
+  - Hệ số giảm tốc độ đi bộ. Con số 15–20% từng nêu chỉ là ví dụ, không có nguồn. Số "7 phút (thường 6 phút)" trong wireframe là số mẫu.
+  - Ngưỡng dự báo mưa nào thì kích hoạt.
+  - Cách đặt tốc độ đi bộ theo từng yêu cầu trong phiên bản OTP sẽ dùng: chưa kiểm tra.
+
 ## Chưa quyết định
 
 - **Nhà cung cấp.** Ứng viên: Open-Meteo, OpenWeatherMap, MET Norway. Thông tin hiện có lấy từ trang tổng hợp, chưa đọc điều khoản chính thức:

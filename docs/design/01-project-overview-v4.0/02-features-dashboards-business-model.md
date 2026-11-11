@@ -14,6 +14,8 @@
 
 Các thông tin realtime, giá vé và tình trạng đông đúc chỉ hiển thị khi có nguồn đáng tin cậy.
 
+**Bổ sung 11-11-2026 (ADR-021) — Thời tiết:** Smart Mobility có thêm phần hiển thị thời tiết ở mức nhẹ: thời tiết hiện tại và cảnh báo mưa trên màn hình Map, kết quả tuyến và chi tiết tuyến. Không có màn hình dự báo thời tiết riêng. Thông tin luôn ghi là dự báo, kèm giờ cập nhật và tên nguồn; khi không có dữ liệu thì ẩn đi.
+
 #### 4.2. Discover — Core
 
 - ​ Food Discovery.

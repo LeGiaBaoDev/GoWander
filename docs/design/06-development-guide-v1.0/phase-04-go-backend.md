@@ -97,6 +97,16 @@ Response gồm normalized routes và dữ liệu nguồn thực sự có.
 - ​   Cancelled request.
 - ​   Error mapping.
 
+### Step 4.8 — Weather Adapter (bổ sung 11-11-2026, ADR-021)
+
+Làm sau khi Route Planning API chạy được; không thuộc Exit Criteria của phase này.
+
+- Interface `WeatherProvider` và một adapter cho nhà cung cấp được chọn.
+- Lưu đệm theo khu vực, làm mới khoảng 15 phút; timeout ngắn.
+- Khi nhà cung cấp lỗi: trả về "không có dữ liệu thời tiết", API tìm tuyến vẫn trả kết quả bình thường.
+- Response ghi rõ giờ cập nhật và tên nguồn.
+- Test: có dữ liệu, hết hạn đệm, timeout, nhà cung cấp lỗi.
+
 ### Exit Criteria
 
 Một API request được xử lý bởi Go, gọi OTP và trả Route DTO hợp lệ.

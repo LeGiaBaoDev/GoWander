@@ -137,6 +137,12 @@ Monitoring:
 
 Application/Database/OTP/Backup Jobs → Metrics & Logs → Alerting.
 
+Weather (bổ sung 11-11-2026, ADR-021):
+
+Mobile → Go Mobility → Weather Provider Adapter → nhà cung cấp thời tiết.
+
+Go API lưu đệm kết quả theo khu vực (làm mới khoảng 15 phút) và có timeout riêng. Lỗi thời tiết không được làm hỏng việc tìm tuyến. Mobile không gọi thẳng nhà cung cấp. Nhà cung cấp chưa được chọn.
+
 ### 2.3. Deployment Boundaries
 
 Go Backend ban đầu là một deployable chính.

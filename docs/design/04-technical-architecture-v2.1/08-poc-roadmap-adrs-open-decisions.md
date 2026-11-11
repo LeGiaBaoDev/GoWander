@@ -173,6 +173,12 @@ DECISIONS
 
     ADR-019     No Premature Microservices            Accepted
 
+    ADR-020     Assumed Metro L1 Feed (interim)       Accepted (bổ sung 11-11-2026)
+
+    ADR-021     Lightweight Weather via Go API        Accepted; provider pending (bổ sung 11-11-2026)
+
+ADR-020 và ADR-021 có file riêng trong `docs/decisions/`.
+
 ## 31. OPEN TECHNICAL DECISIONS
 
 Trước khi triển khai cần chốt:

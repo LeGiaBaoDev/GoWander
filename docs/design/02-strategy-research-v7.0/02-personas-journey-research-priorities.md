@@ -100,3 +100,5 @@ hạn và tác động đến quyết định.
 
 #### B và C có thể hoán đổi một phần khi tiến độ hoặc phản hồi thực tế yêu cầu.
 
+**Bổ sung 11-11-2026 (ADR-021) — Thời tiết:** hiển thị thời tiết gắn với việc di chuyển được thêm vào phạm vi sản phẩm và được đề xuất xếp vào nhóm A — Core vì chi phí thấp; chủ dự án chưa chốt bản phát hành. Lý do: mưa ảnh hưởng trực tiếp tới đoạn đi bộ và lúc chờ xe. Đây là giả thuyết sản phẩm, chưa kiểm chứng với người dùng.
+

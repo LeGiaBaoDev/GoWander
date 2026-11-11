@@ -32,6 +32,8 @@ GoWander sử dụng một PostgreSQL database chính với PostGIS để hỗ t
 Routing graph được quản lý bởi OpenTripPlanner, không sao chép toàn bộ
 GTFS/OSM vào database nghiệp vụ.
 
+**Bổ sung 11-11-2026 (ADR-021) — Thời tiết:** dữ liệu thời tiết chỉ nằm trong bộ nhớ đệm của Go API, không lưu vào database nghiệp vụ. Danh mục 49 bảng không thay đổi.
+
 #### 1.1. Database Objectives
 
 1. Đảm bảo dữ liệu đúng và nhất quán.

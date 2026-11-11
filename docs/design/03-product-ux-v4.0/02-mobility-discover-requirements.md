@@ -22,6 +22,13 @@
 
     FR-10     Route Feedback             Báo sai tuyến/trạm hoặc thiếu thông tin
 
+**Bổ sung 11-11-2026 (ADR-021):**
+
+    FR-10a    Weather on Map & Route     Hiện thời tiết hiện tại trên Map; cảnh báo mưa ở kết quả
+                                         tuyến và chi tiết tuyến khi tuyến có đoạn đi bộ
+
+Quy tắc cho FR-10a: luôn ghi là dự báo, kèm giờ cập nhật và tên nguồn; không lấy được dữ liệu thì ẩn phần thời tiết; thời tiết không làm đổi thứ tự hay nội dung tuyến; cảnh báo dùng chữ và biểu tượng, không chỉ dùng màu.
+
 #### 4.1. Routing Data Labels
 
 - ​    Scheduled Duration: thời gian theo lịch.
