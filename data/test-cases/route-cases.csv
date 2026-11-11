@@ -1,0 +1,11 @@
+case_id,description,from_lat,from_lon,to_lat,to_lon,depart_day,depart_time,expected,basis
+RC-01,Metro toàn tuyến Bến Thành -> Bến xe Suối Tiên,10.770775,106.697569,10.879569,106.814170,Tuesday,09:00,"Có hành trình metro L1, 13 chặng, thời gian trên tàu khoảng 29 phút 31 giây, chờ tối đa 655 giây","stop_times L1-MON_THU-0; frequencies 08:30-16:30 headway 655"
+RC-02,Metro chiều ngược Bến xe Suối Tiên -> Bến Thành,10.879569,106.814170,10.770775,106.697569,Tuesday,09:00,"Có hành trình metro L1 chiều ngược, thời gian trên tàu khoảng 29 phút 31 giây",stop_times L1-MON_THU-1
+RC-03,Metro một đoạn giờ cao điểm Ba Son -> Thảo Điền,10.781987,106.708464,10.800471,106.733654,Wednesday,07:30,"Có hành trình metro L1, lên L1-03 xuống L1-06, trên tàu khoảng 5 phút 47 giây, chờ tối đa 390 giây","stop_times L1-03 dep 00:03:11 -> L1-06 arr 00:08:58; frequencies 06:00-08:30 headway 390"
+RC-04,Đi bộ ngắn Bến Thành -> Nhà Hát Thành Phố,10.770775,106.697569,10.775511,106.702262,Tuesday,10:00,"Có ít nhất một hành trình chỉ đi bộ; khoảng cách đường thẳng 735 m",Khoảng cách tính từ toạ độ OSM; đường đi bộ thực tế phụ thuộc OSM
+RC-05,Đi bộ + metro + đi bộ: gần Bến Thành -> gần Thủ Đức,10.7725,106.6990,10.8480,106.7730,Thursday,14:00,"Có hành trình đi bộ tới L1-01, metro tới L1-11, đi bộ tới đích; trên tàu khoảng 20 phút 30 giây",stop_times L1-01 dep 00:00:00 -> L1-11 arr 00:20:30
+RC-06,Ngoài giờ chạy: thứ Ba sau chuyến cuối,10.770775,106.697569,10.879569,106.814170,Tuesday,22:30,"Không có hành trình metro trong ngày; chỉ có thể đi bộ hoặc không có tuyến",frequencies MON_THU kết thúc 22:01
+RC-07,Ranh giới lịch: thứ Sáu 22:30 vẫn còn tàu,10.770775,106.697569,10.879569,106.814170,Friday,22:30,"Có hành trình metro L1 (thứ Sáu chạy tới 23:00)",frequencies FRI kết thúc 23:01
+RC-08,Trước giờ chạy: 04:30 sáng,10.770775,106.697569,10.879569,106.814170,Monday,04:30,"Chuyến metro sớm nhất khởi hành 05:00",frequencies bắt đầu 05:00
+RC-09,Ngoài vùng phủ: điểm đến ở Hà Nội,10.770775,106.697569,21.028500,105.854200,Tuesday,09:00,"Không có tuyến; lỗi phải phân biệt là ngoài vùng phủ",Điểm đến nằm ngoài khung OSM của khu vực pilot
+RC-10,Toạ độ không hợp lệ,95.000000,106.697569,10.879569,106.814170,Tuesday,09:00,"Bị từ chối là yêu cầu không hợp lệ, không gọi là không có tuyến",Vĩ độ ngoài khoảng -90..90
