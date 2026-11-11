@@ -80,7 +80,7 @@ Parallelization is allowed for independent PoCs, but a dependent milestone canno
 
 | ID | Deliverable | Exit criteria (must be observed) | Status |
 |---|---|---|---|
-| **M00** | Repository + local toolchain | Git clean baseline; README, `.gitignore`, `.env.example`; versions recorded; no secrets tracked | CHECKS PASSED 2026-11-11, **awaiting the owner's commit** (evidence in `docs/changes/change-11-11-2026.md` §6–7) |
+| **M00** | Repository + local toolchain | Git clean baseline; README, `.gitignore`, `.env.example`; versions recorded; no secrets tracked | **PASS** (2026-11-11; committed by the owner as `bab9124` + `27b92da`; evidence in `docs/changes/change-11-11-2026.md` §6 and §9) |
 | **M01** | Transit data feasibility | Pilot area, source inventory, rights/licensing decision, valid GTFS/OSM fixtures, 5–10 route cases | NOT STARTED |
 | **M02** | OTP routing PoC | Version-pinned graph build; start; verified GraphQL itinerary; errors/no-route; logs + measurements | BLOCKED on M01 |
 | **M03** | KMP Map PoC | Android+iOS render, gestures, markers, polylines, GPS permission/error states | NOT STARTED — Android half blocked until Android Studio + SDK are installed (see `docs/development/toolchain-versions.md`) |
