@@ -1,0 +1,85 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+credentials*.json
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+secrets/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Go backend
+backend/bin/
+backend/tmp/
+*.test
+*.out
+coverage.*
+
+# Kotlin Multiplatform / Android / Gradle
+.gradle/
+.kotlin/
+build/
+local.properties
+captures/
+.cxx/
+*.apk
+*.aab
+!gradle/wrapper/gradle-wrapper.jar
+
+# iOS / Xcode
+xcuserdata/
+DerivedData/
+Pods/
+*.xcuserstate
+*.ipa
+*.dSYM/
+
+# Admin web
+node_modules/
+dist/
+.next/
+.cache/
+npm-debug.log*
+
+# Raw transit and map datasets (commit only inventories and test cases)
+data/raw/
+data/processed/
+data/**/*.zip
+data/**/*.pbf
+data/**/*.osm
+data/**/*.mbtiles
+
+# OpenTripPlanner graph inputs and build artifacts
+infrastructure/otp/**/*.obj
+infrastructure/otp/**/*.pbf
+infrastructure/otp/**/*.zip
+infrastructure/otp/**/cache/
+
+# Database volumes, dumps and backups
+infrastructure/postgres/data/
+infrastructure/backup/repo/
+pgdata/
+*.dump
+*.sql.gz
+*.backup
+*.bak
+*.sqlite
+*.db
+
+# Logs
+*.log
+logs/
