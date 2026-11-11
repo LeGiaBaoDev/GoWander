@@ -31,6 +31,7 @@ Later releases add personal exploration, community/reviews/following, contributi
 | Priority | In scope | Gate / caveat |
 |---|---|---|
 | **Core MVP** | Map, location permission/manual origin, place search, route plan/compare/details, Discover, food/place/story, feedback, basic event tracking | Must pass transit data, OTP and cross-platform map PoCs |
+| **Weather (lightweight)** | Current conditions and rain warning on Map, route results and route details; served through the Go API with area-level caching | Provider not chosen; licence must allow the intended use; release proposed as Core MVP, not yet confirmed — see `docs/decisions/ADR-021-weather.md` |
 | **Core operations** | Admin content CRUD, transit source/version visibility, feedback triage, minimal system health, RBAC/audit, scheduled/manual backup and tested restore | Required **before** a pilot with real production data |
 | **Account release** | Guest mode + authenticated features, Google Sign-In, profile/contacts, optional Apple Sign-In | Provider choice and iOS store obligations to verify |
 | **Personal & community** | Saved/visited/favorite, journal, posts, reviews, follow, moderation | Incremental; no auto-reward for likes/follows/self-declared visits |
