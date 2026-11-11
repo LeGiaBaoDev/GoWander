@@ -65,7 +65,8 @@ Hiện chưa có lệnh chạy, build hay test nào vì chưa có code. Mục n�
 
 ## Quy ước
 
-- Mỗi milestone hoặc task làm trên một nhánh ngắn, merge vào `main` khi qua cổng kiểm tra.
+- Nhánh làm việc chính là `develop`. Mỗi milestone hoặc task làm trên một nhánh ngắn tách từ `develop` và merge lại vào `develop` khi qua cổng kiểm tra.
+- `main` chỉ nhận merge từ `develop` sau mỗi release lớn.
 - Commit theo Conventional Commits (`feat`, `fix`, `docs`, `chore`, …).
 - Mọi thay đổi phải có một mục trong `docs/changes/change-DD-MM-YYYY.md`.
 - Không commit secrets, `.env`, dữ liệu GTFS/OSM thô, database volume hay backup.

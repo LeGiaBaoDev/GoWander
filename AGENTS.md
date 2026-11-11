@@ -9,7 +9,7 @@
 
 1. Follow `PIPELINE.md` §0. Never claim a status without executed evidence.
 2. Work on the earliest unblocked milestone. Do not start deferred scope to get around a blocker.
-3. One short-lived branch per milestone or task, merged into `main` and deleted when its gate passes.
+3. **`develop` is the working branch; `main` only receives a merge at each major release.** One short-lived branch per milestone or task is created from `develop`, merged back into `develop` and deleted when its gate passes. Nothing is merged or committed directly to `main` between releases. The only exception was the initial repository setup (M00), which went straight to `main` before `develop` existed.
 4. **Every change gets a change record in `docs/changes/` (see §4). A task without a change record is not done.**
 5. No secrets, raw datasets, DB volumes, backups or OTP graph artifacts in Git.
 6. **Git history belongs to the project owner. Agents never run a Git command that writes history or touches the remote:** no `git add`, `commit`, `merge`, `rebase`, `reset`, `revert`, `tag`, `push`, `pull`, `stash`, and no creating, switching or deleting branches. Agents may only run read-only Git commands (`status`, `diff`, `log`, `show`, `branch --list`, `check-ignore`). When work is ready, the agent stops and gives the owner the exact commands and a proposed commit message; the owner runs them. This holds even if an earlier message in the session approved a commit.
@@ -51,6 +51,7 @@ Steps 4–5 do not apply to research or documentation-only tasks. Steps 1, 2, 8,
 | **M10** Pilot gate | `release/pilot` | `ecc:production-audit`, `ecc:delivery-gate`, `/ecc:quality-gate` | `ecc:security-reviewer`, `ecc:code-reviewer` |
 
 Notes:
+- Every branch in this table except M00 starts from `develop` and merges back into `develop`. `release/pilot` is the branch that goes from `develop` into `main`; whether a milestone counts as a major release is the owner's call.
 - Branch dependencies follow `PIPELINE.md` §2. A branch is created only when its milestone is unblocked and about to start, and the owner creates it (rule 6).
 - The Admin web reviewer (`ecc:react-reviewer`, `ecc:vue-reviewer`, …) is chosen after the M07 stack ADR.
 - `ecc:e2e-runner` drives browsers only. Mobile end-to-end checks in M06 are run on emulator/simulator/device and recorded as evidence.
