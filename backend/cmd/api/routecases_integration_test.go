@@ -45,7 +45,12 @@ type apiResponse struct {
 }
 
 func TestRouteCases(t *testing.T) {
-	cfg, err := config.Load(os.Getenv)
+	cfg, err := config.Load(func(k string) string {
+		if k == "DATABASE_URL" && os.Getenv(k) == "" {
+			return "postgres://unused@127.0.0.1/unused" // route cases do not touch the database
+		}
+		return os.Getenv(k)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +60,7 @@ func TestRouteCases(t *testing.T) {
 	if err := provider.Ready(ctx); err != nil {
 		t.Fatalf("OTP at %s is not ready (start it with infrastructure/otp/scripts/serve.sh start): %v", cfg.OTPURL, err)
 	}
-	srv := httptest.NewServer(newHandler(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), provider))
+	srv := httptest.NewServer(newHandler(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), provider, stubStore{}))
 	defer srv.Close()
 
 	f, err := os.Open(casesFile)

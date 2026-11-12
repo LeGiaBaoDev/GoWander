@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: GoWander API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
     Quyết định: docs/decisions/ADR-027-go-routing-api.md.
@@ -33,6 +33,86 @@ paths:
         '500': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
         '504': { $ref: '#/components/responses/Error' }
+  /api/v1/place-categories:
+    get:
+      operationId: listPlaceCategories
+      summary: Danh mục địa điểm đang hoạt động, kèm số địa điểm đã xuất bản
+      responses:
+        '200':
+          description: Danh mục
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [categories]
+                properties:
+                  categories:
+                    type: array
+                    items: { $ref: '#/components/schemas/Category' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places:
+    get:
+      operationId: listPlaces
+      summary: Danh sách địa điểm đã xuất bản, sắp theo tên, phân trang bằng cursor
+      parameters:
+        - { name: category, in: query, schema: { type: string, maxLength: 100 }, description: 'slug danh mục, ví dụ museum' }
+        - { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 100 }, description: 'Tìm theo tên VI/EN, không phân biệt dấu' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: cursor, in: query, schema: { type: string }, description: 'nextCursor của trang trước' }
+      responses:
+        '200':
+          description: Một trang địa điểm
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [places]
+                properties:
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlaceSummary' }
+                  nextCursor: { type: string, description: 'Không có = trang cuối' }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places/nearby:
+    get:
+      operationId: nearbyPlaces
+      summary: Địa điểm đã xuất bản trong bán kính, gần nhất trước
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: radiusM, in: query, schema: { type: integer, minimum: 1, maximum: 5000, default: 1000 } }
+        - { name: category, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: Địa điểm, có distanceM
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [places]
+                properties:
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlaceSummary' }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places/{id}:
+    get:
+      operationId: getPlace
+      summary: Chi tiết một địa điểm đã xuất bản
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Chi tiết
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaceDetail' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /health/live:
     get:
       operationId: live
@@ -42,7 +122,7 @@ paths:
   /health/ready:
     get:
       operationId: ready
-      summary: Sẵn sàng phục vụ (OTP trả lời health trong 1 giây)
+      summary: Sẵn sàng phục vụ (OTP và database trả lời trong 1 giây)
       responses:
         '200': { $ref: '#/components/responses/Health' }
         '503': { $ref: '#/components/responses/Health' }
@@ -57,6 +137,7 @@ components:
         400 INVALID_REQUEST; 422 NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE;
         503 ROUTING_UNAVAILABLE; 504 ROUTING_TIMEOUT. Mọi endpoint còn có thể trả
         404/405 NOT_FOUND (sai đường dẫn hoặc phương thức) và 500 INTERNAL_ERROR (lỗi không lường trước).
+        Discover: 404 PLACE_NOT_FOUND; 503 DATA_STORE_UNAVAILABLE (database lỗi hoặc quá 5 giây).
       headers:
         X-Request-Id: { $ref: '#/components/headers/RequestId' }
       content:
@@ -156,6 +237,78 @@ components:
         lat: { type: number }
         lon: { type: number }
         stopId: { type: string, description: 'Chỉ có khi là ga/trạm' }
+    Category:
+      type: object
+      required: [slug, name, placeCount]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        nameEn: { type: string }
+        placeCount: { type: integer }
+    CategoryRef:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        nameEn: { type: string }
+    Source:
+      type: object
+      required: [kind, license, attribution]
+      description: Nguồn và giấy phép, phải hiển thị cho người dùng (ADR-028)
+      properties:
+        kind: { type: string, enum: [OSM, CURATED] }
+        url: { type: string }
+        license: { type: string }
+        attribution: { type: string }
+    PlaceSummary:
+      type: object
+      required: [id, name, slug, lat, lon, source]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nameEn: { type: string }
+        slug: { type: string }
+        shortDescription: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+        address: { type: string }
+        category: { $ref: '#/components/schemas/CategoryRef' }
+        distanceM: { type: number, description: 'Chỉ có ở /places/nearby' }
+        source: { $ref: '#/components/schemas/Source' }
+    PlaceDetail:
+      allOf:
+        - { $ref: '#/components/schemas/PlaceSummary' }
+        - type: object
+          required: [categories, media, foods]
+          properties:
+            categories:
+              type: array
+              items: { $ref: '#/components/schemas/CategoryRef' }
+            media:
+              type: array
+              items:
+                type: object
+                required: [storageKey, mediaType, sourceCredit, license, isCover]
+                properties:
+                  storageKey: { type: string }
+                  mediaType: { type: string }
+                  altText: { type: string }
+                  sourceCredit: { type: string }
+                  license: { type: string }
+                  isCover: { type: boolean }
+            foods:
+              type: array
+              items:
+                type: object
+                required: [name, slug, currency]
+                properties:
+                  name: { type: string }
+                  nameEn: { type: string }
+                  slug: { type: string }
+                  priceMin: { type: number }
+                  priceMax: { type: number }
+                  currency: { type: string }
     ErrorResponse:
       type: object
       required: [error]
@@ -166,6 +319,6 @@ components:
           properties:
             code:
               type: string
-              enum: [INVALID_REQUEST, NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE, ROUTING_TIMEOUT, ROUTING_UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR]
+              enum: [INVALID_REQUEST, NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE, ROUTING_TIMEOUT, ROUTING_UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR, PLACE_NOT_FOUND, DATA_STORE_UNAVAILABLE]
             message: { type: string, description: 'Tiếng Việt, hiển thị được cho người dùng' }
             requestId: { type: string }

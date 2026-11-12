@@ -1,0 +1,29 @@
+# PostgreSQL 18 + PostGIS 3.6 for local development (ADR-028). Run through ./db.sh, which passes the repo-root .env.
+name: gowander-db
+services:
+  postgres:
+    # Official image is amd64-only; on Apple Silicon it runs under Rosetta.
+    image: postgis/postgis:18-3.6@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4
+    platform: linux/amd64
+    container_name: gowander-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD in .env}
+      GOWANDER_OWNER_PASSWORD: ${GOWANDER_OWNER_PASSWORD:?set GOWANDER_OWNER_PASSWORD in .env}
+      GOWANDER_APP_PASSWORD: ${GOWANDER_APP_PASSWORD:?set GOWANDER_APP_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # localhost only
+    volumes:
+      - pgdata:/var/lib/postgresql # PostgreSQL 18 images keep data under /var/lib/postgresql/18/docker
+      - ./init:/docker-entrypoint-initdb.d:ro # runs once, only when the volume is empty
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+volumes:
+  pgdata:
+    name: gowander-pgdata
