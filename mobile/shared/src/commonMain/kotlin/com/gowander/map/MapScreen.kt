@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -67,8 +68,17 @@ fun MapScreen() {
     var manualOrigin by rememberSaveable { mutableStateOf<String?>(null) }
     // Frame the whole line once; saved so rotation keeps the user's camera.
     var framed by rememberSaveable { mutableStateOf(false) }
+    // Android only reports "denied for good" after a request, and forgets it on recreation; remember it across rotation.
+    var permissionBlocked by rememberSaveable { mutableStateOf(false) }
 
     val locationState = rememberLocationState(provider = rememberDefaultLocationProvider())
+    LaunchedEffect(locationState.permission) {
+        when (val p = locationState.permission) {
+            is LocationPermission.Granted -> permissionBlocked = false
+            is LocationPermission.NotGranted -> if (p.canRequest == false) permissionBlocked = true
+            else -> Unit
+        }
+    }
 
     val mapState = rememberMapState(
         baseStyle = BaseStyle.Uri(STYLE_URL),
@@ -109,11 +119,17 @@ fun MapScreen() {
     LaunchedEffect(mapState) {
         if (framed) return@LaunchedEffect
         val s = MetroL1Demo.stations
-        mapState.animateCameraToBounds(
-            boundingBox = BoundingBox(west = s.minOf { it.lon }, south = s.minOf { it.lat }, east = s.maxOf { it.lon }, north = s.maxOf { it.lat }),
-            fit = CameraFit(fitPadding = DpPadding(left = 32.dp, top = 200.dp, right = 32.dp, bottom = 48.dp)),
-        )
-        framed = true
+        try {
+            mapState.animateCameraToBounds(
+                boundingBox = BoundingBox(west = s.minOf { it.lon }, south = s.minOf { it.lat }, east = s.maxOf { it.lon }, north = s.maxOf { it.lat }),
+                fit = CameraFit(fitPadding = DpPadding(left = 32.dp, top = 200.dp, right = 32.dp, bottom = 48.dp)),
+            )
+            framed = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Framing is cosmetic: keep the initial camera instead of crashing; framed stays false so the next start retries.
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -139,7 +155,7 @@ fun MapScreen() {
             Label(MetroL1Demo.LABEL, background = Warn)
             selectedStation?.let { Label("Ga: $it") }
             Label(originText(locationState, manualOrigin))
-            LocationAction(locationState)
+            LocationAction(locationState, permissionBlocked, manualOrigin != null) { manualOrigin = null }
         }
     }
 }
@@ -147,23 +163,29 @@ fun MapScreen() {
 private fun originText(location: LocationState, manualOrigin: String?): String {
     val gps = location.lastLocation
     return when {
-        gps != null && location.permission is LocationPermission.Granted -> "Điểm xuất phát: vị trí của bạn"
+        // The user's explicit choice wins over GPS until they ask for GPS again.
         manualOrigin != null -> "Điểm xuất phát: điểm đã chọn trên bản đồ"
+        gps != null && location.permission is LocationPermission.Granted -> "Điểm xuất phát: vị trí của bạn"
         location.status is LocationTrackingStatus.Unavailable -> "Không lấy được vị trí. Nhấn giữ bản đồ để chọn điểm xuất phát"
         else -> "Nhấn giữ bản đồ để chọn điểm xuất phát"
     }
 }
 
 @Composable
-private fun LocationAction(location: LocationState) {
+private fun LocationAction(location: LocationState, blocked: Boolean, hasManualOrigin: Boolean, clearManualOrigin: () -> Unit) {
     val settings = rememberSystemSettingsLauncher()
     val permission = location.permission
     when {
         location.status is LocationTrackingStatus.Unavailable -> Action("Thử lại", location::retry)
-        permission !is LocationPermission.NotGranted && permission !is LocationPermission.NotDetermined -> Unit
-        permission is LocationPermission.NotGranted && permission.canRequest == false ->
+        permission is LocationPermission.Granted -> {
+            if (hasManualOrigin) Action("Dùng vị trí của tôi", clearManualOrigin)
+        }
+        permission is LocationPermission.NotGranted && (blocked || permission.canRequest == false) -> {
             if (settings.canOpenApplicationSettings) Action("Mở Cài đặt để bật vị trí") { settings.openApplicationSettings() }
-        else -> Action("Dùng vị trí của tôi", location::requestPermission)
+        }
+        permission is LocationPermission.NotGranted || permission is LocationPermission.NotDetermined ->
+            Action("Dùng vị trí của tôi") { clearManualOrigin(); location.requestPermission() }
+        else -> Unit
     }
 }
 
