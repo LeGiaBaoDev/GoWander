@@ -1,0 +1,6 @@
+{
+  "configVersion": "gowander-m02-otp-1",
+  "otpFeatures": {
+    "ActuatorAPI": true
+  }
+}

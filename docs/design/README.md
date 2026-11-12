@@ -86,6 +86,20 @@ Sáu tài liệu thiết kế được chuyển từ `GoWander.pdf` sang Markdow
 - `OVERVIEW.md` và `PIPELINE.md` ở gốc repository là bản rút gọn dành cho agent. Chi tiết đầy đủ nằm ở đây.
 - Nếu tài liệu ở đây mâu thuẫn với `OVERVIEW.md`, `PIPELINE.md` hoặc với kết quả triển khai thực tế: báo lại và sửa tài liệu, không tự chọn một bên trong im lặng.
 
+## Bổ sung sau khi chuyển từ PDF
+
+Các file dưới đây không còn khớp từng chữ với bản PDF gốc. Mỗi chỗ thêm đều ghi rõ "Bổ sung 11-11-2026 (ADR-021)":
+
+| File | Nội dung thêm |
+|---|---|
+| `01-project-overview-v4.0/02-features-dashboards-business-model.md` | Thời tiết trong Smart Mobility |
+| `02-strategy-research-v7.0/02-personas-journey-research-priorities.md` | Thời tiết trong thứ tự ưu tiên |
+| `03-product-ux-v4.0/02-mobility-discover-requirements.md` | Yêu cầu FR-10a và quy tắc hiển thị |
+| `04-technical-architecture-v2.1/01-objectives-system-overview-stack.md` | Luồng dữ liệu thời tiết qua Go API |
+| `04-technical-architecture-v2.1/08-poc-roadmap-adrs-open-decisions.md` | ADR-020 và ADR-021 trong bảng ADR |
+| `05-database-design-v1.2/01-overview-conventions-inventory.md` | Thời tiết không thêm bảng |
+| `06-development-guide-v1.0/phase-04-go-backend.md` | Step 4.8, adapter thời tiết |
+
 ## Vấn đề đã biết
 
 - **Thiếu hình:** `01-project-overview-v4.0/03-ux-technology-data.md` tham chiếu `GoWander_assets/figure_page_008_1.png` (sơ đồ hành trình người dùng) nhưng thư mục `GoWander_assets/` chưa có trong repository. Đặt thư mục đó vào `docs/design/01-project-overview-v4.0/` thì liên kết sẽ hoạt động.

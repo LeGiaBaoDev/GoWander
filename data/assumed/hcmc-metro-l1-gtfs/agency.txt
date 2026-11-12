@@ -1,0 +1,2 @@
+agency_id,agency_name,agency_url,agency_timezone,agency_lang
+HURC1,Công ty TNHH MTV Đường sắt đô thị số 1 (HURC1),https://www.openstreetmap.org/relation/11919223,Asia/Ho_Chi_Minh,vi
