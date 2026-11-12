@@ -68,11 +68,11 @@ func run(log *slog.Logger) error {
 
 // newHandler wires every route; integration tests use it with a real OTP.
 func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider) http.Handler {
-	r := httpx.NewRouter(log)
-	r.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+	mux := httpx.NewRouter(log)
+	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	r.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+	mux.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
 		if err := provider.Ready(ctx); err != nil {
@@ -82,6 +82,6 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	r.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
-	return r
+	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
+	return mux
 }
