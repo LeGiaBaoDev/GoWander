@@ -1,0 +1,171 @@
+openapi: 3.1.0
+info:
+  title: GoWander API
+  version: 0.1.0
+  description: |
+    Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
+    Quyết định: docs/decisions/ADR-027-go-routing-api.md.
+paths:
+  /api/v1/routes/plan:
+    post:
+      operationId: planRoute
+      summary: Tìm tuyến giữa hai điểm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanRequest' }
+            example:
+              origin: { lat: 10.770775, lon: 106.697569 }
+              destination: { lat: 10.879569, lon: 106.81417 }
+              dateTime: '2026-11-17T09:00:00+07:00'
+              timeType: DEPART
+      responses:
+        '200':
+          description: Có ít nhất một hành trình
+          headers:
+            X-Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        '504': { $ref: '#/components/responses/Error' }
+  /health/live:
+    get:
+      operationId: live
+      summary: Process còn chạy
+      responses:
+        '200': { $ref: '#/components/responses/Health' }
+  /health/ready:
+    get:
+      operationId: ready
+      summary: Sẵn sàng phục vụ (OTP trả lời health trong 1 giây)
+      responses:
+        '200': { $ref: '#/components/responses/Health' }
+        '503': { $ref: '#/components/responses/Health' }
+components:
+  headers:
+    RequestId:
+      description: Mã request, cũng có trong log và trong body lỗi
+      schema: { type: string }
+  responses:
+    Error:
+      description: |
+        400 INVALID_REQUEST; 422 NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE;
+        503 ROUTING_UNAVAILABLE; 504 ROUTING_TIMEOUT. Mọi endpoint còn có thể trả
+        404/405 NOT_FOUND (sai đường dẫn hoặc phương thức) và 500 INTERNAL_ERROR (lỗi không lường trước).
+      headers:
+        X-Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Health:
+      description: Trạng thái
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status]
+            properties:
+              status: { type: string, enum: [ok, unavailable] }
+  schemas:
+    Coordinate:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+    PlanRequest:
+      type: object
+      additionalProperties: false
+      required: [origin, destination]
+      properties:
+        origin: { $ref: '#/components/schemas/Coordinate' }
+        destination: { $ref: '#/components/schemas/Coordinate' }
+        dateTime:
+          type: string
+          format: date-time
+          description: RFC 3339, bắt buộc có múi giờ. Bỏ trống = bây giờ.
+        timeType:
+          type: string
+          enum: [DEPART, ARRIVE]
+          default: DEPART
+          description: DEPART = đi sau dateTime; ARRIVE = đến trước dateTime.
+        modes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [WALK, TRANSIT] }
+          default: [WALK, TRANSIT]
+          description: '[WALK] = chỉ đi bộ; [TRANSIT] = bắt buộc dùng phương tiện công cộng; cả hai = để hệ thống chọn.'
+        maxResults: { type: integer, minimum: 1, maximum: 5, default: 3 }
+    PlanResponse:
+      type: object
+      required: [dataStatus, routes]
+      properties:
+        dataStatus:
+          type: string
+          enum: [ASSUMED, OFFICIAL]
+          description: ASSUMED = dữ liệu giả định, không phải lịch chính thức (ADR-020).
+        routes:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Route' }
+    Route:
+      type: object
+      required: [startTime, endTime, durationSec, walkDistanceM, transfers, legs]
+      properties:
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        durationSec: { type: integer }
+        walkDistanceM: { type: number }
+        transfers: { type: integer }
+        legs:
+          type: array
+          items: { $ref: '#/components/schemas/Leg' }
+    Leg:
+      type: object
+      required: [mode, transit, from, to, startTime, endTime, durationSec, distanceM, realtime, polyline]
+      properties:
+        mode: { type: string, description: 'Ví dụ WALK, SUBWAY, BUS' }
+        transit: { type: boolean }
+        from: { $ref: '#/components/schemas/Place' }
+        to: { $ref: '#/components/schemas/Place' }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        durationSec: { type: integer }
+        distanceM: { type: number }
+        realtime: { type: boolean, description: 'false = giờ theo lịch' }
+        headsign: { type: string }
+        line:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+            shortName: { type: string }
+            longName: { type: string }
+        polyline: { type: string, description: 'Google encoded polyline, độ chính xác 5' }
+    Place:
+      type: object
+      required: [name, lat, lon]
+      properties:
+        name: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+        stopId: { type: string, description: 'Chỉ có khi là ga/trạm' }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE, ROUTING_TIMEOUT, ROUTING_UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR]
+            message: { type: string, description: 'Tiếng Việt, hiển thị được cho người dùng' }
+            requestId: { type: string }
