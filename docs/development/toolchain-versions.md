@@ -12,6 +12,8 @@ Ghi nhận ngày **11-11-2026** bằng cách chạy lệnh trực tiếp trên m
 | JDK | Java 21.0.8 LTS (HotSpot 64-bit) | `java -version` |
 | Docker Engine | 29.6.2 (daemon đang chạy) | `docker --version`, `docker info` |
 | Docker Compose | v5.3.1 | `docker compose version` |
+| PostgreSQL + PostGIS (container) | `postgis/postgis:18-3.6` theo digest (PostgreSQL 18, PostGIS 3.6.4), amd64 chạy qua Rosetta; ADR-028 | `infrastructure/postgres/db.sh status` |
+| osmium-tool | 1.19.1 (Homebrew) | `osmium --version` |
 | Python | 3.15.2 | `python3 --version` |
 | Xcode | 27.0 (27A266a) | `xcodebuild -version` |
 | iOS Simulator runtime | iOS 26.3, iOS 27.0 | `xcrun simctl list runtimes` |

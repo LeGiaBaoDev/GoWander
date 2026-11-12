@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,9 @@ type Config struct {
 	OTPURL     string        // OTP_URL, default "http://127.0.0.1:8088" (infrastructure/otp/scripts/serve.sh)
 	OTPTimeout time.Duration // OTP_TIMEOUT, default 8s, (0, 30s]
 	DataStatus string        // ROUTING_DATA_STATUS: ASSUMED (default) or OFFICIAL, see ADR-027
+	// DATABASE_URL, required: postgres:// URL of the runtime role gowander_app (ADR-028). Holds a password: never log it.
+	// Query time is bounded by the role's statement_timeout (5 s, infrastructure/postgres/init), not by the app.
+	DatabaseURL string
 }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
@@ -24,9 +28,10 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		Addr:       or("HTTP_ADDR", ":8090"),
-		OTPURL:     or("OTP_URL", "http://127.0.0.1:8088"),
-		DataStatus: or("ROUTING_DATA_STATUS", "ASSUMED"),
+		Addr:        or("HTTP_ADDR", ":8090"),
+		OTPURL:      or("OTP_URL", "http://127.0.0.1:8088"),
+		DataStatus:  or("ROUTING_DATA_STATUS", "ASSUMED"),
+		DatabaseURL: getenv("DATABASE_URL"),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -39,6 +44,9 @@ func Load(getenv func(string) string) (Config, error) {
 	c.OTPTimeout = t
 	if c.DataStatus != "ASSUMED" && c.DataStatus != "OFFICIAL" {
 		errs = append(errs, fmt.Errorf("ROUTING_DATA_STATUS must be ASSUMED or OFFICIAL, got %q", c.DataStatus))
+	}
+	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
+		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))
 	}
 	return c, errors.Join(errs...)
 }

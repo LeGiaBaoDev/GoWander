@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility/otp"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/config"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/database"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
 
@@ -30,9 +32,15 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	pool, err := database.NewPool(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout)),
+		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      cfg.OTPTimeout + 5*time.Second,
@@ -67,7 +75,7 @@ func run(log *slog.Logger) error {
 }
 
 // newHandler wires every route; integration tests use it with a real OTP.
-func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider) http.Handler {
+func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store) http.Handler {
 	mux := httpx.NewRouter(log)
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -75,13 +83,23 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	mux.Get("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
-		if err := provider.Ready(ctx); err != nil {
-			log.Warn("not ready: routing provider", "requestId", httpx.RequestID(r), "err", err)
+		ready := true
+		for _, dep := range []struct {
+			name  string
+			check func(context.Context) error
+		}{{"routing", provider.Ready}, {"database", places.Ready}} {
+			if err := dep.check(ctx); err != nil {
+				ready = false
+				log.Warn("not ready", "dependency", dep.name, "requestId", httpx.RequestID(r), "err", err)
+			}
+		}
+		if !ready {
 			httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
+	discover.Handler{Store: places, Log: log}.Mount(mux)
 	return mux
 }
