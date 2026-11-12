@@ -10,6 +10,7 @@ FEED_VERSION = "assumed-2026-11-12"
 LABEL = "DU LIEU GIA DINH - KHONG CHINH THUC / ASSUMED DATA - NOT OFFICIAL"
 
 # Order, names and coordinates: OpenStreetMap route relation 11919223 (ODbL), osm_base 2026-11-11.
+# Mã ga | Tên ga | Vĩ độ | Kinh độ | Mã node trên OpenStreetMap
 STATIONS = [
     ("L1-01", "Bến Thành", 10.770775, 106.697569, 11586280308),
     ("L1-02", "Nhà Hát Thành Phố", 10.775511, 106.702262, 11586280310),
@@ -28,34 +29,43 @@ STATIONS = [
 ]
 
 # Reported: one run takes 29 min 30 s including a 30 s stop at each station (pre-opening trial figure).
+# Thời gian mỗi chuyến
 END_TO_END_SECONDS = 29 * 60 + 30
+# Thời gian dừng ở mỗi ga
 DWELL_SECONDS = 30
 
 # Reported for the timetable in force from 2026-06-01: first train 05:00; last departure 22:00 Mon-Thu,
 # 23:00 Fri-Sun; trains per day in both directions 228 / 236 / 230; headway 6-7 min peak, 8-15 min off-peak.
 # ASSUMED: the peak windows, the exact headways, an even split between directions, and the end date.
+# Giờ cao điểm 6-8:30 và 16:30-19
 PEAK_WINDOWS = [(6 * 3600, 8 * 3600 + 1800), (16 * 3600 + 1800, 19 * 3600)]
+# Khoảng cách giữa 2 chuyến giờ cao điểm (giây)
 PEAK_HEADWAY = 390
+# 3 loại ngày: thứ 2-5, thứ 6, thứ 7-CN
 SERVICES = [
     # service_id, weekday flags Mon..Sun, last departure, trains/day both directions, has peaks
     ("MON_THU", (1, 1, 1, 1, 0, 0, 0), 22 * 3600, 228, True),
     ("FRI", (0, 0, 0, 0, 1, 0, 0), 23 * 3600, 236, True),
     ("SAT_SUN", (0, 0, 0, 0, 0, 1, 1), 23 * 3600, 230, False),
 ]
+# Chuyến đầu tiên
 FIRST_DEPARTURE = 5 * 3600
 CALENDAR_START, CALENDAR_END = "20260601", "20261231"
 
 
+# Đổi giây thành định dạng HH:MM:SS của GTFS
 def hms(seconds):
     return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
+# khoảng cách đường thẳng tính bằng mét giữa hai ga
 def distance_m(a, b):
     lat1, lon1, lat2, lon2 = map(math.radians, (a[2], a[3], b[2], b[3]))
     h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
     return 2 * 6371000 * math.asin(math.sqrt(h))
 
 
+# tính giờ đến và giờ đi ở từng ga, tính từ lúc chuyến xuất phát
 def stop_offsets(stations):
     """(arrival, departure) seconds from trip start; run time is split in proportion to straight-line distance."""
     legs = [distance_m(a, b) for a, b in zip(stations, stations[1:])]

@@ -19,13 +19,13 @@ Ghi nhận ngày **11-11-2026** bằng cách chạy lệnh trực tiếp trên m
 | jq | 1.7.1 | `jq --version` |
 | Node.js | v20.20.2 | `node --version` |
 | GitHub CLI | 2.103.3 | `gh --version` |
+| Android Studio | 2026.2 (cài 12-11-2026) | `defaults read "/Applications/Android Studio.app/Contents/Info.plist" CFBundleShortVersionString` |
+| Android SDK | platform `android-37.0`, build-tools 36.0.0, emulator 37.2.13.0; AVD `Medium_Phone_API_37.0` (bộ nhớ trong đặt 4 GB vì ổ đĩa đầy) | `ls ~/Library/Android/sdk/platforms`, `emulator -version` |
 
 ## Chưa có
 
 | Công cụ | Tình trạng | Ảnh hưởng |
 |---|---|---|
-| Android Studio | Không thấy `/Applications/Android Studio.app` | **Chặn phần Android của M03** |
-| Android SDK | `ANDROID_HOME` chưa đặt, không có `~/Library/Android/sdk` | **Chặn phần Android của M03** |
 | Gradle (cài toàn cục) | Không có lệnh `gradle` | Không chặn: dự án KMP dùng Gradle Wrapper |
 | Kotlin CLI | Không có lệnh `kotlin` | Không chặn: Gradle tự tải Kotlin compiler |
 | pgBackRest | Không có lệnh `pgbackrest` | Không chặn tới M08; dự kiến chạy trên Linux/container |
@@ -37,5 +37,6 @@ Ghi nhận ngày **11-11-2026** bằng cách chạy lệnh trực tiếp trên m
 
 ## Chưa kiểm chứng
 
-- Chưa build thử dự án Android, iOS hay Go nào; bảng trên chỉ cho biết công cụ đã cài.
-- Chưa kiểm tra tương thích giữa JDK 21, phiên bản Kotlin/Compose Multiplatform và Xcode 27.
+- Chưa build thử dự án Go nào.
+- Cập nhật 12-11-2026 (M03): app `mobile/` build và chạy được trên Android emulator API 37 và iOS simulator iOS 27.0 với JDK 21, Kotlin 2.4.20, Compose Multiplatform 1.12.1 và **Xcode 27.0** (dù bảng tương thích Kotlin chỉ ghi Xcode 26.4). Phiên bản khoá: ADR-026.
+- Ổ đĩa máy phát triển thường chỉ còn khoảng 10 GB trống; emulator, simulator và Kotlin/Native từng làm đầy ổ (12-11-2026).
