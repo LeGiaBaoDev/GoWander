@@ -12,9 +12,9 @@
 |---|---|---|
 | `config/build-config.json` | Có | Cấu hình dựng graph (múi giờ `Asia/Ho_Chi_Minh`, bật `dataImportReport` để có báo cáo HTML trong `report/`) |
 | `scripts/fetch-osm.sh` | Có | Tải `vietnam-YYMMDD.osm.pbf` của Geofabrik và kiểm tra MD5 vào `data/raw/osm/` |
-| `scripts/build-graph.sh` | Có | Cắt OSM, đóng gói GTFS, chạy OTP `--build --save`, đo thời gian và bộ nhớ, ghi manifest |
-| `manifests/<graph>.txt` | Có | Manifest của lần dựng gần nhất: phiên bản, checksum đầu vào/đầu ra, thời gian, bộ nhớ, số dòng WARN/ERROR |
-| `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log` |
+| `scripts/build-graph.sh` | Có | Kiểm tra đầu vào, cắt OSM, đóng gói GTFS, chạy OTP `--build --save` trong container hạn chế quyền, đo thời gian và bộ nhớ, ghi manifest |
+| `manifests/<graph>.txt` | Có | Manifest của lần dựng **thành công** gần nhất (`status=ok`): phiên bản, checksum đầu vào/đầu ra, thời gian, bộ nhớ, số dòng WARN/ERROR. Lần dựng lỗi ghi vào `<graph>.failed.txt`, không ghi đè bản tốt |
+| `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log`, `gc.log`, `cgroup-memory-peak.txt` |
 | `data/raw/osm/` | **Không** (`.gitignore`) | File OSM Việt Nam thô và file `.md5` |
 
 ## Quy tắc đầu vào của OTP 2.10.0 (đã kiểm tra trong image)
@@ -39,7 +39,7 @@ Dữ liệu OSM © OpenStreetMap contributors, ODbL 1.0, lấy qua Geofabrik.
 
 ## Chạy lại
 
-Yêu cầu: Docker đang chạy, `osmium` (`brew install osmium-tool`), `zip`, `shasum`.
+Yêu cầu: Docker đang chạy, `osmium` (`brew install osmium-tool`), `zip`, `unzip`, `shasum` hoặc `sha256sum`, `md5` hoặc `md5sum`. Script chạy được trên macOS và Linux (chưa thử trên Linux).
 
 ```bash
 infrastructure/otp/scripts/fetch-osm.sh 261111   # hoặc bỏ tham số để lấy bản mới nhất
@@ -48,7 +48,24 @@ infrastructure/otp/scripts/build-graph.sh
 
 Biến tuỳ chọn: `OSM_SOURCE`, `GTFS_DIR`, `BBOX`, `GRAPH_NAME`, `OTP_XMX` (mặc định `4g`), `OTP_MEM_LIMIT` (mặc định `6g`). Script xoá và tạo lại `work/<GRAPH_NAME>/` mỗi lần chạy.
 
-Bộ nhớ đỉnh lấy từ `docker stats` mỗi khoảng 1–2 giây, nên là giá trị xấp xỉ của cả container, không phải heap JVM.
+### Container và cách đo
+
+- Container chạy với `--user <uid>:<gid> --network none --cap-drop ALL --security-opt no-new-privileges --memory 6g`: không root, không mạng (dựng graph không cần mạng), bỏ mọi capability.
+- `peak_container_mem_mib`: đọc `/sys/fs/cgroup/memory.peak` ngay sau khi OTP thoát — bộ nhớ đỉnh thật của container do kernel ghi. (Cách cũ lấy mẫu `docker stats` chỉ có 3–4 mẫu mỗi lần dựng và báo thấp hơn thực tế: 639–702 MiB so với 732–930 MiB đo bằng `memory.peak`.)
+- `peak_jvm_heap_at_gc_mib`: heap lớn nhất ghi trong GC log (`-Xlog:gc`) tại các lần GC; heap thật giữa hai lần GC có thể cao hơn một chút.
+- `graph.obj` **không** giống nhau từng byte giữa các lần dựng dù đầu vào giống hệt; so sánh đầu vào bằng `osm_corridor_sha256`, `gtfs_zip_sha256`, `build_config_sha256`.
+- Nhấn Ctrl+C hoặc gửi SIGTERM: script dừng với mã 130 và xoá container.
+
+## Số đo nền (12-11-2026, 3 lần chạy, Apple M4 Pro, Docker 29.6.2 cấp 9,4 GB)
+
+| Chỉ số | Lần 1 | Lần 2 | Lần 3 | Trung vị |
+|---|---|---|---|---|
+| Cắt OSM (s) | 2 | 2 | 2 | 2 |
+| Dựng graph, gồm khởi động JVM (s) | 6 | 6 | 6 | 6 |
+| Bộ nhớ đỉnh container (MiB) | 754 | 788 | 844 | 788 |
+| Heap JVM đỉnh tại GC (MiB) | 417 | 416 | 479 | 417 |
+
+Graph: `|V|=87,499 |E|=212,008`, 14 ga, 2 pattern; `graph.obj` khoảng 13,1 MB; 3 WARN, 0 ERROR.
 
 ## Lỗi dữ liệu đã biết (lần dựng 12-11-2026)
 
