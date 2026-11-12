@@ -1,0 +1,63 @@
+# OpenTripPlanner — dựng graph cho PoC M02
+
+> **Chỉ là PoC kỹ thuật.** Graph dựng từ feed Metro số 1 **giả định** (ADR-020), không phải lịch chạy chính thức. Không dùng kết quả này để nói TP.HCM đã sẵn sàng cho định tuyến thật.
+
+- Phiên bản: OpenTripPlanner **2.10.0**, image khoá theo digest (ADR-023):
+  `opentripplanner/opentripplanner@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933`
+- Java nằm sẵn trong image (OpenJDK 25.0.4), máy không cần cài JDK.
+
+## Cấu trúc
+
+| Đường dẫn | Trong Git? | Nội dung |
+|---|---|---|
+| `config/build-config.json` | Có | Cấu hình dựng graph (múi giờ `Asia/Ho_Chi_Minh`, bật `dataImportReport` để có báo cáo HTML trong `report/`) |
+| `scripts/fetch-osm.sh` | Có | Tải `vietnam-YYMMDD.osm.pbf` của Geofabrik và kiểm tra MD5 vào `data/raw/osm/` |
+| `scripts/build-graph.sh` | Có | Cắt OSM, đóng gói GTFS, chạy OTP `--build --save`, đo thời gian và bộ nhớ, ghi manifest |
+| `manifests/<graph>.txt` | Có | Manifest của lần dựng gần nhất: phiên bản, checksum đầu vào/đầu ra, thời gian, bộ nhớ, số dòng WARN/ERROR |
+| `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log` |
+| `data/raw/osm/` | **Không** (`.gitignore`) | File OSM Việt Nam thô và file `.md5` |
+
+## Quy tắc đầu vào của OTP 2.10.0 (đã kiểm tra trong image)
+
+Đọc trực tiếp từ các lớp `BuildConfig`, `FileDataSourceRepository`, `OtpFileNames` trong image đã khoá digest, ngày 12-11-2026:
+
+- OTP nhận **một thư mục gốc**. Trong Docker, entrypoint chạy `java $JAVA_OPTS ... /var/opentripplanner/ $@`, nên thư mục làm việc được mount vào `/var/opentripplanner`.
+- Tên file cấu hình cố định: `otp-config.json`, `build-config.json`, `router-config.json`, `debug-ui-config.json`. Không có file nào thì OTP dùng giá trị mặc định.
+- Mẫu tên file (mặc định trong `localFileNamePatterns`, không phân biệt hoa thường):
+  - GTFS: tên chứa `gtfs`, dạng file zip hoặc thư mục → dùng `hcmc-metro-l1-gtfs.zip`.
+  - NeTEx: tên chứa `netex`.
+  - OSM: đuôi `.pbf`, `.osm` hoặc `.osm.xml` → dùng `hcmc-metro-l1-corridor.osm.pbf`.
+  - DEM (độ cao): đuôi `.tif` hoặc `.tiff` (chưa dùng).
+- Đầu ra: `graph.obj` (hoặc `streetGraph.obj` khi dùng `--buildStreet`); báo cáo lỗi dữ liệu ghi vào thư mục `report/` cạnh graph.
+- Cờ dòng lệnh dùng: `--build --save --abortOnUnknownConfig` (cờ cuối làm OTP dừng nếu cấu hình có tham số lạ).
+
+## Khung cắt OSM
+
+`BBOX=106.675,10.750,106.835,10.900` (minlon, minlat, maxlon, maxlat): bao 14 ga trong `stops.txt` (vĩ độ 10.7708–10.8796, kinh độ 106.6976–106.8142) cộng khoảng 2 km mỗi phía để có đường đi bộ tới ga. Điểm ở Hà Nội (RC-09) nằm ngoài khung này. Cắt bằng `osmium extract --strategy complete_ways`, nên các tuyến đường cắt ngang biên được giữ trọn.
+
+Dữ liệu OSM © OpenStreetMap contributors, ODbL 1.0, lấy qua Geofabrik.
+
+## Chạy lại
+
+Yêu cầu: Docker đang chạy, `osmium` (`brew install osmium-tool`), `zip`, `shasum`.
+
+```bash
+infrastructure/otp/scripts/fetch-osm.sh 261111   # hoặc bỏ tham số để lấy bản mới nhất
+infrastructure/otp/scripts/build-graph.sh
+```
+
+Biến tuỳ chọn: `OSM_SOURCE`, `GTFS_DIR`, `BBOX`, `GRAPH_NAME`, `OTP_XMX` (mặc định `4g`), `OTP_MEM_LIMIT` (mặc định `6g`). Script xoá và tạo lại `work/<GRAPH_NAME>/` mỗi lần chạy.
+
+Bộ nhớ đỉnh lấy từ `docker stats` mỗi khoảng 1–2 giây, nên là giá trị xấp xỉ của cả container, không phải heap JVM.
+
+## Lỗi dữ liệu đã biết (lần dựng 12-11-2026)
+
+- `PrunedStopIsland` = 6: ga L1-04, L1-05, L1-09, L1-10, L1-11, L1-14 bị gắn vào "đảo" đường đi bộ nhỏ (4–12 đỉnh, có thể là lối trong nhà ga trên cao), OTP xoá đảo và **gỡ liên kết** ga khỏi đảo đó. Có thể làm hỏng đoạn đi bộ tới/từ các ga này (ảnh hưởng RC-01, RC-02, RC-05). Kiểm tra ở task 5; hướng sửa: dời toạ độ ga ra lối lên xuống, thêm cửa ga (`location_type=2`) hoặc chỉnh `islandPruning`.
+- `StopNotLinkedForTransfers` = 13: các ga cách nhau quá xa để có chuyển tiếp đi bộ giữa ga; bình thường với một tuyến đơn.
+- `Limiting transit service days to [2025-11-12, 2029-11-13)`: khoảng mặc định quanh ngày dựng; feed (01-06 → 31-12-2026) nằm trong khoảng này.
+
+## Chưa làm (các task sau của M02)
+
+- Task 3: khởi động OTP phục vụ (`--load --serve`) với `router-config.json`.
+- Task 4: đọc schema GraphQL thật của bản 2.10.0.
+- Task 5–6: chạy `data/test-cases/route-cases.csv`, đo độ trễ tìm tuyến.
