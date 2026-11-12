@@ -1,0 +1,17 @@
+{"data":{"planConnection":{"routingErrors":[],"edges":[{"node":{
+  "start":"2026-11-17T09:05:00+07:00","end":"2026-11-17T09:34:31+07:00","duration":1771,"walkDistance":12.5,"numberOfTransfers":0,
+  "legs":[
+    {"mode":"SUBWAY","transitLeg":true,"distance":19500.2,"duration":1771.0,"headsign":"Bến xe Suối Tiên",
+     "start":{"scheduledTime":"2026-11-17T09:05:00+07:00","estimated":null},
+     "end":{"scheduledTime":"2026-11-17T09:34:31+07:00","estimated":null},
+     "from":{"name":"Bến Thành","lat":10.770775,"lon":106.697569,"stop":{"gtfsId":"1:L1-01"}},
+     "to":{"name":"Bến xe Suối Tiên","lat":10.879569,"lon":106.81417,"stop":{"gtfsId":"1:L1-14"}},
+     "route":{"gtfsId":"1:L1","shortName":"L1","longName":"Bến Thành - Suối Tiên"},
+     "legGeometry":{"points":"abc~d"}},
+    {"mode":"WALK","transitLeg":false,"distance":12.5,"duration":10.4,"headsign":null,
+     "start":{"scheduledTime":"2026-11-17T09:34:31+07:00","estimated":{"time":"2026-11-17T09:34:40+07:00"}},
+     "end":{"scheduledTime":"2026-11-17T09:34:41+07:00","estimated":null},
+     "from":{"name":"Bến xe Suối Tiên","lat":10.879569,"lon":106.81417,"stop":{"gtfsId":"1:L1-14"}},
+     "to":{"name":"Destination","lat":10.8796,"lon":106.8142,"stop":null},
+     "route":null,"legGeometry":{"points":"x_y"}}
+  ]}}]}}}

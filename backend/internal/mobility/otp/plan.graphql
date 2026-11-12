@@ -1,0 +1,32 @@
+# planConnection on OTP 2.10.0 (GTFS GraphQL API). Same fields as infrastructure/otp/queries/plan-connection.graphql,
+# with origin/destination/dateTime/modes passed as input objects so the Go adapter can set arrive-by and modes.
+query Plan(
+  $origin: PlanLabeledLocationInput!, $destination: PlanLabeledLocationInput!,
+  $dateTime: PlanDateTimeInput!, $modes: PlanModesInput, $first: Int!
+) {
+  planConnection(origin: $origin, destination: $destination, dateTime: $dateTime, modes: $modes, first: $first) {
+    routingErrors { code }
+    edges {
+      node {
+        start
+        end
+        duration
+        walkDistance
+        numberOfTransfers
+        legs {
+          mode
+          transitLeg
+          distance
+          duration
+          headsign
+          start { scheduledTime estimated { time } }
+          end { scheduledTime estimated { time } }
+          from { name lat lon stop { gtfsId } }
+          to { name lat lon stop { gtfsId } }
+          route { gtfsId shortName longName }
+          legGeometry { points }
+        }
+      }
+    }
+  }
+}
