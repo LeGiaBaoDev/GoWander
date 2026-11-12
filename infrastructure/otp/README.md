@@ -19,6 +19,8 @@
 | `scripts/build-graph.sh` | Có | Kiểm tra đầu vào, cắt OSM, đóng gói GTFS, chạy OTP `--build --save` trong container hạn chế quyền, đo thời gian và bộ nhớ, ghi manifest |
 | `manifests/<graph>.txt` | Có | Manifest của lần dựng **thành công** gần nhất (`status=ok`): phiên bản, checksum đầu vào/đầu ra, thời gian, bộ nhớ, số dòng WARN/ERROR. Lần dựng lỗi ghi vào `<graph>.failed.txt`, không ghi đè bản tốt |
 | `manifests/<graph>.serve.txt` | Có | Manifest của lần khởi động phục vụ gần nhất (`status=ok`); lần lỗi ghi `<graph>.serve.failed.txt` |
+| `queries/plan-connection.graphql` | Có | Truy vấn tìm tuyến mẫu (`planConnection`) đã chạy được trên 2.10.0 |
+| `queries/rc-01.variables.json` | Có | Biến cho RC-01 (Bến Thành → Bến xe Suối Tiên, thứ Ba 17-11-2026 09:00) |
 | `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log`, `gc.log`, `cgroup-memory-peak.txt` |
 | `data/raw/osm/` | **Không** (`.gitignore`) | File OSM Việt Nam thô và file `.md5` |
 
@@ -102,7 +104,36 @@ Số đo khởi động (3 lần, cùng máy, graph dựng 14:58):
 
 WARN khi phục vụ (2–3 dòng, 0 ERROR): `FEATURES THAT SHOULD BE TURNED OFF IN PRODUCTION: CostlyAssertions`, và cảnh báo Micrometer đăng ký trùng meter `graph_build_issues_total` khi bật `ActuatorAPI` (không chặn). Cảnh báo `Cannot create Raptor data` lúc dựng graph **không** xuất hiện khi phục vụ: log ghi `Creating transit layer for Raptor routing ... Mapping complete`.
 
+## API GraphQL của OTP 2.10.0 (task 4)
+
+- Endpoint: `POST /otp/gtfs/v1`, body JSON `{"query": ..., "variables": ...}`.
+- Schema: `/app/resources/org/opentripplanner/apis/gtfs/schema.graphqls` trong image (5 610 dòng, sha256 `ee5c42d5fd6346b6062d057030f8cb2062517b31e93add66ca5a92cae247aac4`). Introspection của server khớp file này ở phần `planConnection`.
+- **Tìm tuyến dùng `planConnection`** (14 tham số: `origin`, `destination`, `dateTime`, `first`, `last`, `after`, `before`, `modes`, `preferences`, `itineraryFilter`, `searchWindow`, `via`, `flex`, `locale`). `plan` đã **deprecated** ("Use `planConnection` instead") — không dùng.
+- Kết quả: `edges[].node` là `Itinerary` (`start`, `end`, `duration`, `walkDistance`, `numberOfTransfers`, `legs`); mỗi `Leg` có `mode`, `start/end { scheduledTime estimated { time } }`, `from/to`, `route`, `legGeometry { points }` (polyline mã hoá).
+- Nhãn lịch/thời gian thực: `start.estimated` = `null` nghĩa là chỉ có lịch. Các trường `realTime`, `realtimeState`, `startTime`, `endTime` đã deprecated.
+- Lỗi — **luôn HTTP 200**, phải đọc nội dung:
+  - Lỗi tìm tuyến nằm ở `planConnection.routingErrors[]` với `code` thuộc `RoutingErrorCode`: `LOCATION_NOT_FOUND`, `NO_DIRECT_MODE_CONNECTION`, `NO_STOPS_IN_RANGE`, `NO_TRANSIT_CONNECTION`, `NO_TRANSIT_CONNECTION_IN_SEARCH_WINDOW`, `OUTSIDE_BOUNDS`, `OUTSIDE_SERVICE_PERIOD`, … và `inputField` (`FROM`/`TO`/`DATE_TIME`).
+  - Đầu vào sai (ví dụ vĩ độ 95) trả `errors[]` cấp GraphQL (`DataFetchingException`), không có `routingErrors` → Go API phải tự kiểm tra đầu vào và trả `INVALID_REQUEST`.
+
+Thử ngày 12-11-2026 (server từ `serve.sh`):
+
+| Case | Kết quả |
+|---|---|
+| RC-01 Bến Thành → Bến xe Suối Tiên, thứ Ba 09:00 | HTTP 200, 0,29 s; 3 hành trình `SUBWAY L1`, 0 chuyển tuyến, trên tàu 1 771 s (29 phút 31 giây — khớp kỳ vọng), `estimated = null` (theo lịch), geometry 14 điểm |
+| RC-09 điểm đến Hà Nội | HTTP 200; `routingErrors: OUTSIDE_BOUNDS, inputField TO`; 0 hành trình |
+| RC-10 vĩ độ 95 | HTTP 200; `errors: "The latitude is not in range[-90.0, 90.0]: 95.0"` |
+
+Cần xem ở task 5: với chuyến theo tần suất (`frequencies.txt`, `exact_times=0`), 3 hành trình RC-01 cách nhau đúng 1 phút (09:12:55, 09:13:55, 09:14:55) và chuyến đầu chờ 775 s, lớn hơn headway 655 s mà RC-01 kỳ vọng. Có thể OTP cộng trọn headway vào mỗi mốc tìm kiếm theo phút (cách tính bi quan); chưa kiểm chứng.
+
+Chạy lại:
+
+```bash
+infrastructure/otp/scripts/serve.sh start
+python3 -I -c 'import json;print(json.dumps({"query":open("infrastructure/otp/queries/plan-connection.graphql").read(),"variables":json.load(open("infrastructure/otp/queries/rc-01.variables.json"))}))' \
+  | curl -s -H 'Content-Type: application/json' --data @- http://127.0.0.1:8088/otp/gtfs/v1
+infrastructure/otp/scripts/serve.sh stop
+```
+
 ## Chưa làm (các task sau của M02)
 
-- Task 4: đọc schema GraphQL thật của bản 2.10.0.
 - Task 5–6: chạy `data/test-cases/route-cases.csv`, đo độ trễ tìm tuyến.

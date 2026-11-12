@@ -36,6 +36,12 @@ Java nằm sẵn trong image, nên máy phát triển không cần cài thêm JD
 - **Yêu cầu bộ nhớ** khi dựng graph với dữ liệu khu vực pilot: chưa đo, làm ở task 6.
 - **Thư mục và tên file đầu vào** (GTFS, OSM, file cấu hình) mà bản 2.10.0 yêu cầu: chưa kiểm tra, làm ở task 2.
 
+## Cập nhật 12-11-2026 (M02 task 2–4)
+
+- **API tìm tuyến:** đã kiểm chứng — `POST /otp/gtfs/v1`, truy vấn `planConnection`; `plan` deprecated. Chi tiết ở `infrastructure/otp/README.md`.
+- **Bộ nhớ:** dựng graph hành lang L1 cần khoảng 0,8 GiB container (heap khoảng 0,4 GiB); phục vụ khoảng 0,5 GiB. Chi tiết ở `docs/changes/change-12-11-2026.md` mục 3 và 5.
+- **Thư mục và tên file đầu vào:** đã kiểm chứng trong image — xem `infrastructure/otp/README.md`.
+
 ## Điều kiện xem lại
 
 - Khi OTP phát hành 2.11.0 chính thức, hoặc khi bản 2.10.0 gặp lỗi chặn PoC.

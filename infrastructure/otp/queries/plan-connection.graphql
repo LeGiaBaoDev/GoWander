@@ -1,0 +1,42 @@
+# Truy vấn tìm tuyến cho OTP 2.10.0 (GTFS GraphQL API, POST /otp/gtfs/v1).
+# Dùng `planConnection` — `plan` đã deprecated ở bản này ("Use `planConnection` instead").
+# Đã đối chiếu với schema.graphqls trong image (sha256 ee5c42d5…) và introspection của server ngày 12-11-2026.
+# Không dùng trường deprecated: start/end thay startTime/endTime; nhãn thời gian thực đọc từ
+# start.estimated / end.estimated (null = chỉ có lịch, không có dữ liệu thời gian thực).
+query PlanConnection(
+  $fromLat: CoordinateValue!, $fromLon: CoordinateValue!,
+  $toLat: CoordinateValue!, $toLon: CoordinateValue!,
+  $departAt: OffsetDateTime!, $first: Int = 3
+) {
+  planConnection(
+    origin: { location: { coordinate: { latitude: $fromLat, longitude: $fromLon } } }
+    destination: { location: { coordinate: { latitude: $toLat, longitude: $toLon } } }
+    dateTime: { earliestDeparture: $departAt }
+    first: $first
+  ) {
+    searchDateTime
+    routingErrors { code inputField description }
+    edges {
+      node {
+        start
+        end
+        duration
+        walkDistance
+        numberOfTransfers
+        legs {
+          mode
+          transitLeg
+          distance
+          duration
+          headsign
+          start { scheduledTime estimated { time } }
+          end { scheduledTime estimated { time } }
+          from { name lat lon stop { gtfsId } }
+          to { name lat lon stop { gtfsId } }
+          route { gtfsId shortName longName }
+          legGeometry { length points }
+        }
+      }
+    }
+  }
+}
