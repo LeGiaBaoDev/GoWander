@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "data" / "assumed" / "hcmc-metro-l1-gtfs"
-FEED_VERSION = "assumed-2026-11-11"
+FEED_VERSION = "assumed-2026-11-12"
 LABEL = "DU LIEU GIA DINH - KHONG CHINH THUC / ASSUMED DATA - NOT OFFICIAL"
 
 # Order, names and coordinates: OpenStreetMap route relation 11919223 (ODbL), osm_base 2026-11-11.
@@ -119,7 +119,10 @@ def main():
                 stop_times.append([trip_id, hms(arr), hms(dep), station[0], seq])
             count = 0
             for start, end, headway in windows(last_departure, both_directions // 2, has_peaks):
-                frequencies.append([trip_id, hms(start), hms(end), headway, 0])
+                # exact_times=1: trains leave at start, start+headway, ... (a fixed timetable). With 0 ("about every
+                # N s") OTP 2.10.0 plans a pessimistic boarding time and shows made-up departures 1 min apart
+                # (route cases RC-01/RC-03, 12-11-2026).
+                frequencies.append([trip_id, hms(start), hms(end), headway, 1])
                 count += math.ceil((end - start) / headway)
             summary.append((trip_id, count, both_directions // 2))
     write("trips.txt", ["route_id", "service_id", "trip_id", "trip_headsign", "direction_id"], trips)

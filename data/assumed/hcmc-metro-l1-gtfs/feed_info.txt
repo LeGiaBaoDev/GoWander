@@ -1,2 +1,2 @@
 feed_publisher_name,feed_publisher_url,feed_lang,feed_start_date,feed_end_date,feed_version
-GoWander (DU LIEU GIA DINH - KHONG CHINH THUC / ASSUMED DATA - NOT OFFICIAL),https://github.com/LeGiaBaoDev/GoWander,vi,20260601,20261231,assumed-2026-11-11
+GoWander (DU LIEU GIA DINH - KHONG CHINH THUC / ASSUMED DATA - NOT OFFICIAL),https://github.com/LeGiaBaoDev/GoWander,vi,20260601,20261231,assumed-2026-11-12

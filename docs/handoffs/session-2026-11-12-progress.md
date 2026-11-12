@@ -15,7 +15,7 @@
 |---|---|---|
 | M00 | PASS | Khung repo, tài liệu, `.gitignore`, `.env.example` |
 | M01 | BLOCKED (dữ liệu chính thức) | Không có GTFS hợp pháp cho TP.HCM. Đi tiếp bằng feed Metro số 1 giả định (ADR-020) |
-| M02 | IN PROGRESS · xong task 1 | OTP 2.10.0 khoá theo digest (ADR-023), image đã tải về máy |
+| M02 | PASS về công nghệ (12-11-2026) | Graph, phục vụ, `planConnection`, 10/10 route case; chi tiết `docs/changes/change-12-11-2026.md` mục 1–8 |
 | M03 | NOT STARTED | Phần Android bị chặn: máy chưa cài Android Studio/SDK |
 | M04–M10 | Chưa bắt đầu | |
 
@@ -41,11 +41,6 @@
 - Plugin cũ `GoWander-Figma-Plugin` và `GoWander-UX-Lab-v3` giữ nguyên, không dùng tiếp.
 - Tài khoản Figma gói Starter đã hết lượt gọi MCP, nên chỉnh Figma qua plugin.
 
-## Việc tiếp theo: M02 task 2
+## Việc tiếp theo: M04 (cập nhật 12-11-2026 chiều)
 
-1. Kiểm tra thư mục/tên file đầu vào OTP 2.10.0 yêu cầu (đọc tài liệu đúng phiên bản).
-2. Tải OSM Việt Nam, cắt theo khung hành lang Metro số 1 (để file thô ngoài Git, `.gitignore` đã chặn).
-3. Chuẩn bị `infrastructure/otp/` (cấu hình + script dựng graph lặp lại được), dựng graph với feed giả định.
-4. Ghi thời gian dựng, bộ nhớ, lỗi; cập nhật PIPELINE và nhật ký.
-
-Lưu ý: commit cuối có thể chưa gồm ADR-023 và mục nhật ký 20; kiểm tra `git status`.
+M02 xong (về công nghệ). Bắt đầu M04 — Go routing service; đọc `PIPELINE.md` §8, `infrastructure/otp/README.md` (API, lỗi, cách chạy OTP ở cổng 8088). Lập kế hoạch qua `/ecc:plan` và chờ chủ dự án duyệt.

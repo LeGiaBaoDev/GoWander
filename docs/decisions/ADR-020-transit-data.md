@@ -47,6 +47,13 @@ Chưa đọc được văn bản biểu đồ chạy tàu gốc của HURC1; m�
 - Feed sẽ sai khi HURC1 đổi biểu đồ chạy tàu. Không có cơ chế tự cập nhật.
 - Chưa chạy trình kiểm tra GTFS chuẩn (canonical validator); mới có kiểm tra nội bộ trong script.
 
+## Cập nhật 12-11-2026: giờ tàu cố định trong `frequencies.txt`
+
+- Feed đổi sang phiên bản `assumed-2026-11-12`: `frequencies.txt` dùng `exact_times=1` thay cho `0`. Khoảng cách giữa hai chuyến và khung giờ giữ nguyên.
+- Lý do: với `exact_times=0` ("khoảng mỗi N giây"), OTP 2.10.0 tính giờ lên tàu bi quan (chờ = headway + khoảng 120 s) và trả các giờ tàu không có thật cách nhau 1 phút; RC-01 và RC-03 FAIL. Với `exact_times=1`, tàu chạy đúng giờ từ đầu mỗi khung (ví dụ 08:30, 08:40:55, 08:51:50…), giống một biểu đồ chạy tàu, và cả 10 route case PASS.
+- Đây vẫn là **giả định**: giờ chạy chính xác của từng chuyến không có nguồn công bố; chỉ khung giờ và tần suất có nguồn như mục "Dữ liệu" ở trên.
+- Bằng chứng: `infrastructure/otp/results/route-cases-2026-11-12-nen.md` (trước), `infrastructure/otp/results/route-cases-2026-11-12-sau-sua-exact-times.md` (sau); `docs/changes/change-12-11-2026.md` mục 7–8.
+
 ## Điều kiện xem lại quyết định
 
 - Trước pilot với người dùng thật (M10): phải có dữ liệu có quyền sử dụng hoặc xác nhận bằng văn bản của đơn vị vận hành.

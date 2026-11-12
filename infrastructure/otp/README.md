@@ -21,6 +21,8 @@
 | `manifests/<graph>.serve.txt` | Có | Manifest của lần khởi động phục vụ gần nhất (`status=ok`); lần lỗi ghi `<graph>.serve.failed.txt` |
 | `queries/plan-connection.graphql` | Có | Truy vấn tìm tuyến mẫu (`planConnection`) đã chạy được trên 2.10.0 |
 | `queries/rc-01.variables.json` | Có | Biến cho RC-01 (Bến Thành → Bến xe Suối Tiên, thứ Ba 17-11-2026 09:00) |
+| `scripts/run_route_cases.py` | Có | Chạy 10 route case trong `data/test-cases/route-cases.csv` trên OTP đang chạy, ghi PASS/FAIL và độ trễ |
+| `results/route-cases-<ngày>-<nhãn>.md` | Có | Kết quả mỗi lượt chạy route case |
 | `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log`, `gc.log`, `cgroup-memory-peak.txt` |
 | `data/raw/osm/` | **Không** (`.gitignore`) | File OSM Việt Nam thô và file `.md5` |
 
@@ -134,6 +136,20 @@ python3 -I -c 'import json;print(json.dumps({"query":open("infrastructure/otp/qu
 infrastructure/otp/scripts/serve.sh stop
 ```
 
+## Route case và độ trễ (task 5–6)
+
+```bash
+infrastructure/otp/scripts/serve.sh start
+python3 -I infrastructure/otp/scripts/run_route_cases.py --label <nhãn> --repeat 20
+infrastructure/otp/scripts/serve.sh stop
+```
+
+- Kỳ vọng máy đọc được nằm ở các cột `expect_*` của `data/test-cases/route-cases.csv`; thứ trong tuần ánh xạ sang tuần 16–22/11/2026.
+- 12-11-2026: lượt nền (feed `assumed-2026-11-11`, `exact_times=0`) **8/10** — RC-01, RC-03 chờ quá headway; sau khi đổi feed sang `exact_times=1` (`assumed-2026-11-12`, ADR-020) **10/10 PASS**.
+- Độ trễ (20 lần mỗi case, client cùng máy, Apple M4 Pro): p50 15–39 ms, p95 ≤ 56 ms, max 93 ms; lỗi đầu vào/ngoài vùng 2–4 ms.
+- Chưa rõ nguyên nhân: OTP không trả chuyến khởi hành sớm hơn khoảng 2 phút sau giờ yêu cầu (RC-07: hỏi 22:30:00 bỏ chuyến 22:31:51; hỏi 22:29:30 thì có). Đặt `preferences.transit.board.slack` và `transfer.slack` = `PT0S` không đổi kết quả.
+- `routingErrors` có thể đi kèm hành trình hợp lệ (RC-04: `WALKING_BETTER_THAN_TRANSIT`) — M04 không được coi mọi `routingErrors` là lỗi.
+
 ## Chưa làm (các task sau của M02)
 
-- Task 5–6: chạy `data/test-cases/route-cases.csv`, đo độ trễ tìm tuyến.
+- Không còn task nào của M02 với feed giả định. Chạy lại toàn bộ khi có feed chính thức (M01).
