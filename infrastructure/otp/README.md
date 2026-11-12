@@ -10,10 +10,15 @@
 
 | Đường dẫn | Trong Git? | Nội dung |
 |---|---|---|
+| `config/otp-config.json` | Có | Cấu hình chung khi chạy: bật `ActuatorAPI` (endpoint health và Prometheus) |
+| `config/router-config.json` | Có | Cấu hình khi phục vụ: `server.apiProcessingTimeout` = 10 s |
 | `config/build-config.json` | Có | Cấu hình dựng graph (múi giờ `Asia/Ho_Chi_Minh`, bật `dataImportReport` để có báo cáo HTML trong `report/`) |
+| `scripts/lib.sh` | Có | Hàm dùng chung (log, checksum, `or_unknown`) và digest image OTP — các script khác `source` file này |
+| `scripts/serve.sh` | Có | `start` / `status` / `stop`: chạy OTP phục vụ graph, kiểm tra checksum, chờ health, đo, ghi manifest phục vụ |
 | `scripts/fetch-osm.sh` | Có | Tải `vietnam-YYMMDD.osm.pbf` của Geofabrik và kiểm tra MD5 vào `data/raw/osm/` |
 | `scripts/build-graph.sh` | Có | Kiểm tra đầu vào, cắt OSM, đóng gói GTFS, chạy OTP `--build --save` trong container hạn chế quyền, đo thời gian và bộ nhớ, ghi manifest |
 | `manifests/<graph>.txt` | Có | Manifest của lần dựng **thành công** gần nhất (`status=ok`): phiên bản, checksum đầu vào/đầu ra, thời gian, bộ nhớ, số dòng WARN/ERROR. Lần dựng lỗi ghi vào `<graph>.failed.txt`, không ghi đè bản tốt |
+| `manifests/<graph>.serve.txt` | Có | Manifest của lần khởi động phục vụ gần nhất (`status=ok`); lần lỗi ghi `<graph>.serve.failed.txt` |
 | `work/<graph>/` | **Không** (`.gitignore`) | Thư mục gốc OTP: OSM đã cắt, GTFS zip, `build-config.json`, `graph.obj`, `report/`, `otp-build.log`, `gc.log`, `cgroup-memory-peak.txt` |
 | `data/raw/osm/` | **Không** (`.gitignore`) | File OSM Việt Nam thô và file `.md5` |
 
@@ -73,8 +78,31 @@ Graph: `|V|=87,499 |E|=212,008`, 14 ga, 2 pattern; `graph.obj` khoảng 13,1 MB;
 - `StopNotLinkedForTransfers` = 13: các ga cách nhau quá xa để có chuyển tiếp đi bộ giữa ga; bình thường với một tuyến đơn.
 - `Limiting transit service days to [2025-11-12, 2029-11-13)`: khoảng mặc định quanh ngày dựng; feed (01-06 → 31-12-2026) nằm trong khoảng này.
 
+## Chạy phục vụ (task 3)
+
+```bash
+infrastructure/otp/scripts/serve.sh start    # mặc định cổng 8088 (8080 hay bị app khác dùng); đổi bằng OTP_PORT
+infrastructure/otp/scripts/serve.sh status
+infrastructure/otp/scripts/serve.sh stop
+```
+
+- `start` chỉ chạy khi `graph.obj` khớp `graph_obj_sha256` trong `manifests/<graph>.txt` có `status=ok`; không khớp thì báo dựng lại.
+- Container: không root, `--cap-drop ALL`, `no-new-privileges`, giới hạn 3 GB, `-Xmx2g`; thư mục graph mount **chỉ đọc**; cổng chỉ mở ở `127.0.0.1`.
+- Sẵn sàng khi `GET /otp/actuators/health` trả 200 (`{"status":"UP"}`), rồi kiểm tra `POST /otp/gtfs/v1` với `{ __typename }` phải trả `QueryType`; một trong hai lỗi thì dừng container và ghi `.serve.failed.txt`.
+- Endpoint đã thấy trả 200 (12-11-2026): `/otp/actuators/health`, `/otp/actuators/prometheus`, `/otp/gtfs/v1`, Debug UI ở `/`.
+- `router-config.json`: OTP 2.10.0 **không** nhận `server.streetRoutingTimeout` (có trong mã nhưng `--abortOnUnknownConfig` báo "Unexpected config parameter"); chỉ dùng `server.apiProcessingTimeout`.
+
+Số đo khởi động (3 lần, cùng máy, graph dựng 14:58):
+
+| Chỉ số | Lần 1 | Lần 2 | Lần 3 | Trung vị |
+|---|---|---|---|---|
+| `docker run` → health 200 (ms) | 1987 | 1659 | 1637 | 1659 |
+| Bộ nhớ đỉnh container (MiB) | 520 | 506 | 520 | 520 |
+| Heap JVM đỉnh tại GC (MiB) | 202 | 166 | 196 | 196 |
+
+WARN khi phục vụ (2–3 dòng, 0 ERROR): `FEATURES THAT SHOULD BE TURNED OFF IN PRODUCTION: CostlyAssertions`, và cảnh báo Micrometer đăng ký trùng meter `graph_build_issues_total` khi bật `ActuatorAPI` (không chặn). Cảnh báo `Cannot create Raptor data` lúc dựng graph **không** xuất hiện khi phục vụ: log ghi `Creating transit layer for Raptor routing ... Mapping complete`.
+
 ## Chưa làm (các task sau của M02)
 
-- Task 3: khởi động OTP phục vụ (`--load --serve`) với `router-config.json`.
 - Task 4: đọc schema GraphQL thật của bản 2.10.0.
 - Task 5–6: chạy `data/test-cases/route-cases.csv`, đo độ trễ tìm tuyến.

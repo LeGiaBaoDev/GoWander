@@ -15,11 +15,8 @@ BASE_URL="https://download.geofabrik.de/asia"
 # Hết 20 s không kết nối được, hoặc tốc độ < 10 kB/s trong 60 s, thì dừng thay vì treo.
 CURL_OPTS=(--fail --show-error --connect-timeout 20 --speed-limit 10000 --speed-time 60)
 
-die() { echo "LỖI: $*" >&2; exit 1; }
-md5_of() {
-  if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | awk '{print $1}'
-  else md5 -r "$1" | awk '{print $1}'; fi
-}
+# shellcheck source-path=SCRIPTDIR
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 stamp="${1:-}"
 if [[ -z "${stamp}" ]]; then

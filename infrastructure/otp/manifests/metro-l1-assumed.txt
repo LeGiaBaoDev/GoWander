@@ -1,7 +1,7 @@
 # Manifest dựng graph OTP — sinh bởi infrastructure/otp/scripts/build-graph.sh
 status=ok
 graph_name=metro-l1-assumed
-built_at=2026-11-12T14:33:33+0700
+built_at=2026-11-12T14:58:10+0700
 otp_image=opentripplanner/opentripplanner@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933
 otp_version=2.10.0
 osmium_version=1.19.1
@@ -23,11 +23,11 @@ build_config_sha256=35fd56c65a0e5a6c03bbc352441c6c18da23bf6400bc9ff078619f1adca2
 crop_seconds=2
 build_seconds=6
 otp_exit_code=0
-peak_container_mem_mib=844
-peak_jvm_heap_at_gc_mib=479
+peak_container_mem_mib=727
+peak_jvm_heap_at_gc_mib=402
 gc_pause_events=41
 log_warn_lines=3
 log_error_lines=0
 log_out_of_memory_lines=0
-graph_obj_bytes=13091898
-graph_obj_sha256=65af070ba9b4da1bbbed32443ebf25e7ae43aec583e28c0027a019cffaa13b0e
+graph_obj_bytes=13092829
+graph_obj_sha256=eb523c294cb80a48fd1e92f6709a8bcad2832ff89fd71261c52d9e8032c4106e

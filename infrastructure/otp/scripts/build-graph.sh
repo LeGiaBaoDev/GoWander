@@ -24,8 +24,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OTP_DIR="${REPO_ROOT}/infrastructure/otp"
+# shellcheck source-path=SCRIPTDIR
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-OTP_IMAGE="opentripplanner/opentripplanner@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933"
 GRAPH_NAME="${GRAPH_NAME:-metro-l1-assumed}"
 GTFS_DIR="${GTFS_DIR:-${REPO_ROOT}/data/assumed/hcmc-metro-l1-gtfs}"
 BBOX="${BBOX:-106.675,10.750,106.835,10.900}"
@@ -36,29 +37,11 @@ MANIFEST_DIR="${OTP_DIR}/manifests"
 MIN_OSM_BYTES=100000
 REQUIRED_GTFS=(agency.txt stops.txt routes.txt trips.txt stop_times.txt)
 
-log()  { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S %z')" "$*"; }
-warn() { log "CẢNH BÁO: $*" >&2; }
-die()  { log "LỖI: $*" >&2; exit 1; }
-
-# --- Hàm chạy được trên cả macOS (BSD) và Linux (GNU) ------------------------
-file_size() { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
-  else shasum -a 256 "$1" | awk '{print $1}'; fi
-}
-md5_of() {
-  if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | awk '{print $1}'
-  else md5 -r "$1" | awk '{print $1}'; fi
-}
+# --- Hàm riêng của script này (hàm chung nằm trong lib.sh) ---------------
 cpu_name() {
   sysctl -n machdep.cpu.brand_string 2>/dev/null \
     || awk -F': ' '/^model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null \
     || echo UNKNOWN
-}
-# Giá trị rỗng trong manifest thì ghi UNKNOWN và cảnh báo, không im lặng.
-or_unknown() {
-  local name="$1" value="$2"
-  if [[ -z "${value}" ]]; then warn "không đọc được ${name}"; echo UNKNOWN; else echo "${value}"; fi
 }
 # Cột theo tên header của một file CSV GTFS đơn giản (không có dấu phẩy trong ô có ngoặc kép).
 gtfs_field() {

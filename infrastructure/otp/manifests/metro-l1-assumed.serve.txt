@@ -1,0 +1,26 @@
+# Manifest phục vụ OTP — sinh bởi infrastructure/otp/scripts/serve.sh start
+status=ok
+graph_name=metro-l1-assumed
+started_at=2026-11-12T14:59:23+0700
+otp_image=opentripplanner/opentripplanner@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933
+otp_version=2.10.0
+graph_obj_sha256=eb523c294cb80a48fd1e92f6709a8bcad2832ff89fd71261c52d9e8032c4106e
+graph_built_at=2026-11-12T14:58:10+0700
+osm_corridor_sha256=96a98b8336aefc9182e633037cb978384b394e9ca2dfe34f0faf0c688bf6c5a7
+gtfs_zip_sha256=b391002ba53e47f3f4bf1fe2c6cda52f426ac5b842cf4f10f17e1630b2aa6032
+gtfs_feed_version=assumed-2026-11-11
+otp_config_sha256=6ce1e2ce7b1dbfa46c45b97172ccc6a2b723de3a6973306909ca4622953b7b3c
+router_config_sha256=863aaa231573854310d96af03e4636c5efb48e28c42b1fc69f7277f61b28de48
+container_flags=--user 501:20 --cap-drop ALL --security-opt no-new-privileges --memory 3g -p 127.0.0.1:8088:8080 graph:ro
+java_opts=-Xmx2g
+startup_ms=1637
+health_url=/otp/actuators/health
+health_http=200
+graphql_url=/otp/gtfs/v1
+graphql_typename=QueryType
+container_mem_peak_mib=520
+container_mem_after_ready_mib=520
+peak_jvm_heap_at_gc_mib=196
+log_warn_lines=3
+log_error_lines=0
+log_raptor_data_warning=0
