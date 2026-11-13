@@ -10,7 +10,7 @@ import (
 )
 
 type Config struct {
-	Addr       string        // HTTP_ADDR, default ":8090"
+	Addr       string        // HTTP_ADDR, default "127.0.0.1:8090" (localhost only; containers set their own)
 	OTPURL     string        // OTP_URL, default "http://127.0.0.1:8088" (infrastructure/otp/scripts/serve.sh)
 	OTPTimeout time.Duration // OTP_TIMEOUT, default 8s, (0, 30s]
 	DataStatus string        // ROUTING_DATA_STATUS: ASSUMED (default) or OFFICIAL, see ADR-027
@@ -28,7 +28,7 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		Addr:        or("HTTP_ADDR", ":8090"),
+		Addr:        or("HTTP_ADDR", "127.0.0.1:8090"),
 		OTPURL:      or("OTP_URL", "http://127.0.0.1:8088"),
 		DataStatus:  or("ROUTING_DATA_STATUS", "ASSUMED"),
 		DatabaseURL: getenv("DATABASE_URL"),

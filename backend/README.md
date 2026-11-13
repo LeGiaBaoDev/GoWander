@@ -21,7 +21,7 @@ go run ./cmd/api
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `HTTP_ADDR` | `:8090` | Địa chỉ lắng nghe |
+| `HTTP_ADDR` | `127.0.0.1:8090` | Địa chỉ lắng nghe; mặc định chỉ máy này gọi được (Android emulator vẫn tới qua `10.0.2.2`). Container/máy chủ đặt riêng |
 | `OTP_URL` | `http://127.0.0.1:8088` | OTP (không được chứa user/mật khẩu) |
 | `OTP_TIMEOUT` | `8s` | Thời gian tối đa mỗi lần gọi OTP, trong khoảng (0, 30s] |
 | `ROUTING_DATA_STATUS` | `ASSUMED` | `ASSUMED` hoặc `OFFICIAL`, trả về trong mọi response tìm tuyến |
