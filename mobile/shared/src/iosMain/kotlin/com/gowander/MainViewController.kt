@@ -1,6 +1,6 @@
 package com.gowander
 
 import androidx.compose.ui.window.ComposeUIViewController
-import com.gowander.map.MapScreen
+import com.gowander.App
 
-fun MainViewController() = ComposeUIViewController { MapScreen() }
+fun MainViewController() = ComposeUIViewController { App() }
