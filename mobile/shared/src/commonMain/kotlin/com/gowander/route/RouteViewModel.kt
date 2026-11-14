@@ -18,6 +18,13 @@ import kotlinx.coroutines.launch
 
 data class Endpoint(val lat: Double, val lon: Double, val label: String)
 
+/** Plan-screen choice; [apiModes] is what the API gets (null = its default: walk + metro + bus). RD-0, ADR-032. */
+enum class TravelMode(val apiModes: List<String>?, val isTransit: Boolean = false) {
+    Bus(listOf("BUS"), isTransit = true), // bus only (owner: separate tabs instead of "Công cộng")
+    Metro(null, isTransit = true), // all public transport, then only routes with a metro leg are kept (feeder buses allowed)
+    Car(listOf("CAR")), Bicycle(listOf("BICYCLE")), Walk(listOf("WALK")),
+}
+
 sealed interface RoutePhase {
     data object Idle : RoutePhase
     data object Loading : RoutePhase
@@ -30,6 +37,7 @@ data class RouteUiState(
     val destination: Endpoint? = null,
     val phase: RoutePhase = RoutePhase.Idle,
     val arriveBy: Long? = null, // epoch millis; null = leave now (M3 chips)
+    val mode: TravelMode = TravelMode.Bus,
     val sort: RouteSort = RouteSort.Fastest,
     val recentDestinations: List<Endpoint> = emptyList(), // newest first, this session only
     val detailOpen: Boolean = false, // M6 for the selected route
@@ -54,6 +62,20 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
         if (epochMillis == _state.value.arriveBy) return
         job?.cancel()
         _state.update { it.copy(arriveBy = epochMillis, phase = RoutePhase.Idle, detailOpen = false) }
+    }
+
+    /** Public transport / bicycle / car. Clears stale results like an endpoint change. */
+    fun setMode(mode: TravelMode) {
+        if (mode == _state.value.mode) return
+        job?.cancel()
+        _state.update { it.copy(mode = mode, phase = RoutePhase.Idle, detailOpen = false) }
+    }
+
+    /** Mode tabs inside the route detail: search again and show the new fastest route's detail (no trip back to M3). */
+    fun switchModeInDetail(mode: TravelMode) {
+        if (mode == _state.value.mode) return
+        _state.update { it.copy(mode = mode) }
+        search(openDetailAfter = true)
     }
 
     /** M5 chips: reorder without a new request; the chosen route stays chosen. */
@@ -89,7 +111,9 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
 
     fun retry() = search()
 
-    fun search() {
+    fun search() = search(openDetailAfter = false)
+
+    private fun search(openDetailAfter: Boolean) {
         val (origin, destination) = _state.value.let { (it.origin ?: return) to (it.destination ?: return) }
         job?.cancel() // the newest request wins
         _state.update { it.copy(phase = RoutePhase.Loading, detailOpen = false) }
@@ -100,14 +124,22 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
                     PlanRequest(
                         LatLon(origin.lat, origin.lon), LatLon(destination.lat, destination.lon),
                         dateTime = arrive?.let(::pilotIso), timeType = if (arrive != null) "ARRIVE" else "DEPART",
+                        modes = _state.value.mode.apiModes,
                     ),
                 )
+                val routes = if (_state.value.mode == TravelMode.Metro) res.routes.filter { r -> r.legs.any { it.mode in METRO_MODES } } else res.routes
                 if (res.routes.isEmpty()) RoutePhase.Failed(Strings.NO_ROUTE, retryable = false)
-                else RoutePhase.Results(sortRoutes(res.routes, _state.value.sort), selected = 0, assumedData = res.dataStatus == "ASSUMED")
+                else if (routes.isEmpty()) RoutePhase.Failed(Strings.NO_METRO_ROUTE, retryable = false)
+                else RoutePhase.Results(
+                    sortRoutes(routes, _state.value.sort), selected = 0,
+                    // Car/bicycle-only results use no timetable, so the assumed-timetable label does not apply.
+                    assumedData = res.dataStatus == "ASSUMED" && routes.any { r -> r.legs.any { it.transit } },
+                )
             } catch (e: ApiError) {
                 failure(e)
             }
             _state.update { it.copy(phase = phase) }
+            if (openDetailAfter && phase is RoutePhase.Results) openDetail(0)
         }
     }
 
@@ -127,6 +159,7 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
 
     private companion object {
         const val RECENT_MAX = 5
+        val METRO_MODES = setOf("SUBWAY", "RAIL", "TRAM")
         val USER_FIXABLE = setOf("NO_ROUTE_FOUND", "OUT_OF_COVERAGE", "DATA_UNAVAILABLE", "INVALID_REQUEST")
     }
 }

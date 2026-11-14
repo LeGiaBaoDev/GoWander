@@ -14,6 +14,7 @@ data class PlanRequest(
     val dateTime: String? = null, // RFC 3339 with offset; null = now (server time)
     val timeType: String = "DEPART",
     val maxResults: Int = 3,
+    val modes: List<String>? = null, // null = server default (walk + public transport); ["CAR"] / ["BICYCLE"] alone
 )
 
 @Serializable
@@ -43,7 +44,22 @@ data class Leg(
     val headsign: String? = null,
     val line: Line? = null,
     val polyline: String,
+    val steps: List<Step> = emptyList(), // turn-by-turn for walk/bicycle/car legs (NAV-1)
 )
+
+/** One manoeuvre; [direction] is OTP's relativeDirection (DEPART, LEFT, RIGHT, CONTINUE, ...). */
+@Serializable
+data class Step(val direction: String, val street: String, val distanceM: Double, val lat: Double, val lon: Double)
+
+/** Street photo near a point (Mapillary, CC BY-SA 4.0); [attribution] must be shown with it (ADR-033). */
+@Serializable
+data class StreetImage(val id: String, val url: String, val capturedAt: String, val lat: Double, val lon: Double, val creator: String? = null, val pageUrl: String)
+
+@Serializable
+data class StreetImageSource(val provider: String, val license: String, val attribution: String)
+
+@Serializable
+data class StreetImageResponse(val image: StreetImage, val source: StreetImageSource)
 
 @Serializable
 data class RoutePlace(val name: String, val lat: Double, val lon: Double, val stopId: String? = null)

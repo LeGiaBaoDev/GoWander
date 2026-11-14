@@ -130,6 +130,10 @@ func variables(q mobility.Query) map[string]any {
 	}
 	// No "modes" key means OTP's default (walking plus every transit mode); OTP 2.10 throws on an explicit null.
 	switch {
+	case q.BusOnly:
+		v["modes"] = map[string]any{"transitOnly": true, "transit": map[string]any{"transit": []map[string]string{{"mode": "BUS"}}}}
+	case q.Direct != "":
+		v["modes"] = map[string]any{"directOnly": true, "direct": []string{q.Direct}}
 	case q.Walk && !q.Transit:
 		v["modes"] = map[string]any{"directOnly": true, "direct": []string{"WALK"}}
 	case q.Transit && !q.Walk:
@@ -210,6 +214,9 @@ func route(n itinerary) (mobility.Route, error) {
 		}
 		if l.LegGeometry != nil {
 			leg.Polyline = l.LegGeometry.Points
+		}
+		for _, s := range l.Steps {
+			leg.Steps = append(leg.Steps, mobility.Step{Direction: s.RelativeDirection, Street: s.StreetName, DistanceM: s.Distance, Lat: s.Lat, Lon: s.Lon})
 		}
 		r.Legs = append(r.Legs, leg)
 	}
@@ -301,4 +308,11 @@ type leg struct {
 	LegGeometry *struct {
 		Points string `json:"points"`
 	} `json:"legGeometry"`
+	Steps []struct {
+		Distance          float64 `json:"distance"`
+		RelativeDirection string  `json:"relativeDirection"`
+		StreetName        string  `json:"streetName"`
+		Lat               float64 `json:"lat"`
+		Lon               float64 `json:"lon"`
+	} `json:"steps"`
 }

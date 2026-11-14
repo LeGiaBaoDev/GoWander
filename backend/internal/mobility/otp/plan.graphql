@@ -25,6 +25,7 @@ query Plan(
           to { name lat lon stop { gtfsId } }
           route { gtfsId shortName longName }
           legGeometry { points }
+          steps { distance relativeDirection streetName lat lon }
         }
       }
     }

@@ -106,9 +106,11 @@ def main():
           [["HURC1", "Công ty TNHH MTV Đường sắt đô thị số 1 (HURC1)",
             "https://www.openstreetmap.org/relation/11919223", "Asia/Ho_Chi_Minh", "vi"]])
     write("feed_info.txt",
-          ["feed_publisher_name", "feed_publisher_url", "feed_lang", "feed_start_date", "feed_end_date", "feed_version"],
+          ["feed_publisher_name", "feed_publisher_url", "feed_lang", "feed_start_date", "feed_end_date", "feed_version",
+           "feed_id"],
+          # feed_id "1": OTP ids stay "1:L1-01" when other feeds are loaded too (RD-0, ADR-032).
           [[f"GoWander ({LABEL})", "https://github.com/LeGiaBaoDev/GoWander", "vi",
-            CALENDAR_START, CALENDAR_END, FEED_VERSION]])
+            CALENDAR_START, CALENDAR_END, FEED_VERSION, "1"]])
     write("routes.txt",
           ["route_id", "agency_id", "route_short_name", "route_long_name", "route_desc", "route_type", "route_color"],
           [["L1", "HURC1", "L1", "Bến Thành - Suối Tiên", LABEL, 1, "0079B8"]])

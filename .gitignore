@@ -85,3 +85,11 @@ pgdata/
 # Logs
 *.log
 logs/
+
+# Bus GTFS derived from OSM (ADR-032): regenerate with scripts/build_bus_gtfs_from_osm.py; manifest and README are kept
+data/assumed/hcmc-bus-osm-gtfs/*.txt
+!data/assumed/hcmc-bus-osm-gtfs/manifest.txt
+!data/assumed/hcmc-bus-osm-gtfs/README.txt
+
+# Python
+__pycache__/

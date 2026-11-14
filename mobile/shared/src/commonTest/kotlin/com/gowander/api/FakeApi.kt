@@ -23,4 +23,6 @@ class FakeApi : GoWanderApi {
     override suspend fun place(id: String) = detailResult(id)
     override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> = emptyList()
     override suspend fun reverseGeocode(at: LatLon): List<GeoResult> = emptyList()
+    override suspend fun streetImage(at: LatLon): StreetImageResponse? = null
+    override suspend fun imageBytes(url: String): ByteArray = ByteArray(0)
 }

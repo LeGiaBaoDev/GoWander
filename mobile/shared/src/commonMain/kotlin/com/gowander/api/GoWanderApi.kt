@@ -6,14 +6,18 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
+import io.ktor.http.URLProtocol
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
@@ -51,10 +55,15 @@ interface GoWanderApi {
     suspend fun place(id: String): PlaceDetail
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
+    /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
+    suspend fun streetImage(at: LatLon): StreetImageResponse?
+    /** Raw bytes of an image URL returned by the API (street photo). */
+    suspend fun imageBytes(url: String): ByteArray
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
     expectSuccess = false
+    followRedirects = false // neither the API nor the photo CDN should redirect; never follow one to another host
     install(ContentNegotiation) { json(apiJson) }
     install(HttpTimeout) {
         connectTimeoutMillis = 5_000
@@ -108,6 +117,39 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             parameter("lat", at.lat)
             parameter("lon", at.lon)
         }.results
+
+    override suspend fun streetImage(at: LatLon): StreetImageResponse? = try {
+        call<StreetImageResponse>("/api/v1/street-images/nearest") {
+            parameter("lat", at.lat)
+            parameter("lon", at.lon)
+        }
+    } catch (e: ApiError.Server) {
+        if (e.code == "STREET_IMAGE_NOT_FOUND") null else throw e
+    }
+
+    override suspend fun imageBytes(url: String): ByteArray {
+        // Only fetch photos from Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
+        val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
+        if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
+            throw ApiError.Unexpected("image host not allowed")
+        }
+        val response = try {
+            client.get(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw ApiError.Network(e)
+        }
+        if (!response.status.isSuccess()) throw ApiError.Unexpected("image HTTP ${response.status.value}")
+        val declared = response.headers["Content-Length"]?.toLongOrNull()
+        if (declared != null && declared > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large")
+        return response.bodyAsBytes().also { if (it.size > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large") }
+    }
+
+    private companion object {
+        val IMAGE_HOSTS = listOf("fbcdn.net", "mapillary.com")
+        const val MAX_IMAGE_BYTES = 2_000_000L
+    }
 
     // Not named `build`: inside the request lambda that would call HttpRequestBuilder.build() instead.
     private suspend inline fun <reified T> call(path: String, crossinline configure: HttpRequestBuilder.() -> Unit): T {

@@ -3,7 +3,7 @@
 #
 # Các bước:
 #   1. Cắt OSM Việt Nam theo khung hành lang Metro số 1 bằng osmium.
-#   2. Đóng gói feed GTFS giả định thành zip có checksum ổn định.
+#   2. Đóng gói từng feed GTFS giả định thành zip có checksum ổn định.
 #   3. Chép build-config.json vào thư mục làm việc.
 #   4. Chạy OTP (image khoá theo digest, ADR-023) với --build --save trong container
 #      không mạng, không root, bỏ hết capability; đo thời gian, bộ nhớ đỉnh (cgroup) và heap JVM (GC log).
@@ -12,7 +12,9 @@
 # Cách dùng: infrastructure/otp/scripts/build-graph.sh
 # Biến môi trường (tuỳ chọn):
 #   OSM_SOURCE     file .osm.pbf nguồn (mặc định: bản vietnam-*.osm.pbf mới nhất trong data/raw/osm/)
-#   GTFS_DIR       thư mục GTFS (mặc định: data/assumed/hcmc-metro-l1-gtfs)
+#   GTFS_DIRS      các thư mục GTFS, cách nhau bằng dấu cách (mặc định: GTFS_DIR hoặc data/assumed/hcmc-metro-l1-gtfs);
+#                  tên thư mục phải chứa "gtfs" (OTP nhận feed theo tên file)
+#   GTFS_DIR       một thư mục GTFS (giữ cho lệnh cũ)
 #   BBOX           minlon,minlat,maxlon,maxlat (mặc định: hành lang Metro số 1 + khoảng 2 km)
 #   GRAPH_NAME     tên thư mục làm việc dưới infrastructure/otp/work/ (mặc định: metro-l1-assumed)
 #   OTP_XMX        heap tối đa của JVM (mặc định: 4g)
@@ -28,7 +30,7 @@ OTP_DIR="${REPO_ROOT}/infrastructure/otp"
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 GRAPH_NAME="${GRAPH_NAME:-metro-l1-assumed}"
-GTFS_DIR="${GTFS_DIR:-${REPO_ROOT}/data/assumed/hcmc-metro-l1-gtfs}"
+read -r -a GTFS_DIRS <<<"${GTFS_DIRS:-${GTFS_DIR:-${REPO_ROOT}/data/assumed/hcmc-metro-l1-gtfs}}"
 BBOX="${BBOX:-106.675,10.750,106.835,10.900}"
 OTP_XMX="${OTP_XMX:-4g}"
 OTP_MEM_LIMIT="${OTP_MEM_LIMIT:-6g}"
@@ -78,11 +80,14 @@ if [[ -f "${OSM_SOURCE}.md5" ]]; then
 else
   warn "không có ${OSM_SOURCE}.md5; bỏ qua kiểm tra MD5"
 fi
-for f in "${REQUIRED_GTFS[@]}"; do
-  [[ -s "${GTFS_DIR}/${f}" ]] || die "GTFS thiếu hoặc rỗng: ${GTFS_DIR}/${f}"
+for GTFS_DIR in "${GTFS_DIRS[@]}"; do
+  [[ "$(basename "${GTFS_DIR}")" == *gtfs* ]] || die "tên thư mục GTFS phải chứa 'gtfs': ${GTFS_DIR}"
+  for f in "${REQUIRED_GTFS[@]}"; do
+    [[ -s "${GTFS_DIR}/${f}" ]] || die "GTFS thiếu hoặc rỗng: ${GTFS_DIR}/${f}"
+  done
+  [[ -s "${GTFS_DIR}/calendar.txt" || -s "${GTFS_DIR}/calendar_dates.txt" ]] \
+    || die "GTFS cần calendar.txt hoặc calendar_dates.txt trong ${GTFS_DIR}"
 done
-[[ -s "${GTFS_DIR}/calendar.txt" || -s "${GTFS_DIR}/calendar_dates.txt" ]] \
-  || die "GTFS cần calendar.txt hoặc calendar_dates.txt trong ${GTFS_DIR}"
 
 # --- Dọn dẹp khi thoát hoặc bị ngắt (Ctrl+C) ---------------------------------
 cname="gowander-otp-build-$$"
@@ -100,7 +105,7 @@ rm -rf "${WORK_DIR}"
 mkdir -p "${WORK_DIR}" "${MANIFEST_DIR}"
 
 # --- 1. Cắt OSM ---------------------------------------------------------------
-OSM_OUT="${WORK_DIR}/hcmc-metro-l1-corridor.osm.pbf"
+OSM_OUT="${WORK_DIR}/${GRAPH_NAME}.osm.pbf"
 log "Cắt OSM theo bbox ${BBOX}"
 crop_start=$(date +%s)
 osmium extract --bbox "${BBOX}" --strategy complete_ways --overwrite \
@@ -111,13 +116,25 @@ osm_bytes="$(file_size "${OSM_OUT}")"
   || die "OSM sau khi cắt chỉ ${osm_bytes} byte (< ${MIN_OSM_BYTES}); bbox có nằm trong vùng của file nguồn không?"
 
 # --- 2. Đóng gói GTFS (zip ổn định: thời gian file cố định, thứ tự cố định) ---
-GTFS_OUT="${WORK_DIR}/hcmc-metro-l1-gtfs.zip"
-stage="$(mktemp -d)"
-find "${GTFS_DIR}" -maxdepth 1 -name '*.txt' ! -name 'README.txt' -exec cp {} "${stage}/" \;
-find "${stage}" -type f -exec touch -t 202601010000 {} +
-( cd "${stage}" && find . -type f -name '*.txt' | sed 's|^\./||' | LC_ALL=C sort | zip -X -q -@ "${GTFS_OUT}" )
-gtfs_files="$(unzip -Z1 "${GTFS_OUT}" | LC_ALL=C sort | tr '\n' ' ')"
-log "Đóng gói GTFS: ${gtfs_files}"
+gtfs_lines=()
+gtfs_versions=()
+gtfs_shas=()
+for GTFS_DIR in "${GTFS_DIRS[@]}"; do
+  GTFS_OUT="${WORK_DIR}/$(basename "${GTFS_DIR}").zip"
+  stage="$(mktemp -d)"
+  find "${GTFS_DIR}" -maxdepth 1 -name '*.txt' ! -name 'README.txt' ! -name 'manifest.txt' -exec cp {} "${stage}/" \;
+  find "${stage}" -type f -exec touch -t 202601010000 {} +
+  ( cd "${stage}" && find . -type f -name '*.txt' | sed 's|^\./||' | LC_ALL=C sort | zip -X -q -@ "${GTFS_OUT}" )
+  rm -rf "${stage}"
+  stage=""
+  gtfs_files="$(unzip -Z1 "${GTFS_OUT}" | LC_ALL=C sort | tr '\n' ' ')"
+  log "Đóng gói GTFS $(basename "${GTFS_OUT}"): ${gtfs_files}"
+  version="$(or_unknown gtfs_feed_version "$(gtfs_field "${GTFS_DIR}/feed_info.txt" feed_version)")"
+  gtfs_versions+=("${version}")
+  zip_sha="$(sha256_of "${GTFS_OUT}")"
+  gtfs_shas+=("${zip_sha}")
+  gtfs_lines+=("gtfs_feed=${GTFS_DIR#"${REPO_ROOT}/"} version=${version} files=${gtfs_files% } zip_sha256=${zip_sha}")
+done
 
 # --- 3. Cấu hình --------------------------------------------------------------
 cp "${OTP_DIR}/config/build-config.json" "${WORK_DIR}/build-config.json" \
@@ -200,10 +217,9 @@ MANIFEST="${WORK_DIR}/build-manifest.txt"
   echo "osm_bbox=${BBOX}"
   echo "osm_corridor_sha256=$(sha256_of "${OSM_OUT}")"
   echo "osm_corridor_bytes=${osm_bytes}"
-  echo "gtfs_dir=${GTFS_DIR#"${REPO_ROOT}/"}"
-  echo "gtfs_feed_version=$(or_unknown gtfs_feed_version "$(gtfs_field "${GTFS_DIR}/feed_info.txt" feed_version)")"
-  echo "gtfs_files=${gtfs_files% }"
-  echo "gtfs_zip_sha256=$(sha256_of "${GTFS_OUT}")"
+  printf '%s\n' "${gtfs_lines[@]}"
+  echo "gtfs_feed_version=$(IFS=,; echo "${gtfs_versions[*]}")"
+  echo "gtfs_zip_sha256=$(IFS=,; echo "${gtfs_shas[*]}")"
   echo "build_config_sha256=$(sha256_of "${WORK_DIR}/build-config.json")"
   echo "crop_seconds=${crop_seconds}"
   echo "build_seconds=${build_seconds}"

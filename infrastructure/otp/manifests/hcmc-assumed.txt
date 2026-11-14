@@ -1,0 +1,33 @@
+# Manifest dựng graph OTP — sinh bởi infrastructure/otp/scripts/build-graph.sh
+status=ok
+graph_name=hcmc-assumed
+built_at=2026-11-14T10:52:29+0700
+otp_image=opentripplanner/opentripplanner@sha256:8d54e5c589186707ee365417f2202dc878c451fa3001b8edff07019531100933
+otp_version=2.10.0
+osmium_version=1.19.1
+host=Darwin arm64 Apple M4 Pro
+docker_engine=29.6.2
+docker_mem_total_bytes=9363517440
+container_flags=--user 501:20 --network none --cap-drop ALL --security-opt no-new-privileges --memory 7g
+java_opts=-Xmx5g
+osm_source=vietnam-261111.osm.pbf
+osm_source_sha256=5eb2bce83b0e93d43119de637311066ecc8815e045539514cc528a686731c7a8
+osm_bbox=106.35,10.35,107.05,11.2
+osm_corridor_sha256=ddf71faf4a8c89d58df06f93275ab237064a165d5b04273f4cfb2227fb854634
+osm_corridor_bytes=27902883
+gtfs_feed=data/assumed/hcmc-metro-l1-gtfs version=assumed-2026-11-12 files=agency.txt calendar.txt feed_info.txt frequencies.txt routes.txt stop_times.txt stops.txt trips.txt zip_sha256=b03022456dfe3db982b985d117ae248a492c3290fb56de30516929d4fb254a0a
+gtfs_feed=data/assumed/hcmc-bus-osm-gtfs version=osm-assumed-2026-11-14 files=agency.txt calendar.txt feed_info.txt frequencies.txt routes.txt shapes.txt stop_times.txt stops.txt trips.txt zip_sha256=ddacff2070504b203f8e0efb54263002308c397e4bb0aebd7ef1463b2b108c38
+gtfs_feed_version=assumed-2026-11-12,osm-assumed-2026-11-14
+gtfs_zip_sha256=b03022456dfe3db982b985d117ae248a492c3290fb56de30516929d4fb254a0a,ddacff2070504b203f8e0efb54263002308c397e4bb0aebd7ef1463b2b108c38
+build_config_sha256=35fd56c65a0e5a6c03bbc352441c6c18da23bf6400bc9ff078619f1adca2103b
+crop_seconds=3
+build_seconds=37
+otp_exit_code=0
+peak_container_mem_mib=1850
+peak_jvm_heap_at_gc_mib=1384
+gc_pause_events=116
+log_warn_lines=5
+log_error_lines=0
+log_out_of_memory_lines=0
+graph_obj_bytes=93732563
+graph_obj_sha256=25170f426439eccaba9d70dc193cafd30f43147a758faed801d00dc1a5a30603

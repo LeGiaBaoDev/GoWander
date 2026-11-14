@@ -1,0 +1,21 @@
+dataset,purpose,source,license,contact,request_date,status,next_step
+Bản đồ đường + POI,"Bản đồ, tìm tuyến, Discover",OpenStreetMap (Geofabrik vietnam-261111),ODbL 1.0,,,IMPORTED,Cập nhật file OSM định kỳ
+Tuyến xe buýt (giả định),Tìm tuyến công cộng,OSM route=bus (ADR-032),ODbL 1.0,,,IMPORTED,Đối chiếu với danh sách tuyến chính thức khi có
+Lịch xe buýt chính thức,Thay feed giả định (M01),Trung tâm Quản lý giao thông công cộng TP.HCM (buyttphcm.com.vn / Go!Bus),Chưa rõ,Trung tâm Quản lý giao thông công cộng TP.HCM,,NEEDED,Agent soạn thư; chủ dự án gửi
+Lịch Metro số 1 chính thức,Thay feed giả định ADR-020,HURC1,Chưa rõ,HURC1,,NEEDED,Agent soạn thư; chủ dự án gửi
+Tên EN + mô tả ngắn + ảnh P18,Discover (VI/EN),Wikidata (1.910 đối tượng trong khung TP.HCM ngày 14-11-2026),CC0,,,NEEDED,Viết scripts/enrich_places_wikidata.py (test trước)
+Ảnh địa điểm,Discover Place Detail,Wikimedia Commons (metadata giấy phép từng file),Theo từng file (PD/CC0/CC BY/CC BY-SA),,,NEEDED,Lấy extmetadata; bỏ ảnh thiếu tác giả hoặc giấy phép
+Mô tả dài,Discover Place Detail,Wikipedia tiếng Việt/tiếng Anh,CC BY-SA 4.0,,,NEEDED,Lưu nguồn từng đoạn; cần bảng place_sources
+Gợi ý tham quan/ăn uống,Discover,Wikivoyage Ho Chi Minh City,CC BY-SA (kiểm tra phiên bản),,,NEEDED,Parse listing từ dump
+POI bổ sung + danh mục,Discover phủ rộng hơn,Foursquare OS Places,Apache 2.0,,,NEEDED,Chủ dự án đăng ký Hugging Face/Foursquare để tải; đếm và so với OSM
+POI ghép nhiều nguồn,Discover phủ rộng hơn,Overture Maps Places,Theo từng bản ghi (Apache 2.0 / CDLA Permissive 2.0),,,NEEDED,Lọc theo trường sources
+Món ăn,food_items,Wikidata (món ăn Việt) + nhập tay có nguồn,CC0 / theo nguồn,,,NEEDED,Truy vấn Wikidata; quán-món nhập tay (ADR-028 rule B)
+Câu chuyện lịch sử,historical_stories,Wikipedia hoặc chủ dự án viết,CC BY-SA / chủ dự án,,,NEEDED,Chủ dự án chọn địa điểm ưu tiên
+Ranh giới phường/xã mới,"Hiển thị phường, lọc Discover",ThangLeQuoc/vietnamese-provinces-database,MIT (cần kiểm tra trong repo),,,NEEDED,Kiểm tra giấy phép và ngày cập nhật
+Ranh giới chính thức TP.HCM mới,Thay dữ liệu cộng đồng,Sở Nội vụ TP.HCM,Chưa rõ,Sở Nội vụ TP.HCM,,NEEDED,Theo dõi bản công bố
+Số nhà,Tìm địa chỉ chính xác,Vietmap (thương mại),Hợp đồng,maps.info@vietmap.vn,,NEEDED,Xin báo giá trước pilot (ADR-031)
+Thời tiết,Gợi ý theo thời tiết,Open-Meteo,CC BY 4.0; API miễn phí chỉ phi thương mại,,,NEEDED,Mua gói hoặc tự host trước pilot thương mại
+Độ cao,UPG-1 cầu/hầm/dốc,Copernicus DEM GLO-30,Giấy phép Copernicus (© DLR e.V.),,,NEEDED,Đọc PDF giấy phép về dùng thương mại
+Ảnh đường phố,UPG-1,Mapillary,CC BY-SA 4.0 + điều khoản sử dụng,,,NEEDED,Để UPG-1; làm mờ mặt/biển số
+Ảnh đường phố,NAV-1 Xem trước tuyến,Mapillary API v4 (ảnh Be Group phủ TP.HCM),CC BY-SA 4.0 + điều khoản API,https://www.mapillary.com/dashboard/developers,,NEEDED,Chủ dự án tạo token client và đặt MAPILLARY_TOKEN trong .env; đọc điều khoản API
+Ảnh vệ tinh,Bản đồ loại Vệ tinh,"MapTiler / ArcGIS Location Platform / Mapbox / Vietmap (chưa chọn)",Thương mại (trả phí),,,NEEDED,Chủ dự án chọn nhà cung cấp và gói (ADR-033 §6)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: GoWander API
-  version: 0.3.0
+  version: 0.5.0
   description: |
     Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
     Quyết định: docs/decisions/ADR-027-go-routing-api.md.
@@ -162,6 +162,41 @@ paths:
         '200': { description: 'Tối đa 3 kết quả, kèm source' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /api/v1/street-images/nearest:
+    get:
+      operationId: nearestStreetImage
+      summary: Ảnh đường phố gần một điểm (Mapillary, CC BY-SA 4.0) cho màn "Xem trước tuyến đường" (NAV-1, ADR-033).
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+      responses:
+        '200':
+          description: 'Ảnh gần nhất trong khoảng 60 m, kèm source (provider, license, attribution) phải hiện cùng ảnh'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [image, source]
+                properties:
+                  image:
+                    type: object
+                    required: [id, url, capturedAt, lat, lon, pageUrl]
+                    properties:
+                      id: { type: string }
+                      url: { type: string, format: uri }
+                      capturedAt: { type: string, format: date-time }
+                      lat: { type: number }
+                      lon: { type: number }
+                      creator: { type: string }
+                      pageUrl: { type: string, format: uri }
+                  source:
+                    type: object
+                    required: [provider, license, attribution]
+                    properties: { provider: { type: string }, license: { type: string }, attribution: { type: string } }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED (quá 30 lần/phút mỗi IP)', $ref: '#/components/responses/Error' }
+        '404': { description: 'STREET_IMAGE_NOT_FOUND', $ref: '#/components/responses/Error' }
+        '503': { description: 'STREET_IMAGERY_UNAVAILABLE (chưa cấu hình MAPILLARY_TOKEN hoặc Mapillary lỗi)', $ref: '#/components/responses/Error' }
   /health/live:
     get:
       operationId: live
@@ -228,9 +263,11 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
-          items: { type: string, enum: [WALK, TRANSIT] }
+          items: { type: string, enum: [WALK, TRANSIT, BUS, CAR, BICYCLE] }
           default: [WALK, TRANSIT]
-          description: '[WALK] = chỉ đi bộ; [TRANSIT] = bắt buộc dùng phương tiện công cộng; cả hai = để hệ thống chọn.'
+          description: >-
+            [WALK] = chỉ đi bộ; [TRANSIT] = bắt buộc dùng phương tiện công cộng (Metro, xe buýt); cả hai = để hệ thống chọn.
+            [BUS] = chỉ đi xe buýt (đi bộ tới/từ trạm). [CAR] hoặc [BICYCLE] = chỉ đi bằng ô tô / xe đạp. BUS, CAR, BICYCLE phải đứng một mình (RD-0, ADR-032). Thời gian ô tô không tính kẹt xe.
         maxResults: { type: integer, minimum: 1, maximum: 5, default: 3 }
     PlanResponse:
       type: object
@@ -260,7 +297,7 @@ components:
       type: object
       required: [mode, transit, from, to, startTime, endTime, durationSec, distanceM, realtime, polyline]
       properties:
-        mode: { type: string, description: 'Ví dụ WALK, SUBWAY, BUS' }
+        mode: { type: string, description: 'Ví dụ WALK, SUBWAY, BUS, CAR, BICYCLE' }
         transit: { type: boolean }
         from: { $ref: '#/components/schemas/Place' }
         to: { $ref: '#/components/schemas/Place' }
@@ -278,6 +315,18 @@ components:
             shortName: { type: string }
             longName: { type: string }
         polyline: { type: string, description: 'Google encoded polyline, độ chính xác 5' }
+        steps:
+          type: array
+          description: 'Chỉ dẫn từng bước (NAV-1) cho chặng đi bộ/xe đạp/ô tô; không có ở chặng công cộng'
+          items:
+            type: object
+            required: [direction, street, distanceM, lat, lon]
+            properties:
+              direction: { type: string, description: 'relativeDirection của OTP: DEPART, LEFT, RIGHT, SLIGHTLY_LEFT, HARD_RIGHT, CONTINUE, UTURN_LEFT, CIRCLE_CLOCKWISE, ...' }
+              street: { type: string, description: 'Tên đường; OTP dùng "road", "path"… khi đường không có tên' }
+              distanceM: { type: number, description: 'Quãng đường từ bước này đến bước sau' }
+              lat: { type: number }
+              lon: { type: number }
     Place:
       type: object
       required: [name, lat, lon]

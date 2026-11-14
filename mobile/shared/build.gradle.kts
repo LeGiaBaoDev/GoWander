@@ -22,6 +22,9 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions { jvmTarget = JvmTarget.JVM_11 }
         withHostTest {}
+        // Needed for Compose resources (font, logo) to be packaged into the Android app: without it the APK had none
+        // and the logo crashed with MissingResourceException (14-11-2026).
+        androidResources { enable = true }
     }
 
     sourceSets {
@@ -48,6 +51,10 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.coroutines.test)
+        }
+        // Compose UI tests render with Skia on the iOS simulator; the Android host tests have no renderer.
+        iosTest.dependencies {
+            implementation(libs.compose.ui.test)
         }
     }
 }

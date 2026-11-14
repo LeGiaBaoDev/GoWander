@@ -96,6 +96,12 @@ func TestPlanRouteMapsItinerary(t *testing.T) {
 		!walk.StartTime.Equal(time.Date(2026, 11, 17, 9, 34, 40, 0, ict)) { // estimated time wins over scheduled
 		t.Fatalf("walk leg %+v", walk)
 	}
+	if len(metro.Steps) != 0 || len(walk.Steps) != 2 {
+		t.Fatalf("steps: metro %+v walk %+v", metro.Steps, walk.Steps)
+	}
+	if s := walk.Steps[1]; s.Direction != "LEFT" || s.Street != "path" || s.DistanceM != 5 || s.Lat != 10.87958 || s.Lon != 106.81419 {
+		t.Fatalf("step %+v", s)
+	}
 }
 
 func TestPlanRouteVariables(t *testing.T) {
@@ -103,17 +109,24 @@ func TestPlanRouteVariables(t *testing.T) {
 		name          string
 		arrive        bool
 		walk, transit bool
+		direct        string
 		timeKey       string
 		modes         string
 	}{
-		{"arrive walk-only", true, true, false, "latestArrival", `{"direct":["WALK"],"directOnly":true}`},
-		{"depart transit-only", false, false, true, "earliestDeparture", `{"transitOnly":true}`},
+		{"arrive walk-only", true, true, false, "", "latestArrival", `{"direct":["WALK"],"directOnly":true}`},
+		{"depart transit-only", false, false, true, "", "earliestDeparture", `{"transitOnly":true}`},
+		{"car", false, false, false, "CAR", "earliestDeparture", `{"direct":["CAR"],"directOnly":true}`},
+		{"bicycle", false, false, false, "BICYCLE", "earliestDeparture", `{"direct":["BICYCLE"],"directOnly":true}`},
+		{"bus only", false, false, false, "BUS", "earliestDeparture", `{"transit":{"transit":[{"mode":"BUS"}]},"transitOnly":true}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cl, got := newClient(t, time.Second, respond(fixture(t, "rc01-transit.json")))
 			q := baseQuery
-			q.ArriveBy, q.Walk, q.Transit = c.arrive, c.walk, c.transit
+			q.ArriveBy, q.Walk, q.Transit, q.Direct = c.arrive, c.walk, c.transit, c.direct
+			if c.direct == "BUS" {
+				q.Direct, q.BusOnly = "", true
+			}
 			if _, err := cl.PlanRoute(context.Background(), q); err != nil {
 				t.Fatal(err)
 			}

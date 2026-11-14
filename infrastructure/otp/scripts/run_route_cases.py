@@ -2,7 +2,7 @@
 """Chạy các route case của M02 trên OTP đang chạy (serve.sh start) và ghi PASS/FAIL.
 
 Cách dùng (từ gốc repo):
-    python3 -I infrastructure/otp/scripts/run_route_cases.py [--label nen] [--repeat 1] [--port 8088]
+    python3 -I infrastructure/otp/scripts/run_route_cases.py [--label nen] [--repeat 1] [--port 8088] [--graph metro-l1-assumed]
 
 Đọc data/test-cases/route-cases.csv (cột expect_*), gửi truy vấn queries/plan-connection.graphql,
 so kết quả với kỳ vọng, ghi infrastructure/otp/results/route-cases-<ngày>-<label>.md.
@@ -132,10 +132,11 @@ def main():
     ap.add_argument("--port", type=int, default=8088)
     ap.add_argument("--label", default="run")
     ap.add_argument("--repeat", type=int, default=1, help="số lần đo độ trễ mỗi case (sau 1 lần khởi động)")
+    ap.add_argument("--graph", default="metro-l1-assumed", help="GRAPH_NAME đang chạy, để đọc manifests/<graph>.serve.txt")
     args = ap.parse_args()
     url = f"http://127.0.0.1:{args.port}/otp/gtfs/v1"
 
-    serve_manifest = OTP / "manifests" / "metro-l1-assumed.serve.txt"
+    serve_manifest = OTP / "manifests" / f"{args.graph}.serve.txt"
     meta = dict(line.split("=", 1) for line in serve_manifest.read_text(encoding="utf-8").splitlines()
                 if "=" in line and not line.startswith("#"))
 

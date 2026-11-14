@@ -17,8 +17,10 @@ type Coordinate struct {
 type Query struct {
 	Origin, Destination Coordinate
 	DateTime            time.Time
-	ArriveBy            bool // true: arrive before DateTime; false: depart after DateTime
-	Walk, Transit       bool // allowed modes; at least one is true
+	ArriveBy            bool   // true: arrive before DateTime; false: depart after DateTime
+	Walk, Transit       bool   // allowed modes; at least one is true unless Direct is set
+	Direct              string // "CAR" or "BICYCLE": that mode alone, no transit (RD-0); "" otherwise
+	BusOnly             bool   // "BUS": public transport by bus only, walking to and from stops (owner: separate Buýt tab)
 	MaxResults          int
 }
 
@@ -48,6 +50,16 @@ type Leg struct {
 	Headsign    string    `json:"headsign,omitempty"`
 	Line        *Line     `json:"line,omitempty"`
 	Polyline    string    `json:"polyline"`
+	Steps       []Step    `json:"steps,omitempty"` // turn-by-turn for walk/bicycle/car legs (NAV-1); none for transit
+}
+
+// Step is one manoeuvre of a street leg. Direction is OTP's relativeDirection (DEPART, LEFT, RIGHT, CONTINUE, ...).
+type Step struct {
+	Direction string  `json:"direction"`
+	Street    string  `json:"street"`
+	DistanceM float64 `json:"distanceM"`
+	Lat       float64 `json:"lat"`
+	Lon       float64 `json:"lon"`
 }
 
 type Route struct {

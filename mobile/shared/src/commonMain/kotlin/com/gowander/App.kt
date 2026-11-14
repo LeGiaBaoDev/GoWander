@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,25 @@ import com.gowander.api.createGoWanderApi
 import com.gowander.discover.DiscoverScreen
 import com.gowander.discover.DiscoverViewModel
 import com.gowander.route.DetailScreen
+import com.gowander.onboarding.FirstRunScreen
+import com.gowander.onboarding.LoadingView
+import com.gowander.onboarding.WelcomeScreen
+import androidx.compose.foundation.layout.safeDrawingPadding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToLong
+import com.gowander.route.NavigationScreen
+import com.gowander.route.PreviewScreen
+import com.gowander.route.StepsScreen
+import com.gowander.route.StreetPhoto
+import com.gowander.ui.Button
+import com.gowander.ui.ButtonKind
+import com.gowander.ui.Text
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import com.gowander.route.Endpoint
 import com.gowander.route.MapHome
 import com.gowander.route.PickScreen
@@ -59,6 +79,30 @@ private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
 @Composable
 fun App() = KitTheme {
+    // Kit S0 + S1 on the first launch only; the flag survives app restarts (Prefs).
+    var onboarded by rememberSaveable { mutableStateOf(Prefs.getBool(ONBOARDED)) }
+    var firstRunStep by rememberSaveable { mutableStateOf(0) }
+    var askLocation by rememberSaveable { mutableStateOf(false) }
+    fun finishOnboarding(withLocation: Boolean) {
+        Prefs.setBool(ONBOARDED, true)
+        askLocation = withLocation
+        onboarded = true
+    }
+    if (!onboarded) {
+        if (firstRunStep == 0) WelcomeScreen { firstRunStep = 1 }
+        else FirstRunScreen(onAllowLocation = { finishOnboarding(true) }, onLater = { finishOnboarding(false) })
+        return@KitTheme
+    }
+    val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
+    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent(askLocation) }
+}
+
+private const val ONBOARDED = "onboarded"
+private const val PHOTO_CACHE_SIZE = 24
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun AppContent(askLocationNow: Boolean) {
     val routeVm = viewModel { RouteViewModel(sharedApi) }
     val discoverVm = viewModel { DiscoverViewModel(sharedApi) }
     val route by routeVm.state.collectAsState()
@@ -96,12 +140,26 @@ fun App() = KitTheme {
         val now = routeVm.state.value
         if (now.origin != null && now.destination != null) overlay = Overlay.Results
     }
-    fun goToPlace(p: PlaceSummary) {
+    fun goToPlaceId(id: String) {
         routeVm.closeDetail() // otherwise the route detail keeps covering the place (review M06b)
         tab = Tab.Discover
         overlay = Overlay.None
-        discoverVm.openPlace(p.id)
+        discoverVm.openPlace(id)
     }
+    fun goToPlace(p: PlaceSummary) = goToPlaceId(p.id)
+    // Tapping any place goes to the route first (owner, 14-11-2026); its description is one tap away from there.
+    var infoPlaceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var infoPlaceName by rememberSaveable { mutableStateOf<String?>(null) }
+    fun routeToPlace(id: String, name: String, lat: Double, lon: Double) {
+        routeVm.setDestination(Endpoint(lat, lon, name))
+        infoPlaceId = id
+        infoPlaceName = name
+        tab = Tab.Plan
+        overlay = Overlay.None
+        search()
+    }
+    // Only while the destination is still that place.
+    val placeInfo = infoPlaceName?.takeIf { it == route.destination?.label }
     // After process death the overlay is restored but the ViewModel is new: an empty Results overlay falls back to the tab.
     if (overlay == Overlay.Results && route.phase is com.gowander.route.RoutePhase.Idle && (route.origin == null || route.destination == null)) overlay = Overlay.None
 
@@ -110,15 +168,74 @@ fun App() = KitTheme {
     BackHandler(enabled = !route.detailOpen && overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && tab != Tab.Map) { tab = Tab.Map }
 
+    // NAV-1: navigation mode and its two sub-screens sit above everything else; back closes the sub-screen first.
+    var navigating by rememberSaveable { mutableStateOf(false) }
+    var navSub by rememberSaveable { mutableStateOf<String?>(null) } // "steps" or "preview"
+    var previewStart by rememberSaveable { mutableStateOf(0) }
+    var previewFromSteps by rememberSaveable { mutableStateOf(false) }
+    // Back goes to the screen the user came from: preview -> steps when opened from the list, otherwise the route.
+    fun closeSub() { navSub = if (navSub == "preview" && previewFromSteps) "steps" else null }
+    // After process death the ViewModel restarts at Idle while these flags are restored: drop them instead of showing
+    // an empty navigation screen (review 14-11-2026). Re-route and mode switch go straight to Loading, never Idle.
+    LaunchedEffect(route.phase is com.gowander.route.RoutePhase.Idle) {
+        if (route.phase is com.gowander.route.RoutePhase.Idle) { navigating = false; navSub = null }
+    }
+    BackHandler(enabled = navigating && navSub == null) { navigating = false }
+    BackHandler(enabled = navSub != null) { closeSub() }
+    fun startNavigation() {
+        if (location.permission !is LocationPermission.Granted) location.requestPermission()
+        navigating = true
+    }
+    fun openPreview(i: Int, fromSteps: Boolean = false) { previewStart = i; previewFromSteps = fromSteps; navSub = "preview" }
+    // One loader for the whole session: remembered (no new lambda per GPS fix), results cached per point so moving
+    // back and forth between steps does not download or decode again, decoding off the main thread.
+    val loadPhoto: suspend (Double, Double) -> StreetPhoto? = remember {
+        val cache = LinkedHashMap<String, StreetPhoto?>()
+        val loader: suspend (Double, Double) -> StreetPhoto? = loader@{ lat, lon ->
+            val key = "${(lat * 10_000).roundToLong()}:${(lon * 10_000).roundToLong()}" // ~11 m
+            if (key in cache) return@loader cache[key]
+            val photo = try {
+                sharedApi.streetImage(LatLon(lat, lon))?.let { r ->
+                    val bytes = sharedApi.imageBytes(r.image.url)
+                    StreetPhoto(withContext(Dispatchers.Default) { bytes.decodeToImageBitmap() }, "${r.source.attribution} · ${r.image.capturedAt.take(7)}", r.image.pageUrl)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("GoWander: street photo unavailable: ${e.message}") // the preview shows the 3D map instead
+                null
+            }
+            cache[key] = photo
+            if (cache.size > PHOTO_CACHE_SIZE) cache.remove(cache.keys.first())
+            photo
+        }
+        loader
+    }
+    LaunchedEffect(askLocationNow) { if (askLocationNow) useMyLocation() }
+
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                route.detailOpen -> DetailScreen(route, location, onBack = routeVm::closeDetail, onOpenPlace = ::goToPlace)
+                navSub == "preview" -> PreviewScreen(route, previewStart, loadPhoto, onBack = ::closeSub, onBackToRoute = { navSub = null })
+                navSub == "steps" -> StepsScreen(route, onBack = { navSub = null }, onPreview = { openPreview(it, fromSteps = true) })
+                navigating && route.phase is com.gowander.route.RoutePhase.Results -> NavigationScreen(
+                    route, location, onExit = { navigating = false }, onSteps = { navSub = "steps" }, onPreview = { openPreview(it) },
+                    onReroute = { location.lastLocation?.position?.let { routeVm.setOrigin(Endpoint(it.latitude, it.longitude, Strings.MY_LOCATION)); routeVm.search() } },
+                )
+                navigating -> Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val failed = route.phase as? com.gowander.route.RoutePhase.Failed
+                    if (failed != null) Text(failed.message) else LoadingView(Strings.SEARCHING, cards = 1)
+                    Button(Strings.EXIT, Modifier.fillMaxWidth(), kind = ButtonKind.Accent) { navigating = false }
+                }
+                route.detailOpen -> DetailScreen(
+                    route, location, onBack = routeVm::closeDetail, onOpenPlace = ::goToPlace,
+                    onStart = ::startNavigation, onPreview = { openPreview(0) }, onSteps = { navSub = "steps" }, onMode = routeVm::switchModeInDetail, placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let(::goToPlaceId) },
+                )
                 overlay == Overlay.Search -> SearchScreen(
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
                     geocode = { q -> sharedApi.geocode(q, near) },
                     onBack = { overlay = Overlay.None },
-                    onPick = { p -> routeVm.setDestination(Endpoint(p.lat, p.lon, p.name)); overlay = Overlay.None; tab = Tab.Plan },
+                    onPick = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) },
                     onPickAddress = { a -> routeVm.setDestination(Endpoint(a.lat, a.lon, a.name)); overlay = Overlay.None; tab = Tab.Plan },
                     onPickOnMap = { overlay = Overlay.PickDestination },
                 )
@@ -140,26 +257,25 @@ fun App() = KitTheme {
                     tab = Tab.Plan
                 }
                 overlay == Overlay.Results -> ResultsScreen(
-                    route, onBack = { overlay = Overlay.None }, onSort = routeVm::setSort, onOpen = routeVm::openDetail,
+                    route, onBack = { overlay = Overlay.None }, onMode = { routeVm.setMode(it); routeVm.search() }, onSort = routeVm::setSort, onOpen = routeVm::openDetail,
                     onRetry = routeVm::retry, onChangeDestination = { overlay = Overlay.Search },
+                    placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let(::goToPlaceId) },
                 )
                 tab == Tab.Map -> MapHome(
                     route, location, nearby, onSearch = { overlay = Overlay.Search }, onLocate = ::useMyLocation,
-                    onOpenPlace = ::goToPlace, onSeeAll = { tab = Tab.Discover },
+                    onOpenPlace = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) }, onSeeAll = { tab = Tab.Discover },
                 )
                 tab == Tab.Plan -> PlanScreen(
                     route, onEditDestination = { overlay = Overlay.Search }, onUseMyLocation = ::useMyLocation,
                     onPickOrigin = { overlay = Overlay.PickOrigin }, onPickDestination = { overlay = Overlay.PickDestination },
-                    onArriveBy = routeVm::setArriveBy, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
+                    onArriveBy = routeVm::setArriveBy, onMode = { routeVm.setMode(it); if (route.destination != null) search() }, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
                 )
-                else -> DiscoverScreen(discoverVm, placesListState) { place ->
-                    routeVm.setDestination(Endpoint(place.lat, place.lon, place.name))
-                    tab = Tab.Plan
-                    search() // Flow B: straight to results when the origin is known
+                else -> DiscoverScreen(discoverVm, placesListState, onOpen = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) }) { place ->
+                    routeToPlace(place.id, place.name, place.lat, place.lon) // "Chỉ đường" from the place page
                 }
             }
         }
-        if (overlay == Overlay.None && !route.detailOpen) {
+        if (overlay == Overlay.None && !route.detailOpen && !navigating && navSub == null) {
             BottomNav(tab, Modifier.windowInsetsPadding(WindowInsets.navigationBars)) { tab = it; overlay = Overlay.None }
         }
     }

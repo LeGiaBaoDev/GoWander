@@ -39,6 +39,22 @@ class GoWanderApiTest {
     private val destination = LatLon(10.8480, 106.7730)
 
     @Test
+    fun imageBytesOnlyFetchesHttpsFromTheMapillaryCdn() = runTest {
+        val client = api(HttpStatusCode.OK, "jpeg-bytes")
+        for (bad in listOf("http://scontent.fbcdn.net/a.jpg", "https://evil.test/a.jpg", "https://fbcdn.net.evil.test/a.jpg", "not a url")) {
+            assertFailsWith<ApiError.Unexpected>(bad) { client.imageBytes(bad) }
+        }
+        assertEquals("jpeg-bytes", client.imageBytes("https://scontent-sin6-1.xx.fbcdn.net/m1/a.jpg").decodeToString())
+    }
+
+    @Test
+    fun planRouteSendsCarMode() = runTest {
+        api(HttpStatusCode.OK, Fixtures.ROUTE_OK).planRoute(PlanRequest(origin, destination, modes = listOf("CAR")))
+        val sent = Json.parseToJsonElement((requests.single().body as OutgoingContent.ByteArrayContent).bytes().decodeToString()).jsonObject
+        assertEquals("[\"CAR\"]", sent["modes"].toString())
+    }
+
+    @Test
     fun planRouteSendsContractBodyAndParsesItinerary() = runTest {
         val res = api(HttpStatusCode.OK, Fixtures.ROUTE_OK)
             .planRoute(PlanRequest(origin, destination, dateTime = "2026-11-19T14:00:00+07:00", maxResults = 2))
@@ -49,6 +65,7 @@ class GoWanderApiTest {
         assertEquals("10.7725", sent["origin"]!!.jsonObject["lat"]!!.jsonPrimitive.content)
         assertEquals("DEPART", sent["timeType"]!!.jsonPrimitive.content)
         assertEquals("2026-11-19T14:00:00+07:00", sent["dateTime"]!!.jsonPrimitive.content)
+        assertTrue("modes" !in sent) // null = server default (walk + public transport)
 
         assertEquals("ASSUMED", res.dataStatus)
         val legs = res.routes.first().legs

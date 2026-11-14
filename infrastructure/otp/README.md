@@ -153,3 +153,18 @@ infrastructure/otp/scripts/serve.sh stop
 ## Chưa làm (các task sau của M02)
 
 - Không còn task nào của M02 với feed giả định. Chạy lại toàn bộ khi có feed chính thức (M01).
+
+## Graph toàn TP.HCM có xe buýt (RD-0, ADR-032, 14-11-2026)
+
+Lệnh (từ gốc repo). Feed xe buýt sinh ra không commit, nên chạy script trước:
+
+```
+python3 scripts/build_bus_gtfs_from_osm.py
+GRAPH_NAME=hcmc-assumed BBOX=106.35,10.35,107.05,11.2 GTFS_DIRS="$PWD/data/assumed/hcmc-metro-l1-gtfs $PWD/data/assumed/hcmc-bus-osm-gtfs" OTP_XMX=5g OTP_MEM_LIMIT=7g infrastructure/otp/scripts/build-graph.sh
+GRAPH_NAME=hcmc-assumed OTP_PORT=8089 OTP_XMX=3g OTP_MEM_LIMIT=4g infrastructure/otp/scripts/serve.sh start
+python3 -I infrastructure/otp/scripts/run_route_cases.py --port 8089 --graph hcmc-assumed --label hcmc-assumed
+```
+
+- API dùng graph này khi `OTP_URL=http://127.0.0.1:8089` trong `.env`.
+- Mỗi feed có `feed_id` cố định trong `feed_info.txt` (Metro `1`, xe buýt `bus`), nên id trạm không đổi theo thứ tự nạp.
+- Số đo 14-11-2026: dựng 37 s, bộ nhớ đỉnh container khoảng 1,9 GiB, `graph.obj` 94 MB, phục vụ khoảng 1,2 GiB, sẵn sàng sau khoảng 5 s.

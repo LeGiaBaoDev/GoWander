@@ -126,7 +126,7 @@ enum class ButtonKind { Primary, Secondary, Soft, Accent }
 
 /** Kit button: radius 14, padding 15/18, label 15 SemiBold, optional leading icon; 48 dp minimum touch target. */
 @Composable
-fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, onClick: () -> Unit) {
+fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, onClick: () -> Unit) {
     val (bg, fg, border) = when (kind) {
         ButtonKind.Primary -> Triple(Palette.Primary, Palette.OnPrimary, null)
         ButtonKind.Secondary -> Triple(Palette.Bg, Palette.Ink, Palette.Line)
@@ -137,15 +137,17 @@ fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = Butt
     Row(
         modifier.sizeIn(minHeight = 48.dp).clip(shape).background(bg, shape)
             .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp, vertical = 15.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = if (compact) 10.dp else 18.dp, vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, 18.dp, fg)
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, if (compact) 16.dp else 18.dp, fg)
+            Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
         }
-        Text(label, size = 15.sp, color = fg, weight = FontWeight.SemiBold)
+        // One line always: a label broken over two lines looked broken on iPhone (owner, 14-11-2026); compact buttons
+        // use a smaller size so three fit side by side on a 375 pt screen (UxComponentTest checks it).
+        Text(label, size = if (compact) 14.sp else 15.sp, color = fg, weight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -169,6 +171,39 @@ fun Chip(label: String, selected: Boolean = false, modifier: Modifier = Modifier
     }
 }
 
+/**
+ * Segmented mode tabs (as in Google Maps, Naver Map, KakaoMap): equal-width icon + label, one selected.
+ * Each tab is a 56 dp tall touch target and reports its selected state to screen readers.
+ */
+@Composable
+fun ModeTabs(items: List<Pair<ImageVector, String>>, selected: Int, modifier: Modifier = Modifier, onSelect: (Int) -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(modifier.fillMaxWidth().clip(shape).background(Palette.Subtle, shape).padding(4.dp)) {
+        items.forEachIndexed { i, (icon, label) ->
+            val on = i == selected
+            Column(
+                Modifier.weight(1f).sizeIn(minHeight = 56.dp).clip(RoundedCornerShape(12.dp))
+                    .background(if (on) Palette.Bg else Palette.Subtle)
+                    .semantics { this.selected = on }
+                    .clickable(role = Role.Tab) { onSelect(i) }.padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(icon, 22.dp, if (on) Palette.Primary else Palette.Muted)
+                Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Round 48 dp icon button with a spoken label (the icon alone is not announced). */
+@Composable
+fun IconButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, tint: Color = Palette.Primary, onClick: () -> Unit) {
+    Box(
+        modifier.size(48.dp).clip(CircleShape).semantics { contentDescription = label }.clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, 20.dp, tint) }
+}
+
 /** Kit card: radius 20, padding 16, line border, or shadow when floating. */
 @Composable
 fun Card(modifier: Modifier = Modifier, shadow: Boolean = false, bg: Color = Palette.Bg, gap: Dp = 12.dp, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
@@ -188,7 +223,7 @@ fun Card(modifier: Modifier = Modifier, shadow: Boolean = false, bg: Color = Pal
 fun Badge(icon: ImageVector, bg: Color, fg: Color, size: Dp = 40.dp) =
     Box(Modifier.size(size).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) { Icon(icon, size / 2, fg) }
 
-enum class ModeKind { Walk, Metro, Bus }
+enum class ModeKind { Walk, Metro, Bus, Bicycle, Car }
 
 /** Kit `mode` pill: icon + short label, radius 8; walking is light, metro/bus filled with their colour. */
 @Composable
@@ -197,6 +232,8 @@ fun ModePill(kind: ModeKind, label: String) {
         ModeKind.Walk -> Triple(Palette.Subtle, Palette.Ink, KitIcons.walk)
         ModeKind.Metro -> Triple(Palette.Metro, Palette.OnPrimary, KitIcons.metro)
         ModeKind.Bus -> Triple(Palette.Bus, Palette.OnPrimary, KitIcons.bus)
+        ModeKind.Bicycle -> Triple(Palette.Subtle, Palette.Ink, ExtraIcons.bike)
+        ModeKind.Car -> Triple(Palette.Subtle, Palette.Ink, ExtraIcons.car)
     }
     Row(
         Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(start = 8.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),
@@ -251,7 +288,17 @@ fun Header(title: String, modifier: Modifier = Modifier, floating: Boolean = fal
             contentAlignment = Alignment.Center,
         ) { Icon(KitIcons.back, 18.dp) }
         Spacer(Modifier.width(10.dp))
-        Text(title, Modifier.weight(1f).semantics { heading() }, size = 20.sp, weight = FontWeight.SemiBold, maxLines = 1)
+        if (floating && title.isNotEmpty()) {
+            // Over a map the title needs its own background, or it mixes with street labels.
+            Text(
+                title, Modifier.kitShadow(RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(Palette.Bg)
+                    .padding(horizontal = 14.dp, vertical = 10.dp).semantics { heading() },
+                size = 17.sp, weight = FontWeight.SemiBold, maxLines = 1,
+            )
+            Spacer(Modifier.weight(1f))
+        } else {
+            Text(title, Modifier.weight(1f).semantics { heading() }, size = 20.sp, weight = FontWeight.SemiBold, maxLines = 1)
+        }
     }
 }
 

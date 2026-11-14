@@ -44,10 +44,13 @@ Steps 4–5 do not apply to research or documentation-only tasks. Steps 1, 2, 8,
 | **M03** KMP + MapLibre PoC | `poc/kmp-map` | `ecc:compose-multiplatform-patterns`, `ecc:kotlin-patterns`, `ecc:kotlin-coroutines-flows`, `ecc:android-clean-architecture`, `ecc:kotlin-testing` | `ecc:kotlin-reviewer`, `ecc:kotlin-build-resolver`, `ecc:swift-build-resolver` (iOS shell) |
 | **M04** Go routing service | `feat/backend-routing` | `ecc:golang-patterns`, `ecc:golang-testing`, `ecc:api-design`, `ecc:backend-patterns`, `ecc:error-handling` | `ecc:go-reviewer`, `ecc:go-build-resolver`, `ecc:tdd-guide`, `ecc:security-reviewer` |
 | **M05** PostGIS + Discover | `feat/discover` | `ecc:postgres-patterns`, `ecc:database-migrations`, `ecc:golang-patterns` | `ecc:database-reviewer`, `ecc:go-reviewer` |
+| **RD-0** Whole-HCMC bus + car + bicycle (PIPELINE §5a) | `feat/road-vehicles` | `ecc:architecture-decision-records`, `ecc:python-testing`, `ecc:golang-testing`, `ecc:api-design`, `ecc:kotlin-testing`, `ecc:benchmark` | `ecc:python-reviewer`, `ecc:go-reviewer`, `ecc:kotlin-reviewer`, `ecc:silent-failure-hunter` |
+| **DATA-1** Data collection + coordination (PIPELINE §5b) | `data/collection` | `ecc:deep-research`, `ecc:search-first`, `ecc:research-ops`, `ecc:architecture-decision-records` | `ecc:architect`, `ecc:doc-updater`, `ecc:security-reviewer` (personal data, licences) |
 | **M06** End-to-end slice | `feat/core-vertical-slice` | `ecc:verification-loop`, `ecc:kotlin-testing`, `ecc:golang-testing` | `ecc:kotlin-reviewer`, `ecc:go-reviewer`, `ecc:silent-failure-hunter` |
 | **M07** Admin + RBAC | `feat/admin-rbac` | `ecc:architecture-decision-records` (stack choice), `ecc:frontend-patterns`, `ecc:security-review`, `ecc:e2e-testing`, `ecc:accessibility` | `ecc:architect`, `ecc:security-reviewer`, `ecc:e2e-runner`, `ecc:a11y-architect` |
 | **M08** Backup + PITR | `infra/database-backup` | `ecc:postgres-patterns`, `ecc:docker-patterns`, `ecc:deployment-patterns` | `ecc:database-reviewer`, `ecc:security-reviewer` |
 | **M09** CI + observability | `infra/ci-observability` | `ecc:deployment-patterns`, `ecc:github-ops`, `ecc:security-review` | `ecc:security-reviewer`, `ecc:silent-failure-hunter` |
+| **UX-2** App redesign (ADR-034) | `feat/ux-2-redesign` | `ecc:compose-multiplatform-patterns`, `ecc:kotlin-testing`, `ecc:accessibility`, `ecc:golang-patterns` (new API), `ecc:architecture-decision-records` | `ecc:kotlin-reviewer`, `ecc:a11y-architect`, `ecc:go-reviewer`, `ecc:silent-failure-hunter` — verify Android **and** iOS every phase |
 | **M10** Pilot gate | `release/pilot` | `ecc:production-audit`, `ecc:delivery-gate`, `/ecc:quality-gate` | `ecc:security-reviewer`, `ecc:code-reviewer` |
 
 Notes:

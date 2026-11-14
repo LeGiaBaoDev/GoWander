@@ -2,6 +2,7 @@ package com.gowander.route
 
 import com.gowander.api.ApiError
 import com.gowander.api.FakeApi
+import com.gowander.ui.Strings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +47,46 @@ class RouteViewModelTest {
         assertEquals(listOf("WALK", "SUBWAY", "WALK"), phase.routes.first().legs.map { it.mode })
         assertEquals(benThanh.lat, api.planCalls.single().origin.lat)
         vm.selectRoute(5) // out of range: ignored
+        assertEquals(0, assertIs<RoutePhase.Results>(vm.state.value.phase).selected)
+    }
+
+    @Test
+    fun travelModeIsSentAndChangingItClearsResults() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }
+        assertEquals(listOf("BUS"), api.planCalls.last().modes) // default tab: bus
+        vm.setMode(TravelMode.Car)
+        assertIs<RoutePhase.Idle>(vm.state.value.phase)
+        assertEquals(TravelMode.Car, vm.state.value.mode)
+        vm.search()
+        assertEquals(listOf("CAR"), api.planCalls.last().modes)
+        vm.setMode(TravelMode.Bicycle)
+        vm.search()
+        assertEquals(listOf("BICYCLE"), api.planCalls.last().modes)
+        vm.setMode(TravelMode.Bicycle) // same mode: results kept
+        assertIs<RoutePhase.Results>(vm.state.value.phase)
+    }
+
+    @Test
+    fun metroTabKeepsOnlyRoutesThatUseTheMetro() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); setMode(TravelMode.Metro); search() }
+        assertEquals(null, api.planCalls.last().modes) // all public transport, then filtered here
+        val phase = assertIs<RoutePhase.Results>(vm.state.value.phase)
+        assertTrue(phase.routes.all { r -> r.legs.any { it.mode == "SUBWAY" } })
+
+        api.plan = { req -> FakeApi().plan(req).let { res -> res.copy(routes = res.routes.map { r -> r.copy(legs = r.legs.map { it.copy(mode = if (it.transit) "BUS" else it.mode) }) }) } }
+        vm.setMode(TravelMode.Bus); vm.setMode(TravelMode.Metro); vm.search()
+        val failed = assertIs<RoutePhase.Failed>(vm.state.value.phase)
+        assertEquals(Strings.NO_METRO_ROUTE, failed.message) // explains instead of showing bus routes under "Metro"
+    }
+
+    @Test
+    fun switchingModeInsideRouteDetailKeepsTheDetailOpen() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search(); openDetail(1) }
+        assertTrue(vm.state.value.detailOpen)
+        vm.switchModeInDetail(TravelMode.Car)
+        assertEquals(listOf("CAR"), api.planCalls.last().modes)
+        assertEquals(TravelMode.Car, vm.state.value.mode)
+        assertTrue(vm.state.value.detailOpen) // the user stays on the detail screen
         assertEquals(0, assertIs<RoutePhase.Results>(vm.state.value.phase).selected)
     }
 

@@ -4,7 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -49,17 +56,21 @@ import com.gowander.api.GeoResult
 import com.gowander.api.Leg
 import com.gowander.api.PlaceSummary
 import com.gowander.api.Route
+import com.gowander.onboarding.LoadingView
 import com.gowander.ui.Badge
 import com.gowander.ui.Banner
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import com.gowander.ui.Card
 import com.gowander.ui.Chip
+import com.gowander.ui.ExtraIcons
 import com.gowander.ui.Header
+import com.gowander.ui.IconButton
 import com.gowander.ui.Icon
 import com.gowander.ui.KitIcons
 import com.gowander.ui.ListRow
 import com.gowander.ui.ModeKind
+import com.gowander.ui.ModeTabs
 import com.gowander.ui.ModePill
 import com.gowander.ui.Note
 import com.gowander.ui.Palette
@@ -75,7 +86,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.compose.location.LocationState
 import org.maplibre.compose.map.MapState
-import org.maplibre.compose.util.DpPadding
 import kotlin.time.Clock
 
 // ---------- M1 Map ----------
@@ -92,16 +102,17 @@ fun MapHome(
     onSeeAll: () -> Unit,
 ) {
     val results = state.phase as? RoutePhase.Results
+    var nearbyOpen by rememberSaveable { mutableStateOf(true) }
     Box(Modifier.fillMaxSize()) {
-        RouteMap(results?.routes?.getOrNull(results.selected), state.origin, state.destination, location, Modifier.fillMaxSize())
+        RouteMap(
+            results?.routes?.getOrNull(results.selected), state.origin, state.destination, location, Modifier.fillMaxSize(), viewSwitch = true,
+            insets = PaddingValues(top = 90.dp, bottom = if (nearby.isNotEmpty() && nearbyOpen) 320.dp else 150.dp),
+        )
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) { // Top: the language menu opens below "VI" without moving the search bar
                 SearchBar(Strings.WHERE_TO, Modifier.weight(1f), floating = true, onClick = onSearch)
                 Spacer(Modifier.width(8.dp))
-                // Language switch of the kit; English comes later (ADR-022), so it only shows the current language.
-                Box(Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg), contentAlignment = Alignment.Center) {
-                    Text(Strings.LANGUAGE_VI, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
-                }
+                LanguageButton()
             }
             if (results?.assumedData == true) Banner(Strings.DEMO_LABEL)
         }
@@ -113,14 +124,24 @@ fun MapHome(
                 contentAlignment = Alignment.Center,
             ) { Icon(KitIcons.locate, 24.dp, Palette.Primary) }
             Spacer(Modifier.height(12.dp))
+            // Collapsible so the map is never hidden for good: the title row stays visible and opens it again.
             if (nearby.isNotEmpty()) Card(Modifier.fillMaxWidth(), shadow = true, gap = 0.dp) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(Strings.NEAR_YOU, Modifier.weight(1f), size = 18.sp, weight = FontWeight.SemiBold)
+                    Row(
+                        Modifier.weight(1f).sizeIn(minHeight = 48.dp)
+                            .semantics { contentDescription = if (nearbyOpen) Strings.HIDE_NEARBY else Strings.SHOW_NEARBY }
+                            .clickable(role = Role.Button) { nearbyOpen = !nearbyOpen },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(Strings.NEAR_YOU, size = 18.sp, weight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (nearbyOpen) "▾" else "▴", size = 18.sp, color = Palette.Muted)
+                    }
                     Box(Modifier.sizeIn(minHeight = 48.dp, minWidth = 48.dp).clickable(role = Role.Button, onClick = onSeeAll), contentAlignment = Alignment.CenterEnd) {
                         Text(Strings.SEE_ALL, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
                     }
                 }
-                nearby.take(2).forEach { p -> PlaceRow(p, onClick = { onOpenPlace(p) }) }
+                if (nearbyOpen) nearby.take(2).forEach { p -> PlaceRow(p, onClick = { onOpenPlace(p) }) }
             }
         }
     }
@@ -222,45 +243,36 @@ fun PlanScreen(
     onPickOrigin: () -> Unit,
     onPickDestination: () -> Unit,
     onArriveBy: (Long?) -> Unit,
+    onMode: (TravelMode) -> Unit,
     onRecent: (Endpoint) -> Unit,
     onSwap: () -> Unit,
     onSearch: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Title(Strings.TAB_PLAN)
-        Card(Modifier.fillMaxWidth(), gap = 4.dp) {
-            ListRow(
-                state.origin?.label ?: Strings.NOT_SET, Strings.ORIGIN,
-                lead = { Badge(KitIcons.locate, Palette.Soft, Palette.Primary, 36.dp) },
-                trail = { Text(Strings.SWAP, Modifier.padding(8.dp), size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold) },
-                onClick = onSwap,
-            )
-            ListRow(
-                state.destination?.label ?: Strings.NOT_SET, Strings.DESTINATION,
-                lead = { Badge(KitIcons.pin, Palette.AccentSoft, Palette.Accent, 36.dp) }, onClick = onEditDestination,
-            )
-        }
-        Row(Modifier.fillMaxWidth()) {
-            Chip(Strings.USE_MY_LOCATION, onClick = onUseMyLocation)
-            Spacer(Modifier.width(8.dp))
-            Chip(Strings.PICK_ON_MAP + " (đi)", onClick = onPickOrigin)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Chip(Strings.LEAVE_NOW, selected = state.arriveBy == null) { onArriveBy(null) }
-            Spacer(Modifier.width(8.dp))
-            val arrive = state.arriveBy
-            Chip(if (arrive != null) "${Strings.ARRIVE_BY} ${pilotClock(arrive)}" else Strings.ARRIVE_BY, selected = arrive != null) {
-                if (arrive == null) onArriveBy(roundUpToQuarter(nowMillis() + 3_600_000L))
+        // Layout of Google Maps / Naver Map / KakaoMap directions: endpoints card with swap on the right, mode tabs
+        // right under it, then time. "My location" and "pick on map" sit on the row they change (no extra chip rows).
+        Card(Modifier.fillMaxWidth(), gap = 0.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    ListRow(
+                        state.origin?.label ?: Strings.NOT_SET, Strings.ORIGIN,
+                        lead = { Badge(KitIcons.locate, Palette.Soft, Palette.Primary, 36.dp) },
+                        trail = { IconButton(KitIcons.locate, Strings.USE_MY_LOCATION, onClick = onUseMyLocation) },
+                        onClick = onPickOrigin,
+                    )
+                    ListRow(
+                        state.destination?.label ?: Strings.NOT_SET, Strings.DESTINATION,
+                        lead = { Badge(KitIcons.pin, Palette.AccentSoft, Palette.Accent, 36.dp) },
+                        trail = { IconButton(KitIcons.map, Strings.DESTINATION_ON_MAP, onClick = onPickDestination) },
+                        onClick = onEditDestination,
+                    )
+                }
+                IconButton(ExtraIcons.swap, Strings.SWAP, tint = Palette.Ink, onClick = onSwap)
             }
         }
-        state.arriveBy?.let { arrive ->
-            Row { // 15-minute steps: simple, accessible, no time picker library
-                Chip("−15 phút") { onArriveBy(arrive - 900_000L) }
-                Spacer(Modifier.width(8.dp))
-                Chip("+15 phút") { onArriveBy(arrive + 900_000L) }
-            }
-        }
-        ListRow(Strings.PICK_ON_MAP, lead = { Badge(KitIcons.map, Palette.Subtle, Palette.Primary) }, onClick = onPickDestination)
+        TravelModeTabs(state.mode, onMode)
+        TimeChips(state.arriveBy, onArriveBy)
         if (state.recentDestinations.isNotEmpty()) {
             SectionTitle(Strings.RECENT)
             state.recentDestinations.forEach { e -> ListRow(e.label, null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Muted) }, onClick = { onRecent(e) }) }
@@ -270,11 +282,105 @@ fun PlanScreen(
     }
 }
 
+private val TRAVEL_MODES = listOf(TravelMode.Bus, TravelMode.Metro, TravelMode.Car, TravelMode.Bicycle, TravelMode.Walk)
+
+@Composable
+fun TravelModeTabs(mode: TravelMode, onMode: (TravelMode) -> Unit) = ModeTabs(
+    TRAVEL_MODES.map {
+        when (it) {
+            TravelMode.Bus -> KitIcons.bus to Strings.MODE_BUS
+            TravelMode.Metro -> KitIcons.metro to Strings.MODE_METRO
+            TravelMode.Car -> ExtraIcons.car to Strings.MODE_CAR
+            TravelMode.Bicycle -> ExtraIcons.bike to Strings.MODE_BICYCLE
+            TravelMode.Walk -> KitIcons.walk to Strings.MODE_WALK
+        }
+    },
+    TRAVEL_MODES.indexOf(mode),
+) { onMode(TRAVEL_MODES[it]) }
+
+/** "Khởi hành ngay" or "Đến trước HH:MM" with 15-minute steps (simple, accessible, no time-picker library). */
+@Composable
+private fun TimeChips(arriveBy: Long?, onArriveBy: (Long?) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Chip(Strings.LEAVE_NOW, selected = arriveBy == null) { onArriveBy(null) }
+        Spacer(Modifier.width(8.dp))
+        Chip(if (arriveBy != null) "${Strings.ARRIVE_BY} ${pilotClock(arriveBy)}" else Strings.ARRIVE_BY, selected = arriveBy != null) {
+            if (arriveBy == null) onArriveBy(roundUpToQuarter(nowMillis() + 3_600_000L))
+        }
+    }
+    arriveBy?.let { arrive ->
+        Row {
+            Chip("−15 phút") { onArriveBy(arrive - 900_000L) }
+            Spacer(Modifier.width(8.dp))
+            Chip("+15 phút") { onArriveBy(arrive + 900_000L) }
+        }
+    }
+}
+
 fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 private fun roundUpToQuarter(ms: Long) = ((ms + 899_999L) / 900_000L) * 900_000L
 
+/** Route first, description second: the way back to the place page after tapping a place. */
+@Composable
+fun PlaceInfoRow(name: String, onClick: () -> Unit) =
+    ListRow("${Strings.ABOUT_PLACE} $name", Strings.ABOUT_PLACE_HINT, lead = { Badge(KitIcons.landmark, Palette.Soft, Palette.Primary) }, onClick = onClick)
+
+/** "Bắt đầu" (primary) + "Xem trước" + "Đường đi" on one row; must stay one line each down to iPhone SE width. */
+@Composable
+fun RouteActions(onStart: () -> Unit, onPreview: () -> Unit, onSteps: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(Strings.START, Modifier.weight(1.3f), icon = KitIcons.locate, compact = true, onClick = onStart)
+        Button(Strings.PREVIEW, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onPreview)
+        Button(Strings.STEPS, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onSteps)
+    }
+}
+
+/** Languages by how many GoWander users are expected to need them (HCMC residents first, then visitors). */
+private val LANGUAGES = listOf("VI" to "Tiếng Việt", "EN" to "English", "ZH" to "中文", "KO" to "한국어", "JA" to "日本語")
+
+/**
+ * The "VI" button of the kit: a dropdown that floats over the map (a Popup, so nothing next to it gets squeezed).
+ * Only Vietnamese exists today (ADR-022); the others say "Sắp có" instead of doing nothing. Closes on a choice or
+ * a tap outside.
+ */
+@Composable
+fun LanguageButton(modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val drop = with(LocalDensity.current) { IntOffset(0, 60.dp.roundToPx()) }
+    Box(modifier) {
+        Box(
+            Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg)
+                .semantics { contentDescription = Strings.LANGUAGE_MENU }
+                .clickable(role = Role.Button) { open = !open; note = null },
+            contentAlignment = Alignment.Center,
+        ) { Text(Strings.LANGUAGE_VI + " ▾", size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
+        if (open) Popup(alignment = Alignment.TopEnd, offset = drop, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+            Card(Modifier.width(260.dp), shadow = true, gap = 2.dp) {
+                Text(Strings.CHOOSE_LANGUAGE, Modifier.padding(bottom = 4.dp), size = 15.sp, weight = FontWeight.SemiBold)
+                LANGUAGES.forEach { (code, name) ->
+                    val current = code == "VI"
+                    Row(
+                        Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).clip(RoundedCornerShape(10.dp))
+                            .semantics(mergeDescendants = true) { selected = current }
+                            .clickable(role = Role.RadioButton) { if (current) open = false else note = "$name: ${Strings.SOON.lowercase()}" }
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(name, Modifier.weight(1f), color = if (current) Palette.Primary else Palette.Ink, weight = if (current) FontWeight.SemiBold else FontWeight.Normal)
+                        if (current) Icon(KitIcons.check, 18.dp, Palette.Primary) else Text(Strings.SOON, size = 12.sp, color = Palette.Muted)
+                    }
+                }
+                note?.let { Note(it) }
+            }
+        }
+    }
+}
+
 // ---------- M4 pick on map ----------
+
+private val PICK_CARD_SPACE = 300.dp
 
 /** A choice under the pin: the exact point, an address at the point, or a nearby place/station (M4 suggestions). */
 data class PinOption(val name: String, val detail: String?, val lat: Double, val lon: Double)
@@ -315,8 +421,11 @@ fun PickScreen(
         }
     }
     Box(Modifier.fillMaxSize()) {
-        RouteMap(null, null, if (forOrigin) state.origin else state.destination, location, Modifier.fillMaxSize(), stateOut = mapRef)
-        Icon(KitIcons.pin, 44.dp, Palette.Accent, Modifier.align(Alignment.Center).padding(bottom = 44.dp)) // tip sits on the centre
+        // The card covers the lower part: the map's centre (where the pin points) and its logo/attribution sit above it.
+        RouteMap(null, null, if (forOrigin) state.origin else state.destination, location, Modifier.fillMaxSize(), stateOut = mapRef, insets = PaddingValues(bottom = PICK_CARD_SPACE))
+        Box(Modifier.fillMaxSize().padding(bottom = PICK_CARD_SPACE)) {
+            Icon(KitIcons.pin, 44.dp, Palette.Accent, Modifier.align(Alignment.Center).padding(bottom = 44.dp)) // tip sits on the centre
+        }
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(20.dp)) {
             Header(Strings.PICK_ON_MAP, floating = true, onBack = onBack)
             Spacer(Modifier.weight(1f))
@@ -354,14 +463,26 @@ private fun OptionRow(title: String, detail: String?, icon: androidx.compose.ui.
 
 /** M5 with its states: loading, results, M7 (user-fixable: no route / out of coverage), M8 (network) and retryable errors. */
 @Composable
-fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onSort: (RouteSort) -> Unit, onOpen: (Int) -> Unit, onRetry: () -> Unit, onChangeDestination: () -> Unit) {
+fun ResultsScreen(
+    state: RouteUiState,
+    onBack: () -> Unit,
+    onMode: (TravelMode) -> Unit,
+    onSort: (RouteSort) -> Unit,
+    onOpen: (Int) -> Unit,
+    onRetry: () -> Unit,
+    onChangeDestination: () -> Unit,
+    placeInfo: String? = null,
+    onPlaceInfo: () -> Unit = {},
+) {
     val title = "${state.origin?.label ?: "?"} → ${state.destination?.label ?: "?"}"
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Header(title, onBack = onBack)
+        TravelModeTabs(state.mode, onMode) // switch mode on the results, as in Google/Naver/Kakao
+        if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
         Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (val p = state.phase) {
                 RoutePhase.Idle -> Note(Strings.NEED_BOTH)
-                RoutePhase.Loading -> Text(Strings.SEARCHING, Modifier.padding(vertical = 24.dp))
+                RoutePhase.Loading -> LoadingView(Strings.SEARCHING)
                 is RoutePhase.Failed -> if (p.retryable) {
                     // M8 shape: banner + retry. Origin and destination stay as they were.
                     Banner(if (p.message == Strings.NETWORK_ERROR) Strings.OFFLINE else p.message, if (p.message == Strings.NETWORK_ERROR) p.message else null, KitIcons.flag, Palette.AccentSoft)
@@ -375,13 +496,14 @@ fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onSort: (RouteSort) -
                     Button(Strings.CHANGE_DESTINATION, Modifier.fillMaxWidth(), onClick = onChangeDestination)
                 }
                 is RoutePhase.Results -> {
-                    Row {
+                    if (state.mode.isTransit) Row {
                         Chip(Strings.FASTEST, selected = state.sort == RouteSort.Fastest) { onSort(RouteSort.Fastest) }
                         Spacer(Modifier.width(8.dp))
                         Chip(Strings.LEAST_WALKING, selected = state.sort == RouteSort.LeastWalking) { onSort(RouteSort.LeastWalking) }
                     }
-                    p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
+                    p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0 && state.mode.isTransit) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
                     if (p.assumedData) Note(Strings.ASSUMED_NOTE)
+                    if (p.routes.any { r -> r.legs.any { it.mode == "CAR" } }) Note(Strings.CAR_NOTE)
                 }
             }
         }
@@ -402,60 +524,117 @@ private fun RouteOptionCard(r: Route, highlight: Boolean, tag: String?, onClick:
                 Spacer(Modifier.width(4.dp))
             }
         }
-        Note("${Strings.LEAVE_AT} ${clock(r.startTime)} · ${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
+        // Bus/metro trips always include walking to and from the stops: say how much (owner, 14-11-2026).
+        val walkMin = r.legs.filter { it.mode == "WALK" }.sumOf { it.durationSec } / 60
+        val walk = if (r.legs.any { it.transit } && walkMin > 0) "${Strings.WALK_TOTAL} $walkMin ${Strings.MINUTES_SHORT} · " else ""
+        Note("$walk${Strings.LEAVE_AT} ${clock(r.startTime)} · ${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
     }
 }
 
-private fun modeOf(leg: Leg) = when {
-    !leg.transit -> ModeKind.Walk
-    leg.mode == "BUS" -> ModeKind.Bus
-    else -> ModeKind.Metro
+private fun modeOf(leg: Leg) = when (leg.mode) {
+    "BUS" -> ModeKind.Bus
+    "CAR" -> ModeKind.Car
+    "BICYCLE" -> ModeKind.Bicycle
+    else -> if (leg.transit) ModeKind.Metro else ModeKind.Walk
 }
 
 // ---------- M6 route detail ----------
 
 /** M6: route on the map, duration, legs with waiting time, places near the station where the user gets off. */
 @Composable
-fun DetailScreen(state: RouteUiState, location: LocationState, onBack: () -> Unit, onOpenPlace: (PlaceSummary) -> Unit) {
+fun DetailScreen(
+    state: RouteUiState,
+    location: LocationState,
+    onBack: () -> Unit,
+    onOpenPlace: (PlaceSummary) -> Unit,
+    onStart: () -> Unit,
+    onPreview: () -> Unit,
+    onSteps: () -> Unit,
+    onMode: (TravelMode) -> Unit,
+    placeInfo: String? = null,
+    onPlaceInfo: () -> Unit = {},
+) {
     val p = state.phase as? RoutePhase.Results ?: return
     val route = p.routes.getOrNull(p.selected) ?: return
     val waits = remember(route) { waitsBeforeLegs(route.legs) }
     val undrawable = remember(route) { undrawableLegs(route) }
-    Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Header(Strings.ROUTE_DETAIL, onBack = onBack)
-        RouteMap(route, state.origin, state.destination, location, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)), DpPadding(24.dp, 24.dp, 24.dp, 24.dp))
-        if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
-        Text(Strings.minutes(route.durationSec), size = 28.sp, weight = FontWeight.Bold)
-        Note("${if (p.assumedData) "Theo lịch ước tính" else Strings.SCHEDULED} · ${Strings.ARRIVE_ABOUT} ${clock(route.endTime)}")
-        Card(Modifier.fillMaxWidth(), gap = 4.dp) {
-            route.legs.forEachIndexed { i, leg ->
-                waits[i]?.let { ListRow("${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Ink) }) }
-                LegRow(leg)
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    // Full-screen map like the pick screen (owner, 14-11-2026: the 220 dp map was too small); details in a bottom sheet.
+    Box(Modifier.fillMaxSize().background(Palette.Bg)) {
+        RouteMap(
+            route, state.origin, state.destination, location, Modifier.fillMaxSize(),
+            viewSwitch = true, insets = PaddingValues(top = 80.dp, bottom = if (expanded) 600.dp else 390.dp),
+        )
+        Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header(Strings.ROUTE_DETAIL, floating = true, onBack = onBack) }
+        Card(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding().padding(12.dp)
+                .heightIn(max = if (expanded) 590.dp else 380.dp),
+            shadow = true, gap = 10.dp,
+        ) {
+            // Handle + summary are one 48 dp+ target that opens or closes the leg list (a drag sheet is more code than
+            // this MVP needs); the arrow says which way it goes.
+            Column(
+                Modifier.fillMaxWidth().semantics { contentDescription = if (expanded) Strings.COLLAPSE else Strings.EXPAND }
+                    .clickable(role = Role.Button) { expanded = !expanded }
+                    // Drag up to open, down to close (like a bottom sheet); tapping still works for users who cannot drag.
+                    .pointerInput(Unit) {
+                        var dy = 0f
+                        detectVerticalDragGestures(onDragEnd = {
+                            if (dy < -40f) expanded = true else if (dy > 40f) expanded = false
+                            dy = 0f
+                        }) { _, d -> dy += d }
+                    },
+            ) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(40.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(Strings.minutes(route.durationSec), size = 28.sp, weight = FontWeight.Bold)
+                        val timed = route.legs.any { it.transit }
+                        Note("${if (!timed) "Ước tính" else if (p.assumedData) "Theo lịch ước tính" else Strings.SCHEDULED} · ${Strings.ARRIVE_ABOUT} ${clock(route.endTime)}")
+                    }
+                    Text(if (expanded) "▾" else "▴", size = 20.sp, color = Palette.Muted)
+                }
+            }
+            TravelModeTabs(state.mode, onMode) // switch vehicle right here, as on Google's route sheet
+            RouteActions(onStart, onPreview, onSteps)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
+                if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
+                route.legs.forEachIndexed { i, leg ->
+                    waits[i]?.let { ListRow("${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Ink) }) }
+                    LegRow(leg)
+                }
+                if (state.nearAlighting.isNotEmpty()) {
+                    val alightLeg = route.legs.lastOrNull { it.transit }
+                    val near = if (alightLeg != null) "${Strings.NEAR_STATION} ${alightLeg.to.name}" else "${Strings.NEAR} ${state.destination?.label ?: ""}"
+                    SectionTitle(near.trim())
+                    state.nearAlighting.forEach { PlaceRow(it) { onOpenPlace(it) } }
+                }
+                if (p.assumedData) Note(Strings.ASSUMED_NOTE)
+                if (route.legs.any { it.mode == "CAR" }) Note(Strings.CAR_NOTE)
             }
         }
-        if (state.nearAlighting.isNotEmpty()) {
-            val alight = route.legs.lastOrNull { it.transit }?.to?.name ?: state.destination?.label ?: ""
-            SectionTitle("${Strings.NEAR_STATION} $alight")
-            state.nearAlighting.forEach { PlaceRow(it) { onOpenPlace(it) } }
-        }
-        if (p.assumedData) Note(Strings.ASSUMED_NOTE)
     }
 }
 
 @Composable
 private fun LegRow(leg: Leg) {
     if (leg.transit) {
-        val name = leg.line?.shortName?.let { "Metro $it" } ?: leg.mode
+        val bus = leg.mode == "BUS"
+        val name = leg.line?.shortName?.let { "${if (bus) Strings.BUS else "Metro"} $it" } ?: leg.mode
         ListRow(
             "$name · ${leg.headsign?.let { "${Strings.TOWARDS} $it" } ?: ""}".trimEnd(' ', '·'),
             "${clock(leg.startTime)} ${leg.from.name} → ${leg.to.name} · ${Strings.minutes(leg.durationSec)}" + if (!leg.realtime) " · ${Strings.SCHEDULED}" else "",
-            lead = { Badge(KitIcons.metro, Palette.Metro, Palette.OnPrimary) },
+            lead = { if (bus) Badge(KitIcons.bus, Palette.Bus, Palette.OnPrimary) else Badge(KitIcons.metro, Palette.Metro, Palette.OnPrimary) },
         )
     } else {
+        val verb = when (leg.mode) { "CAR" -> Strings.DRIVE; "BICYCLE" -> Strings.CYCLE; else -> Strings.WALK }
         ListRow(
-            "${Strings.WALK} ${Strings.minutes(leg.durationSec)}",
+            "$verb ${Strings.minutes(leg.durationSec)}",
             "${if (leg.to.stopId != null) "Tới ga ${leg.to.name}" else "Tới ${leg.to.name.takeUnless { it == "Destination" } ?: Strings.DESTINATION.lowercase()}"} · ${Strings.meters(leg.distanceM)}",
-            lead = { Badge(KitIcons.walk, Palette.Subtle, Palette.Ink) },
+            lead = { Badge(when (leg.mode) { "CAR" -> ExtraIcons.car; "BICYCLE" -> ExtraIcons.bike; else -> KitIcons.walk }, Palette.Subtle, Palette.Ink) },
         )
     }
 }

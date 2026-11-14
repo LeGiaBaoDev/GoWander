@@ -20,6 +20,10 @@ type Config struct {
 	// PHOTON_URL: self-hosted Photon geocoder (infrastructure/photon), default http://127.0.0.1:2322. Optional at runtime:
 	// if it is down only address search fails (GEOCODER_UNAVAILABLE); readiness does not depend on it.
 	PhotonURL string
+	// MAPILLARY_TOKEN: client token for street photos in the route preview (NAV-1, ADR-033). Optional: empty turns the
+	// feature off (STREET_IMAGERY_UNAVAILABLE) and the app shows a 3D map instead. A secret: never log it.
+	MapillaryToken string
+	MapillaryURL   string // MAPILLARY_URL, default https://graph.mapillary.com
 }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
@@ -31,11 +35,13 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		Addr:        or("HTTP_ADDR", "127.0.0.1:8090"),
-		OTPURL:      or("OTP_URL", "http://127.0.0.1:8088"),
-		DataStatus:  or("ROUTING_DATA_STATUS", "ASSUMED"),
-		DatabaseURL: getenv("DATABASE_URL"),
-		PhotonURL:   or("PHOTON_URL", "http://127.0.0.1:2322"),
+		Addr:           or("HTTP_ADDR", "127.0.0.1:8090"),
+		OTPURL:         or("OTP_URL", "http://127.0.0.1:8088"),
+		DataStatus:     or("ROUTING_DATA_STATUS", "ASSUMED"),
+		DatabaseURL:    getenv("DATABASE_URL"),
+		PhotonURL:      or("PHOTON_URL", "http://127.0.0.1:2322"),
+		MapillaryToken: getenv("MAPILLARY_TOKEN"),
+		MapillaryURL:   or("MAPILLARY_URL", "https://graph.mapillary.com"),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -51,6 +57,11 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if u, err := url.Parse(c.PhotonURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		errs = append(errs, errors.New("PHOTON_URL must be an absolute http(s) URL without credentials"))
+	}
+	// The token is sent to this URL: plain http only for a local stub (security review 14-11-2026).
+	if u, err := url.Parse(c.MapillaryURL); err != nil || u.Host == "" || u.User != nil ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {
+		errs = append(errs, errors.New("MAPILLARY_URL must be https (http only for 127.0.0.1/localhost) without credentials"))
 	}
 	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
 		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))

@@ -1,6 +1,6 @@
 # M01 — Khả thi dữ liệu transit cho TP.HCM
 
-> **Ngày:** 11-11-2026 · **Trạng thái M01:** **BLOCKED** (phần GTFS bus/metro) · **Người thực hiện:** Claude Code
+> **Ngày:** 11-11-2026, cập nhật 14-11-2026 (mục 9: xe buýt từ OSM) · **Trạng thái M01:** **BLOCKED** (phần GTFS bus/metro chính thức) · **Người thực hiện:** Claude Code
 > **Danh mục nguồn:** [`data/sources/source-inventory.csv`](../../data/sources/source-inventory.csv)
 
 ## 1. Kết luận
@@ -120,3 +120,72 @@ M01 chuyển sang PASS khi có đủ:
 13. [Tiền Phong số 107/2026](https://tienphong.vn/epaper/2026/TP-107/5/) — số tuyến xe buýt
 14. [elpwc/VietnamRailwayData](https://github.com/elpwc/VietnamRailwayData) — chỉ biết qua kết quả tìm kiếm
 15. [BusMap](https://busmap.vn/) và [MultiGo](https://multigo.golabs.vn/en)
+
+## 9. Cập nhật 14-11-2026 — xe buýt có trong OSM, đủ dựng GTFS giả định
+
+Chủ dự án gửi ảnh chụp các gợi ý nguồn (bài nhóm Flutter Vietnam: Mapbox/OpenStreetMap, BusMap; câu trả lời AI của Google: Vietmap Routing, BusMap, timbus-api) và yêu cầu xem lại cho M01, vì app hiện chỉ ra tuyến đi bộ ngoài Metro số 1.
+
+### 9.1. Đo trực tiếp trên file OSM của dự án
+
+- **Phương pháp:** 7 truy vấn web (tiếng Việt và tiếng Anh), chỉ đọc kết quả tìm kiếm, chưa đọc trực tiếp trang nào; đo OSM bằng osmium trên máy.
+
+- **File:** `data/raw/osm/vietnam-261111.osm.pbf` (Geofabrik, ODbL), cắt theo khung TP.HCM mở rộng `106.35,10.35,107.05,11.2` bằng osmium 1.19.1. Chỉ đọc, không sửa file gốc.
+- **Lệnh** (chạy trong thư mục scratch, kết quả không commit):
+
+  ```
+  osmium extract -b 106.35,10.35,107.05,11.2 vietnam-261111.osm.pbf -o hcmc.osm.pbf
+  osmium tags-filter hcmc.osm.pbf r/route=bus -o bus.osm.pbf -R
+  osmium tags-filter hcmc.osm.pbf n/highway=bus_stop -o stops.osm.pbf -R
+  ```
+
+| Chỉ số | Kết quả |
+|---|---|
+| Relation `route=bus` (mỗi chiều một relation) | **349**, khoảng 174 giá trị `ref` khác nhau |
+| `network` | 315 "Xe buýt Thành phố Hồ Chí Minh", 17 "Xe buýt Bình Dương", 16 "Xe buýt Đồng Nai" |
+| `public_transport:version=2` (trạm xếp theo thứ tự trong relation) | 246 / 349; 346 relation có thành viên `stop`/`platform` |
+| `interval` (giãn cách) | 326 / 349, phổ biến `00:10-00:20`, `00:10-00:15`, `00:12-00:20` |
+| `opening_hours` (giờ hoạt động) | 348 / 349, phổ biến `Mo-Su 05:00-22:00`, `Mo-Su 04:45-22:00` |
+| `duration` (thời gian một chuyến) | chỉ 4 / 349 |
+| `operator` | 349 / 349 |
+| Lần sửa gần nhất của relation | 343 trong năm 2026, 5 năm 2025, 1 năm 2024 |
+| Node `highway=bus_stop` | **6.388**. Thành phố công bố 6.241 vị trí điểm dừng (nguồn 9.4, số 3) |
+
+Dữ liệu này được cộng đồng thêm theo đợt ("add bus routes for HCMC", ví dụ changeset 149037423; nguồn 9.4, số 9).
+
+### 9.2. Kết luận
+
+- **Dựng được GTFS xe buýt giả định từ OSM** (ODbL, ghi "© OpenStreetMap contributors"): `stops` từ trạm, `routes`/`trips` từ relation, `frequencies.txt` từ `interval` + `opening_hours`, thời gian giữa trạm **ước tính** theo khoảng cách và tốc độ giả định. Đây cùng loại với feed giả định Metro (ADR-020): phải có nhãn `ASSUMED`, app ghi "giờ ước tính", **không làm M01 thành PASS**.
+- Thiếu: lịch từng chuyến, thời gian chạy thật giữa các trạm, giá vé theo tuyến, ngày lễ, thay đổi tuyến chưa được cập nhật lên OSM.
+- **Chưa kiểm chứng:** số hiệu và lộ trình tuyến trong OSM có khớp đợt điều chỉnh tuyến từ 01-07-2026 (134 tuyến miễn phí vé) hay không; chất lượng hình học relation (đứt đoạn, sai chiều) chưa kiểm tra.
+- Công cụ có sẵn: `osm2gtfs` (cần nguồn lịch riêng, issue cho thấy chưa hỗ trợ `interval`), `o2g`/`osmtogtfs` (có chế độ dữ liệu giả + `frequencies.txt`). Hướng ưu tiên: **script Python riêng** trong `scripts/` giống `build_metro_l1_assumed_gtfs.py`, dùng osmium đã cài, để kiểm soát nhãn, nguồn từng giá trị và test; chỉ dùng thư viện ngoài nếu ADR ghi lý do.
+
+### 9.3. Đánh giá từng nguồn
+
+| Nguồn | Dữ liệu | Giấy phép / điều kiện | Kết luận |
+|---|---|---|---|
+| **OpenStreetMap** (Geofabrik) | Tuyến, trạm, giãn cách, giờ hoạt động | ODbL 1.0, ghi công | ✅ **Dùng** cho GTFS xe buýt giả định |
+| Mapbox | Bản đồ nền dựa trên OSM; không có lịch buýt riêng cho TP.HCM | Thương mại, theo lượt | ➖ Không cần thêm |
+| BusMap (Phenikaa MaaS JSC) | Tuyến, trạm, vị trí xe; hợp tác theo dự án (VinBus, TopCV) | Độc quyền; không có API công khai | ⏸ Có thể liên hệ hỏi giá sau pilot. **Không scrape** |
+| Trung tâm Quản lý giao thông công cộng (`buyttphcm.com.vn`, app Go!Bus) | Tuyến, giờ, giá, danh sách trạm hai chiều | Bản quyền của Trung tâm; không có GTFS công khai | ⏸ Nguồn chính thức nên xin bằng văn bản trước M10 |
+| Cổng dữ liệu mở TP.HCM | Chưa thấy bộ dữ liệu xe buýt | Điều khoản riêng (mục 8, số 4) | ⏸ Theo dõi; Quyết định 3974/QĐ-UBND yêu cầu số hoá dữ liệu chuyến |
+| timbus-api | Không tìm thấy repo này. Timbus là app của Transerco **Hà Nội** | Không rõ | ❌ Sai thành phố |
+| GTFS Hà Nội trên TUMI (hanoibusmap, hanoibusgtk) | Hà Nội | TUMI ghi giấy phép có thể đã cũ | ❌ Sai thành phố; chỉ để tham khảo cấu trúc |
+| Vietmap Routing | Tìm đường ô tô / xe máy | Tính phí, giá phải liên hệ | ⏸ Xe máy và ô tô sau pilot (ADR-031) |
+
+### 9.4. Nguồn của mục 9 (đọc ngày 14-11-2026)
+
+1. File OSM của dự án: [Geofabrik — Vietnam](https://download.geofabrik.de/asia/vietnam-latest.osm.pbf), bản `vietnam-261111`
+2. [Lao Động — TP.HCM miễn phí xe buýt](https://news.laodong.vn/xa-hoi/tphcm-mien-phi-xe-buyt-mot-mui-ten-nhieu-dich-den-1681144.ldo) — Quyết định 3974/QĐ-UBND, số hoá dữ liệu chuyến
+3. Số liệu 37 depot/bến, 6.241 vị trí điểm dừng, 1.030 nhà chờ: lấy từ tóm tắt kết quả tìm kiếm cho các bài 2 và 4–5; **chưa đọc trực tiếp bài gốc** để xác định bài nào
+4. [VTC News — miễn phí từ 01-07-2026](https://vtcnews.vn/xe-buyt-san-sang-don-nguoi-dan-di-lai-mien-phi-khap-tp-hcm-tu-hom-nay-ar1026510.html)
+5. [Nông nghiệp & Môi trường — 134 tuyến miễn phí](https://nongnghiepmoitruong.vn/tu-1-7-tphcm-mien-phi-xe-buyt-tren-134-tuyen-d817668.html)
+6. [Doanh nghiệp Hội nhập — 17 tuyến buýt gom metro dùng xe điện](https://doanhnghiephoinhap.vn/tp-ho-chi-minh-dua-vao-hoat-dong-17-tuyen-buyt-gom-metro-su-dung-xe-dien-phuc-vu-ket-noi-cac-ga-metro-90224.html)
+7. [Lao Động — 5 tuyến mới khu vực Bình Dương cũ](https://news.laodong.vn/xa-hoi/tphcm-sap-mo-them-5-tuyen-xe-buyt-moi-tai-khu-vuc-binh-duong-cu-1723119.ldo) — tuyến thay đổi liên tục, OSM có thể chậm
+8. [Hướng dẫn app Go!Bus (svhtt.hochiminhcity.gov.vn)](https://svhtt.hochiminhcity.gov.vn/documents/10184/344330/hdsd+gobus.docx/e69e6b61-38b2-45a9-a594-3edb4489b9be) — app tra cứu chính thức
+9. [OSM node 2091954745 — Cầu Tham Lương](https://www.openstreetmap.org/node/2091954745) — ví dụ trạm thuộc 10 relation, đợt sửa "add bus routes for HCMC"
+10. [grote/osm2gtfs](https://github.com/grote/osm2gtfs) và [issue #146 về `interval`/frequencies](https://www.github.com/grote/osm2gtfs/issues/146)
+11. [o2g trên PyPI](https://pypi.org/project/o2g/) và [osmtogtfs trên PyPI](https://pypi.org/project/osmtogtfs)
+12. [TUMI — hanoibusmap](https://hub.tumidata.org/dataset/_hanoibusmap_hanoi) và [TUMI — hanoibusgtk](https://hub.tumidata.org/dataset/hanoibusgtk_hanoi)
+13. [Hanoi Times — Timbus/Transerco](https://hanoitimes.vn/searching-for-bus-similar-to-grab-and-uber-8014.html)
+14. [Thị trường Tài chính Tiền tệ — Phenikaa MaaS chuyển đổi số giao thông](https://thitruongtaichinhtiente.vn/phenikaa-maas-thuc-day-hoat-dong-chuyen-doi-so-trong-linh-vuc-giao-thong-37021.html) và [Phenikaa đầu tư 1,5 triệu USD vào BusMap](https://thitruongtaichinhtiente.vn/print/35973.html)
+15. [BusMap](https://busmap.vn/)
