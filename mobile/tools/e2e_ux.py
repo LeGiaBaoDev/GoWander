@@ -88,10 +88,12 @@ def journey():
     audit("Màn chào (S0)")
     tap("Bắt đầu")
     # UX-2 (ADR-034): no first-run form; location is asked only when a feature needs it.
-    check(find("Bạn muốn đến đâu?", timeout=15) is not None and gone("Chọn ngôn ngữ"), "Bắt đầu: vào thẳng bản đồ, không có màn chọn ngôn ngữ / vị trí")
+    check(find("Tìm quán, món ăn, địa điểm", timeout=15) is not None and gone("Chọn ngôn ngữ"), "Bắt đầu: vào thẳng bản đồ, không có màn chọn ngôn ngữ / vị trí")
     adb("shell", "am", "force-stop", APP)
     adb("shell", "monkey", "-p", APP, "-c", "android.intent.category.LAUNCHER", "1")
-    check(find("Bạn muốn đến đâu?", timeout=25) is not None and gone("Move Smart. Explore More."), "Mở lại app: không hiện màn chào lần nữa")
+    check(find("Tìm quán, món ăn, địa điểm", timeout=25) is not None and gone("Move Smart. Explore More."), "Mở lại app: không hiện màn chào lần nữa")
+    check(find(r"~★ \d,\d", timeout=30) is not None and find("Ăn uống") is not None and find("Danh sách") is not None,
+          "Bản đồ (mẫu màn 1): thẻ quán nổi có sao (mẫu), hàng lọc, nút Danh sách")
     audit("Bản đồ chính")
     tabs = ["Bản đồ", "Khám phá", "Đi đâu?", "Hành trình", "Hồ sơ"]
     check(all(find(t, timeout=3) is not None for t in tabs), "Thanh dưới 5 mục: Bản đồ · Khám phá · Đi đâu? · Hành trình · Hồ sơ")
@@ -107,42 +109,85 @@ def journey():
         adb("shell", "input", "keyevent", "4")
         check(find("Chỉ đường", timeout=6) is not None, "Back từ danh sách tuyến: về đúng trang địa điểm")
         adb("shell", "input", "keyevent", "4")
-        check(find("Bạn muốn đến đâu?", timeout=6) is not None, "Back lần nữa: về bản đồ")
+        check(find("Tìm quán, món ăn, địa điểm", timeout=6) is not None, "Back lần nữa: về bản đồ")
 
-    # Map view panel: 2D / 3D only (no "coming soon" satellite), closes after a choice and on an outside tap.
+    # Map view panel: 2D / 3D / Vệ tinh (satellite only explains itself, owner 14-11-2026); closes after a choice and outside.
     tap(desc="Loại bản đồ")
-    check(find("3D") is not None and find("Vệ tinh", timeout=1) is None, "Bấm 'Loại bản đồ': chỉ 2D / 3D, không có ô Vệ tinh 'sắp có'")
+    check(find("3D") is not None and find("Vệ tinh") is not None, "Bấm 'Loại bản đồ': có 2D / 3D / Vệ tinh")
+    tap("Vệ tinh")
+    check(find("^Chưa có ảnh vệ tinh", timeout=3) is not None, "Bấm Vệ tinh: báo chưa có ảnh vệ tinh, không đổi bản đồ")
     tap("3D")
     check(gone("3D"), "Chọn 3D: bảng tự đóng")
     tap(desc="Loại bản đồ")
     tap(desc="Đóng bảng chọn")
     check(gone("3D"), "Bấm ra ngoài bảng: bảng đóng")
 
-    # Nearby sheet: collapses, and its title row brings it back.
-    if find(desc="Thu gọn gợi ý", timeout=6) is not None:
-        tap(desc="Thu gọn gợi ý")
-        check(find(desc="Hiện gợi ý gần bạn") is not None, "Thu gọn 'Gợi ý gần bạn': còn dòng tiêu đề để mở lại")
-        tap(desc="Hiện gợi ý gần bạn")
-        check(find(desc="Thu gọn gợi ý") is not None, "Bấm tiêu đề: gợi ý hiện lại")
+    # Map filters: "Cà phê" keeps only cafés (or none), "Tất cả" brings everything back.
+    tap("Cà phê")
+    tap("Tất cả")
+    check(find(r"~★ \d,\d", timeout=8) is not None, "Lọc Cà phê rồi Tất cả: thẻ quán hiện lại")
 
     # Each tab keeps its own back stack (ADR-034).
     tap("Khám phá")
-    row = find(r"~.+ · .+", timeout=15)
+    check(find("Gần bạn", timeout=10) is not None and find("Điểm đến Việt Nam") is not None and find("HÀNH TRÌNH GỢI Ý") is not None,
+          "Khám phá (mẫu màn 8): 2 tab, hành trình gợi ý")
+    audit("Khám phá")
+    row = find(r"~★ \d,\d", timeout=15)
     if row is not None:
-        name = row.get("text")
         # Tap the node found, not a fresh search by text: the list may reload in between (flaky run 14-11-2026).
         x1, y1, x2, y2 = ux_audit.bounds(row)
         adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
         time.sleep(1.0)
-        check(find("Chỉ đường", timeout=10) is not None, "Khám phá: bấm địa điểm mở trang địa điểm, không tự nhảy sang tuyến (T4)")
+        check(find("Chỉ đường", timeout=10) is not None and find("Tổng quan") is not None, "Khám phá: bấm địa điểm mở sheet địa điểm (mẫu màn 2), không tự nhảy sang tuyến (T4)")
+        tap("Đánh giá")
+        check(find("Viết đánh giá", timeout=4) is not None, "Sheet địa điểm › Đánh giá: điểm sao (mẫu) + nút Viết đánh giá")
+        tap(desc="Lưu địa điểm")
+        check(find(desc="Bỏ lưu địa điểm", timeout=4) is not None, "Bấm Lưu: nút đổi thành Bỏ lưu")
         adb("shell", "input", "keyevent", "4")
-        check(find(name, timeout=6) is not None, "Back từ trang địa điểm: về danh sách Khám phá")
+        check(find("HÀNH TRÌNH GỢI Ý", timeout=6) is not None, "Back từ trang địa điểm: về danh sách Khám phá")
+    # Regions (screens 13-15) and the planner (16).
+    tap("Điểm đến Việt Nam")
+    check(find(desc="^TP.HCM", timeout=6) is not None and find(desc="^Hà Nội") is not None, "Điểm đến Việt Nam (mẫu màn 13): bản đồ có thẻ vùng")
+    audit("Điểm đến Việt Nam")
+    tap(desc="^TP.HCM")
+    check(find("TP. HỒ CHÍ MINH", timeout=6) is not None and find("01 Giới thiệu") is not None, "Cẩm nang TP.HCM (mẫu màn 14): bìa + mục lục")
+    audit("Cẩm nang TP.HCM")
+    tap("03 Ẩm thực")
+    tap("Cơm tấm ›")
+    check(find("Quán gợi ý gần bạn", timeout=6) is not None, "Bấm món (mẫu màn 15): mô tả + quán gợi ý")
+    audit("Món ăn")
+    tap("+ Thêm vào kế hoạch")
+    check(find("Ăn: cơm tấm", timeout=6) is not None and find("Sắp xếp lại cho đỡ đi vòng") is not None, "Thêm vào kế hoạch: mở Tự lên kế hoạch (mẫu màn 16) có món vừa thêm")
+    audit("Tự lên kế hoạch")
+    tap(desc="Xoá điểm: Ăn: cơm tấm")
+    check(gone("Ăn: cơm tấm"), "Xoá một điểm: điểm biến mất, giờ tính lại")
+    tap("Lưu vào Hồ sơ")
+    check(find("Quán gợi ý gần bạn", timeout=6) is not None, "Lưu vào Hồ sơ: quay về màn trước")
+    adb("shell", "input", "keyevent", "4")
+    adb("shell", "input", "keyevent", "4")
+    tap("Gần bạn")
     tap("Hành trình")
-    check(find("Nơi bạn đã tìm đường", timeout=6) is not None, "Tab Hành trình: có nội dung thật (nơi đã tìm đường)")
+    check(find("Kiến trúc quanh ga Nhà Hát", timeout=6) is not None and find("Bạn có bao lâu?") is not None, "Hành trình (mẫu màn 9): chuyến gợi ý + chọn thời gian")
     audit("Hành trình")
+    tap("Kiến trúc quanh ga Nhà Hát")
+    check(find("Bắt đầu chuyến", timeout=6) is not None and find("Bưu điện Trung tâm Sài Gòn") is not None, "Kế hoạch chuyến (mẫu màn 10): các điểm đánh số")
+    audit("Kế hoạch chuyến")
+    adb("shell", "input", "keyevent", "4")
+    tap("Memory của tôi")
     tap("Hồ sơ")
-    check(find("Nguồn dữ liệu và giấy phép", timeout=6) is not None and find("Bạn đang dùng chế độ khách") is not None, "Tab Hồ sơ: chế độ khách + nguồn dữ liệu và giấy phép")
+    check(find("Thiết kế", timeout=6) is not None and find("Hành trình của") is not None, "Hồ sơ (mẫu màn 11): portfolio có bìa + nút Thiết kế")
     audit("Hồ sơ")
+    tap("Kế hoạch")
+    check(find("SẮP TỚI", timeout=6) is not None and find("Một ngày ở TP.HCM") is not None, "Hồ sơ › Kế hoạch (mẫu màn 17)")
+    audit("Hồ sơ Kế hoạch")
+    tap("Portfolio")
+    tap("Thiết kế")
+    check(find("Mẫu trình bày", timeout=6) is not None, "Thiết kế portfolio (mẫu màn 12)")
+    audit("Thiết kế portfolio")
+    adb("shell", "input", "keyevent", "4")
+    tap(desc="Cài đặt")
+    check(find("Nguồn dữ liệu và giấy phép", timeout=6) is not None and find("Bạn đang dùng chế độ khách") is not None, "Hồ sơ › Cài đặt: chế độ khách + nguồn dữ liệu và giấy phép")
+    adb("shell", "input", "keyevent", "4")
     tap("Bản đồ")
 
     # Centre action "Đi đâu?": search, pick, straight to the routes (T2), no extra "Tìm" step.
@@ -158,7 +203,7 @@ def journey():
     check(find("Kết quả", timeout=15) is not None, "Gõ tên: kết quả nằm dưới tiêu đề 'Kết quả'")
     tap("Trương Đăng Quế", timeout=15)
     check(find("Buýt", timeout=15) is not None and find("Metro") is not None and gone("Công cộng"), "Chọn điểm đến: vào thẳng danh sách tuyến, 5 tab phương tiện")
-    bus = find(r"~Đi bộ tổng \d+ phút.*", timeout=20)
+    bus = find(r"~Đi bộ tổng \d+ phút.*", timeout=45)
     check(bus is not None, "Tab Buýt: mỗi tuyến ghi rõ phần đi bộ ra/vào trạm ('Đi bộ tổng … phút')")
     # UX-2 screen 4: From / To edited in place, swap and time on the results; no separate trip form.
     check(find(desc="^Điểm đi: ", timeout=4) is not None and find(desc="^Điểm đến: ") is not None and find(desc="Đổi chiều", timeout=2) is not None
@@ -247,7 +292,7 @@ def journey():
     adb("shell", "input", "keyevent", "4")
     time.sleep(1)
     adb("shell", "input", "keyevent", "4")
-    check(find("Khám phá", timeout=6) is not None and find("Bạn muốn đến đâu?") is not None, "Back từ danh sách tuyến: về bản đồ, thanh tab dưới hiện lại")
+    check(find("Khám phá", timeout=6) is not None and find("Tìm quán, món ăn, địa điểm") is not None, "Back từ danh sách tuyến: về bản đồ, thanh tab dưới hiện lại")
 
 
 def main():

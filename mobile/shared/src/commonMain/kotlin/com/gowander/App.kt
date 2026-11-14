@@ -36,6 +36,34 @@ import com.gowander.discover.DiscoverViewModel
 import com.gowander.discover.PlaceScreen
 import com.gowander.home.JourneyScreen
 import com.gowander.home.ProfileScreen
+import com.gowander.home.AppStore
+import com.gowander.home.metersBetween
+import com.gowander.home.LocalNotice
+import com.gowander.home.PlanBuilderScreen
+import com.gowander.home.PortfolioEditScreen
+import com.gowander.home.SavedPlace
+import com.gowander.home.SettingsScreen
+import com.gowander.home.TripScreen
+import com.gowander.discover.DishScreen
+import com.gowander.discover.RegionGuideScreen
+import com.gowander.mock.MOCK_PLANS
+import com.gowander.mock.Move
+import com.gowander.mock.MoveKind
+import com.gowander.mock.Plan
+import com.gowander.mock.PlanItem
+import com.gowander.mock.PlanStatus
+import com.gowander.mock.mockTrip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.gowander.nav.AppNav
 import com.gowander.nav.Screen
 import com.gowander.nav.Tab
@@ -80,6 +108,9 @@ private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 
 private const val ONBOARDED = "onboarded"
 private const val PHOTO_CACHE_SIZE = 24
+private const val NEARBY_RADIUS_M = 1500 // screen 1: cards spread over the map around the user
+private const val NEARBY_LIMIT = 40
+private const val SPREAD_DEG = 0.004
 
 /** The back stacks survive rotation and process death as plain strings (UX-2, ADR-034). */
 private val NavSaver = Saver<AppNav, List<String>>(save = { it.save() }, restore = { AppNav.restore(it) })
@@ -104,6 +135,10 @@ private fun AppContent() {
     val route by routeVm.state.collectAsState()
     var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(AppNav()) }
     val placesListState = rememberLazyListState()
+    val store = remember { AppStore() }
+    val scope = rememberCoroutineScope()
+    var noticeText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(noticeText) { if (noticeText != null) { delay(3500); noticeText = null } }
 
     // Location is shared by every map; GPS becomes the origin only when there is none yet or the user asks (M06 fix).
     val location = rememberLocationState(provider = rememberDefaultLocationProvider())
@@ -126,7 +161,13 @@ private fun AppContent() {
     var nearby by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }
     val near = fix?.let { LatLon(it.latitude, it.longitude) } ?: PILOT_CENTRE
     LaunchedEffect(near.lat.toFloat(), near.lon.toFloat()) {
-        nearby = try { sharedApi.nearby(near, radiusM = 600, limit = 3) } catch (e: ApiError) { emptyList() }
+        // Places cluster around the market: also ask ~450 m away in four directions so map cards spread over the screen.
+        nearby = coroutineScope {
+            val points = listOf(near) + listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1).map { (dy, dx) -> LatLon(near.lat + dy * SPREAD_DEG, near.lon + dx * SPREAD_DEG) }
+            points.mapIndexed { i, at -> async { try { sharedApi.nearby(at, radiusM = if (i == 0) NEARBY_RADIUS_M else 300, limit = if (i == 0) NEARBY_LIMIT else 6) } catch (e: ApiError) { emptyList() } } }
+                .flatMap { it.await() }.distinctBy { it.id }
+                .map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) }.sortedBy { it.distanceM }
+        }
     }
 
     // The place a route was opened for: the results offer "Thông tin về …" while the destination is still that place.
@@ -183,6 +224,24 @@ private fun AppContent() {
     BackHandler(enabled = !nav.canPop && nav.tab != Tab.Map) { nav = nav.select(Tab.Map) }
     BackHandler(enabled = nav.canPop) { back() }
 
+    fun startPlan(p: Plan) {
+        val first = p.items.firstOrNull { it.lat != null && it.lon != null }
+        if (first == null || !p.routing) noticeText = Strings.NO_ROUTING_HERE else chooseDestination(Endpoint(first.lat!!, first.lon!!, first.title), null)
+    }
+
+    // Guide highlights are names: open the real place page when the API knows it, else go straight to its routes.
+    fun openByName(name: String, lat: Double, lon: Double) {
+        scope.launch {
+            val hit = try { sharedApi.places(category = null, query = name, cursor = null, limit = 1).places.firstOrNull() } catch (e: ApiError) { null }
+            if (hit != null) nav = nav.openPlace(hit.id) else chooseDestination(Endpoint(lat, lon, name), null)
+        }
+    }
+
+    fun addToPlan(planId: String, item: PlanItem) {
+        val plan = store.plan(planId) ?: return
+        store.put(plan.copy(items = plan.items + item.copy(move = item.move ?: Move("${Strings.WALK} 10 ${Strings.MINUTES_SHORT}", MoveKind.Walk, 10))))
+    }
+
     fun startNavigation() {
         if (location.permission !is LocationPermission.Granted) location.requestPermission()
         nav = nav.push(Screen.Navigation)
@@ -223,8 +282,10 @@ private fun AppContent() {
         onSwap = { routeVm.swap(); routeVm.search() }, onArriveBy = { routeVm.setArriveBy(it); routeVm.search() },
     )
 
+    CompositionLocalProvider(LocalNotice provides { noticeText = it }) {
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        // The raised "Đi đâu?" circle rises ~12 dp above the bar: lists end above it so no row hides under it (UX audit T3).
+        Box(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (!nav.canPop && nav.tab != Tab.Map) 14.dp else 0.dp)) {
             when (val top = nav.top) {
                 Screen.Search -> SearchScreen(
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
@@ -270,20 +331,90 @@ private fun AppContent() {
                     if (failed != null) Text(failed.message) else LoadingView(Strings.SEARCHING, cards = 1)
                     Button(Strings.EXIT, Modifier.fillMaxWidth(), kind = ButtonKind.Accent, onClick = ::back)
                 }
-                is Screen.Place -> PlaceScreen(discoverVm, top.id, onBack = ::back) { p -> chooseDestination(Endpoint(p.lat, p.lon, p.name), p.id) }
+                is Screen.Place -> PlaceScreen(
+                    discoverVm, top.id, saved = store.saved.any { it.id == top.id },
+                    onSave = { d -> store.toggleSaved(SavedPlace(d.id, d.name, d.category?.name)) }, onBack = ::back,
+                ) { p -> chooseDestination(Endpoint(p.lat, p.lon, p.name), p.id) }
+                is Screen.FindPlace -> SearchScreen(
+                    search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
+                    geocode = { q -> sharedApi.geocode(q, near) },
+                    onBack = ::back,
+                    onPick = { p ->
+                        val plan = top.planId
+                        if (plan != null) { addToPlan(plan, PlanItem(p.name, p.category?.name ?: Strings.PLACE, 30, null, p.lat, p.lon)); nav = nav.pop() } else nav = nav.pop().openPlace(p.id)
+                    },
+                    onPickAddress = { a ->
+                        val plan = top.planId
+                        if (plan != null) { addToPlan(plan, PlanItem(a.name, a.detail ?: Strings.ADDRESS, 30, null, a.lat, a.lon)); nav = nav.pop() } else chooseDestination(Endpoint(a.lat, a.lon, a.name), null)
+                    },
+                    onPickOnMap = { nav = nav.push(Screen.PickDestination) },
+                    forPlaces = true,
+                )
+                is Screen.Region -> RegionGuideScreen(
+                    top.id, onBack = ::back, onHighlight = ::openByName, onDish = { nav = nav.push(Screen.Dish(it)) },
+                    onTrip = { nav = nav.push(Screen.Trip(it)) },
+                    onPlan = { val p = store.newPlan(); store.put(p); nav = nav.push(Screen.PlanEdit(p.id)) },
+                    onRoute = { nav = nav.push(Screen.Search) }, onShowMap = { nav = nav.select(Tab.Map) },
+                )
+                is Screen.Dish -> DishScreen(top.id, onBack = ::back, onShowMap = { nav = nav.select(Tab.Map) }) { d ->
+                    addToPlan(MOCK_PLANS.first().id, PlanItem("${Strings.EAT}: ${d.name.lowercase()}", d.shops.first().name, 40))
+                    nav = nav.push(Screen.PlanEdit(MOCK_PLANS.first().id))
+                }
+                is Screen.Trip -> TripScreen(
+                    top.id, onBack = ::back,
+                    onAddStop = {
+                        val t = mockTrip(top.id)
+                        val p = store.newPlan().copy(name = t.title, items = t.stops.map { PlanItem(it.name, it.note, it.stayMin, it.move, it.lat, it.lon) })
+                        store.put(p)
+                        nav = nav.push(Screen.PlanEdit(p.id)).push(Screen.FindPlace(p.id))
+                    },
+                ) { e -> chooseDestination(e, null) }
+                is Screen.PlanEdit -> {
+                    val plan = store.plan(top.id)
+                    if (plan == null) LaunchedEffect(Unit) { nav = nav.pop() } else PlanBuilderScreen(
+                        plan, onChange = store::put, onBack = ::back, onAdd = { nav = nav.push(Screen.FindPlace(plan.id)) },
+                        onSave = {
+                            store.put(if (plan.status == PlanStatus.Draft && plan.routing) plan.copy(status = PlanStatus.Upcoming) else plan)
+                            noticeText = Strings.SAVED_TO_PROFILE
+                            nav = nav.pop()
+                        },
+                        onStart = { e -> chooseDestination(e, null) },
+                    )
+                }
+                Screen.PortfolioEdit -> PortfolioEditScreen(onBack = ::back)
+                Screen.Settings -> SettingsScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
-                        route, location, nearby, onSearch = { nav = nav.push(Screen.Search) }, onLocate = ::useMyLocation,
+                        route, location, nearby, onSearch = { nav = nav.push(Screen.FindPlace()) }, onLocate = ::useMyLocation,
                         onOpenPlace = { p -> nav = nav.openPlace(p.id) }, onSeeAll = { nav = nav.select(Tab.Discover) },
                     )
-                    Tab.Discover -> DiscoverScreen(discoverVm, placesListState) { p -> nav = nav.openPlace(p.id) }
-                    Tab.Journey -> JourneyScreen(route.recentDestinations) { e -> chooseDestination(e, null) }
-                    Tab.Profile -> ProfileScreen()
+                    Tab.Discover -> DiscoverScreen(
+                        discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, nearby = nearby,
+                        onRegion = { nav = nav.push(Screen.Region(it)) }, onTrip = { nav = nav.push(Screen.Trip(it)) }, onShowMap = { nav = nav.select(Tab.Map) },
+                    )
+                    Tab.Journey -> JourneyScreen(route.recentDestinations, onRoute = { e -> chooseDestination(e, null) }) { nav = nav.push(Screen.Trip(it)) }
+                    Tab.Profile -> ProfileScreen(
+                        store, onDesign = { nav = nav.push(Screen.PortfolioEdit) }, onSettings = { nav = nav.push(Screen.Settings) },
+                        onPlan = { nav = nav.push(Screen.PlanEdit(it)) },
+                        onNewPlan = { val p = store.newPlan(); store.put(p); nav = nav.push(Screen.PlanEdit(p.id)) },
+                        onStartPlan = ::startPlan, onPlace = { nav = nav.openPlace(it) }, onTrip = { nav = nav.push(Screen.Trip(it)) },
+                    )
                 }
             }
         }
         if (!nav.canPop) {
             BottomNav(nav.tab, Modifier.windowInsetsPadding(WindowInsets.navigationBars), onGo = { nav = nav.push(Screen.Search) }) { nav = nav.select(it) }
         }
+    }
+    // Short message for actions that only explain themselves (share, video, satellite…); read out by screen readers.
+    noticeText?.let { msg ->
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 16.dp, end = 16.dp, bottom = 96.dp), contentAlignment = Alignment.BottomCenter) {
+            Text(
+                msg, Modifier.clip(RoundedCornerShape(14.dp)).background(Palette.Ink).clickable { noticeText = null }.padding(horizontal = 16.dp, vertical = 12.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                color = Palette.OnPrimary, size = 14.sp,
+            )
+        }
+    }
     }
 }

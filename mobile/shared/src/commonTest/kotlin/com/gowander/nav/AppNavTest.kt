@@ -76,4 +76,14 @@ class AppNavTest {
         assertEquals(AppNav(), AppNav.restore(listOf("Nope", "Map|results|unknown")))
         assertEquals(AppNav(), AppNav.restore(emptyList()))
     }
+
+    @Test
+    fun canvasScreensSurviveSaveAndProcessDeath() {
+        val nav = AppNav().select(Tab.Discover).push(Screen.Region("tp-hcm")).push(Screen.Dish("com-tam")).push(Screen.PlanEdit("mot-ngay"))
+            .push(Screen.FindPlace("mot-ngay")).select(Tab.Profile).push(Screen.Settings).push(Screen.PortfolioEdit)
+            .select(Tab.Map).push(Screen.FindPlace()).push(Screen.Trip("kien-truc")).push(Screen.Results)
+        assertEquals(nav, AppNav.restore(nav.save()))
+        // After process death only the route screens go; guide, trip and plan pages stay.
+        assertEquals(listOf<Screen>(Screen.FindPlace(), Screen.Trip("kien-truc")), nav.dropRouteScreens().stack)
+    }
 }

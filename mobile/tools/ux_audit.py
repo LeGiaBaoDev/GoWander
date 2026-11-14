@@ -52,6 +52,16 @@ def audit(root, density, status_bar_px):
         _, ny1, _, ny2 = bounds(n)
         _, ay1, _, ay2 = bounds(a)
         return ny1 <= ay1 + 2 or ny2 >= ay2 - 2
+    def visible(n):
+        """Bounds cut by every ancestor: Compose reports a half-scrolled row at full size, beyond its list's edge."""
+        x1, y1, x2, y2 = bounds(n)
+        a = parent.get(n)
+        while a is not None:
+            ax1, ay1, ax2, ay2 = bounds(a)
+            if ax2 > ax1 and ay2 > ay1:
+                x1, y1, x2, y2 = max(x1, ax1), max(y1, ay1), min(x2, ax2), min(y2, ay2)
+            a = parent.get(a)
+        return x1, y1, x2, y2
     clickables = [n for n in root.iter("node") if n.get("clickable") == "true" and n.get("enabled", "true") == "true"
                   and n.get("package", PACKAGE) == PACKAGE]  # only GoWander, not the launcher or system UI
     problems = []
@@ -68,7 +78,7 @@ def audit(root, density, status_bar_px):
             problems.append(("T2", f"[{x1},{y1}]", "no text or content description"))
         if y1 < status_bar_px:
             problems.append(("T4", label or "?", f"top {y1}px < status bar {status_bar_px}px"))
-        boxes.append((x1, y1, x2, y2, label))
+        boxes.append((*visible(n), label))
     if not clickables:
         problems.append(("T0", "?", "no clickable element of the app found (wrong package or screen?)"))  # never pass on nothing
     for i, a in enumerate(boxes):
@@ -114,6 +124,11 @@ def self_test():
       <node clickable="true" text="Half" bounds="[0,960][1080,1000]"/><node clickable="true" text="Tiny" bounds="[0,400][40,440]"/></node></hierarchy>"""
     p2, _ = audit(ET.fromstring(scroll), 420, 0)
     assert [(p[0], p[1]) for p in p2] == [("T1", "Tiny")], p2  # a row cut by the list edge is not a T1 failure
+    # A row half scrolled out of its list must not "overlap" a button drawn below the list.
+    cut = """<hierarchy><node clickable="false" bounds="[0,0][1080,2400]"><node clickable="false" bounds="[0,300][1080,2000]">
+      <node clickable="true" text="Row" bounds="[0,1900][1080,2100]"/></node><node clickable="true" text="Go" bounds="[400,2050][600,2300]"/></node></hierarchy>"""
+    p3, _ = audit(ET.fromstring(cut), 420, 0)
+    assert not any(p[0] == "T3" for p in p3), p3
     empty, _ = audit(ET.fromstring("<hierarchy><node clickable='false' bounds='[0,0][10,10]'/></hierarchy>"), 420, 60)
     assert [p[0] for p in empty] == ["T0"], empty
     print("self-test ok")

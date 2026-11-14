@@ -371,15 +371,27 @@ private fun NudgeButton(glyph: String, label: String, enabled: Boolean, onClick:
 /** "2D | 3D" switch on the lower map (design screen 6); each half is a 48 dp target, the chosen one filled. */
 @Composable
 internal fun ViewSegment(view: MapView, modifier: Modifier = Modifier, onChange: (MapView) -> Unit) {
-    Row(modifier.kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg).semantics { contentDescription = Strings.LOWER_MAP_VIEW }) {
-        listOf(MapView.Flat to Strings.VIEW_2D, MapView.Tilted to Strings.VIEW_3D).forEach { (v, label) ->
+    var satelliteNote by remember { mutableStateOf(false) }
+    LaunchedEffect(satelliteNote) { if (satelliteNote) { delay(4000); satelliteNote = false } }
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(Modifier.kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg).semantics { contentDescription = Strings.LOWER_MAP_VIEW }) {
+        // Satellite is shown (owner, 14-11-2026) but only explains itself until a licensed provider is chosen.
+        listOf(MapView.Flat to Strings.VIEW_2D, MapView.Tilted to Strings.VIEW_3D, MapView.Satellite to Strings.VIEW_SATELLITE).forEach { (v, label) ->
             val on = view == v
             Box(
-                Modifier.size(width = 52.dp, height = 48.dp).semantics { selected = on }.clickable(role = Role.RadioButton) { onChange(v) }.padding(4.dp)
+                Modifier.sizeIn(minWidth = 52.dp, minHeight = 48.dp).semantics { selected = on }
+                    .clickable(role = Role.RadioButton) { if (v == MapView.Satellite) satelliteNote = true else onChange(v) }.padding(4.dp)
                     .clip(RoundedCornerShape(20.dp)).background(if (on) Palette.Primary else Palette.Bg),
                 contentAlignment = Alignment.Center,
-            ) { Text(label, size = 12.sp, weight = FontWeight.Bold, color = if (on) Palette.OnPrimary else Palette.Ink) }
+            ) { Text(label, Modifier.padding(horizontal = 8.dp), size = 12.sp, weight = FontWeight.Bold, color = if (on) Palette.OnPrimary else Palette.Ink) }
         }
+    }
+    if (satelliteNote) Text(
+        Strings.SATELLITE_PENDING,
+        Modifier.width(240.dp).kitShadow(RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(Palette.Bg).padding(10.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        size = 12.sp, color = Palette.Ink,
+    )
     }
 }
 

@@ -43,6 +43,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.gowander.ui.IconButton
 import com.gowander.ui.KitIcons
+import org.maplibre.compose.overlay.MapOverlayScope
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import com.gowander.ui.Note
 import com.gowander.ui.Strings
 import com.gowander.ui.kitShadow
@@ -116,6 +119,7 @@ fun RouteMap(
     streetLevel: Boolean = false, // preview top half: allow eye-level zoom and tilt beyond MapLibre's defaults (20, 60°)
     followZoom: Double = 17.5, // UX-2 split navigation: street view on top follows closer than the 2D map below
     followPitch: Double? = null, // null: from the user's 2D / 3D choice
+    markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
     val viewState = LocalMapView.current
     val view = viewState.value
@@ -180,7 +184,7 @@ fun RouteMap(
         // "Loại bản đồ" button when the map rotates in navigation (UX audit T2/T3, 14-11-2026); "Căn giữa lại" covers it.
         // No built-in controls: the default compass sat unlabeled on our button, and the expanding attribution bar
         // opened across the middle of the map on iOS (14-11-2026). The licence credit is drawn below instead.
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = { },
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = markers,
             cameraConstraints = if (streetLevel) STREET_LEVEL else CameraConstraints.Standard,
         )
         // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
@@ -216,6 +220,7 @@ fun MapViewSwitch(
     buttonPadding: PaddingValues = PaddingValues(0.dp),
     onChange: (MapView) -> Unit,
 ) {
+    var satelliteNote by remember(open) { mutableStateOf(false) }
     Box(modifier) {
         if (open) Box(
             Modifier.fillMaxSize().semantics { contentDescription = Strings.CLOSE_PANEL }
@@ -239,8 +244,10 @@ fun MapViewSwitch(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ViewTile(KitIcons.map, Strings.VIEW_2D, null, view == MapView.Flat, Modifier.weight(1f)) { onChange(MapView.Flat); onOpenChange(false) }
                     ViewTile(ExtraIcons.cube, Strings.VIEW_3D, null, view == MapView.Tilted, Modifier.weight(1f)) { onChange(MapView.Tilted); onOpenChange(false) }
-                    // Satellite comes back when a licensed provider is chosen (ADR-034: no "coming soon" controls).
+                    // Owner, 14-11-2026: show the satellite choice now; it only explains until a provider is chosen (PIPELINE mock register).
+                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, null, false, Modifier.weight(1f)) { satelliteNote = true }
                 }
+                if (satelliteNote) Note(Strings.SATELLITE_PENDING, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
     }

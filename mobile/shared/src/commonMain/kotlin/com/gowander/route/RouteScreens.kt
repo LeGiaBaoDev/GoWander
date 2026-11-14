@@ -14,12 +14,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import com.gowander.ui.kitShadow
+import com.gowander.ui.MockPhoto
+import com.gowander.ui.Pill
+import com.gowander.ui.Stars
+import com.gowander.home.MAP_FILTERS
+import com.gowander.home.spreadOut
+import com.gowander.mock.mockRating
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
+import org.maplibre.spatialk.geojson.Position
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
@@ -56,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
@@ -104,7 +115,10 @@ import kotlin.time.Clock
 
 // ---------- M1 Map ----------
 
-/** M1: real map, floating search, locate button and "Gợi ý gần bạn" sheet; shows the selected route if there is one. */
+/**
+ * UX-2 screen 1: real map with nearby places as floating cards (photo, name, category, sample stars, distance) pinned
+ * to their coordinates, a place search, filter chips, "Danh sách" and the locate button. Places without a card are dots.
+ */
 @Composable
 fun MapHome(
     state: RouteUiState,
@@ -116,44 +130,95 @@ fun MapHome(
     onSeeAll: () -> Unit,
 ) {
     val results = state.phase as? RoutePhase.Results
-    var nearbyOpen by rememberSaveable { mutableStateOf(true) }
-    Box(Modifier.fillMaxSize()) {
+    var filter by rememberSaveable { mutableStateOf(0) }
+    val shown = remember(nearby, filter) { MAP_FILTERS[filter].second.let { slugs -> nearby.filter { slugs == null || it.category?.slug in slugs } } }
+    // A card sits above its place (about 100 dp with the stem): skip places whose card would land under the search bar,
+    // the filters or the map-type button. The camera is not observable state, so poll it (as on the pick screen).
+    val mapRef = remember { mutableStateOf<MapState?>(null) }
+    var camera by remember { mutableStateOf<Any?>(null) }
+    LaunchedEffect(Unit) { while (true) { delay(500); mapRef.value?.cameraPosition?.let { if (it != camera) camera = it } } }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = maxWidth
+        val cards = remember(shown, camera, width) {
+            val free = shown.filter { p ->
+                val at = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon)) ?: return@filter true
+                at.y > CARD_TOP_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
+            }
+            spreadOut(free, minNorthM = CARD_SPACING_M, max = MAX_CARDS, minEastM = CARD_SPACING_EAST_M)
+        }
         RouteMap(
             results?.routes?.getOrNull(results.selected), state.origin, state.destination, location, Modifier.fillMaxSize(), viewSwitch = true,
-            insets = PaddingValues(top = 90.dp, bottom = if (nearby.isNotEmpty() && nearbyOpen) 320.dp else 150.dp),
-        )
-        Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SearchBar(Strings.WHERE_TO, Modifier.fillMaxWidth(), floating = true, onClick = onSearch) // language menu hidden until English exists (ADR-034)
+            insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
+        ) {
+            // Other places: small dots, spread out and decorative (too dense to tap safely); "Danh sách" lists them all.
+            spreadOut(shown.filter { it !in cards }, minNorthM = DOT_SPACING_M, max = MAX_DOTS).forEach { p ->
+                Box(Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon)).size(12.dp).clearAndSetSemantics { }.kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(Palette.Primary))
+            }
+            cards.forEach { p -> PlaceCard(p, Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon), Alignment.BottomCenter)) { onOpenPlace(p) } }
+        }
+        Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SearchBar(Strings.FIND_PLACE, Modifier.fillMaxWidth(), floating = true, onClick = onSearch)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MAP_FILTERS.forEachIndexed { i, (label, _) -> Pill(label, selected = i == filter) { filter = i } }
+            }
             if (results?.assumedData == true) Banner(Strings.DEMO_LABEL)
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.End) {
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.sizeIn(minHeight = 48.dp).kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg)
+                    .clickable(role = Role.Button, onClick = onSeeAll).padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(ExtraIcons.list, 18.dp, Palette.Primary)
+                Spacer(Modifier.width(8.dp))
+                Text(Strings.LIST, size = 13.sp, weight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.weight(1f))
             Box(
                 Modifier.size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg)
                     .semantics { contentDescription = Strings.USE_MY_LOCATION }
                     .clickable(role = Role.Button, onClick = onLocate),
                 contentAlignment = Alignment.Center,
-            ) { Icon(KitIcons.locate, 24.dp, Palette.Primary) }
-            Spacer(Modifier.height(12.dp))
-            // Collapsible so the map is never hidden for good: the title row stays visible and opens it again.
-            if (nearby.isNotEmpty()) Card(Modifier.fillMaxWidth(), shadow = true, gap = 0.dp) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        Modifier.weight(1f).sizeIn(minHeight = 48.dp)
-                            .semantics { contentDescription = if (nearbyOpen) Strings.HIDE_NEARBY else Strings.SHOW_NEARBY }
-                            .clickable(role = Role.Button) { nearbyOpen = !nearbyOpen },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(Strings.NEAR_YOU, size = 18.sp, weight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (nearbyOpen) "▾" else "▴", size = 18.sp, color = Palette.Muted)
-                    }
-                    Box(Modifier.sizeIn(minHeight = 48.dp, minWidth = 48.dp).clickable(role = Role.Button, onClick = onSeeAll), contentAlignment = Alignment.CenterEnd) {
-                        Text(Strings.SEE_ALL, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
-                    }
+            ) { Icon(ExtraIcons.send, 22.dp, Palette.Primary) }
+        }
+    }
+}
+
+private const val CARD_SPACING_M = 380.0 // ~card height + stem at the home zoom (15)
+private const val CARD_SPACING_EAST_M = 1100.0 // ~card width
+private const val MAX_CARDS = 4
+private val CARD_TOP_CLEAR = 300.dp // status bar + search + filters + card and stem
+private val CARD_LAYERS_CLEAR = 360.dp // ... plus the map-type button on the right
+private val CARD_HALF_WIDTH = 134.dp
+private const val DOT_SPACING_M = 120.0
+private const val MAX_DOTS = 12
+
+/** Floating card + stem + red dot; the dot sits on the place. One spoken label for the whole card. */
+@Composable
+private fun PlaceCard(p: PlaceSummary, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    val rating = mockRating(p.id)
+    val meta = listOfNotNull(p.category?.name, null, p.distanceM?.let { distanceLabel(it) })
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(
+            Modifier.widthIn(max = 268.dp).kitShadow(shape).clip(shape).background(Palette.Bg.copy(alpha = 0.96f)).border(1.dp, Palette.Line, shape)
+                .semantics(mergeDescendants = true) { contentDescription = "${p.name}, ${meta.joinToString(", ")}, ${Strings.SAMPLE_STARS} $rating" }
+                .clickable(role = Role.Button, onClick = onClick).padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MockPhoto(p.id, Modifier.size(48.dp), categoryIcon(p.category?.slug), radius = 10.dp, iconSize = 22.dp)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(p.name, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    p.category?.name?.let { Text("$it · ", size = 12.sp, color = Palette.Muted, maxLines = 1) }
+                    Stars(rating)
+                    p.distanceM?.let { Text(" · ${distanceLabel(it)}", size = 12.sp, color = Palette.Muted, maxLines = 1) }
                 }
-                if (nearbyOpen) nearby.take(2).forEach { p -> PlaceRow(p, onClick = { onOpenPlace(p) }) }
             }
         }
+        Box(Modifier.width(2.dp).height(28.dp).background(Palette.Primary))
+        Box(Modifier.size(16.dp).clip(CircleShape).background(Palette.Bg).padding(3.dp).clip(CircleShape).background(Palette.Accent))
     }
 }
 
@@ -191,6 +256,7 @@ fun SearchScreen(
     onChangeOrigin: () -> Unit = {},
     recent: List<Endpoint> = emptyList(),
     onPickRecent: (Endpoint) -> Unit = {},
+    forPlaces: Boolean = false, // screen 1 place search: no "Từ:" line, place-search placeholder
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }
@@ -220,11 +286,11 @@ fun SearchScreen(
                         text, { text = it }, Modifier.weight(1f).semantics { contentDescription = Strings.SEARCH_DESTINATION },
                         singleLine = true, textStyle = TextStyle(fontSize = 16.sp, color = Palette.Ink),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        decorationBox = { inner -> if (text.isEmpty()) Text(Strings.WHERE_TO, size = 16.sp, color = Palette.Muted, maxLines = 1); inner() },
+                        decorationBox = { inner -> if (text.isEmpty()) Text(if (forPlaces) Strings.FIND_PLACE else Strings.WHERE_TO, size = 16.sp, color = Palette.Muted, maxLines = 1); inner() },
                     )
                 }
             }
-            Row(Modifier.padding(start = 54.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!forPlaces) Row(Modifier.padding(start = 54.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).clip(CircleShape).background(Palette.Primary))
                 Spacer(Modifier.width(8.dp))
                 Text("${Strings.FROM}: ", size = 13.sp, color = Palette.Muted)

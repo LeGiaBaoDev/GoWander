@@ -178,6 +178,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 ### Phases (each one: tests, Android + iOS screenshots, `ux_audit`, `e2e_ux.py`, iOS UI tests, change record, owner review)
 1. **P1 Navigation shell:** 5 tabs, centre action, per-tab back stack in `commonMain`, no first-run screen, permission on demand, hide unfinished features, minimal real Journey/Profile screens.
 2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation; lower map has a 2D / 3D switch (satellite later). **DONE 14-11-2026** (Android E2E 63/63, iOS tests 65/65). **P2b:** voice guidance (platform TTS, `vi-VN`).
+   **All 17 canvas screens drawn 15-11-2026** with mock data where real data is missing (register above); Android E2E 85/85, iOS tests 73/73. Phases P3–P5 below now replace mocks with real data and storage.
 3. **P3 Map places:** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
 4. **P4 Discover:** Nearby + nationwide region map + TP.HCM region portfolio; tap image → show on map.
 5. **P5 Journey + Profile:** suggested trips, manual planner, Plans/Saved tabs stored on device (ADR for local storage first).
@@ -186,7 +187,15 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 
   | Screen / feature | Mock source | Replace with | Status |
   |---|---|---|---|
-  | Lower-map **Vệ tinh** (screens 6, 7) | none yet: only 2D / 3D shown, no "coming soon" control | licensed satellite provider (ADR-033), then add the third choice | LATER |
+  | **Vệ tinh** choice (map-type panel, lower map of screen 6) | UI only: shows "Chưa có ảnh vệ tinh…" and keeps the map (owner, 14-11-2026: "có giao diện, bấm vào thì để vậy") | licensed satellite provider (ADR-033) | MOCK (UI only) |
+  | Star ratings, review counts, rating split, reviews (screens 1, 2, 8, 14, 15) | `mock/MockData.kt`: `mockRating`, `mockReviewCount`, `MOCK_RATING_SPLIT`, `MOCK_REVIEWS` | real reviews (COM-1, accounts) | MOCK |
+  | All photos (places, trips, regions, dishes, portfolio) | `ui/Pieces.kt` `MockPhoto` (tinted tile + icon, "Ảnh mẫu") | licensed photos with credit (DATA-1 §4) | MOCK |
+  | Suggested trips (Journey, Discover card, region guide, Trip screen) | `MOCK_TRIPS` (real coordinates; "Bắt đầu chuyến" uses the real router) | editor-curated trips (CONTENT) | MOCK |
+  | Regions, region guide text, seasons, dishes, sample shops, story card | `MOCK_REGIONS`, `MOCK_GUIDE_INTRO`, `MOCK_OTHER_REGION_INTRO`, `MOCK_DISHES`, `MOCK_STORY_*` | curated content with sources (DATA-1 §4, CONTENT) | MOCK |
+  | Map of Vietnam (screen 13) | hand-drawn outline from the canvas in `discover/Regions.kt` (not to scale) | real country boundary (CONTENT) | MOCK |
+  | Portfolio: name, stats, about, featured trip, contributions, moments, section visibility | `MockPortfolio` | user account data (COM-1) | MOCK |
+  | Plans: sample upcoming/draft/done plans and planner suggestions | `MOCK_PLANS`, `MOCK_PLAN_SUGGESTIONS`; user-made plans and saved places live in `home/AppStore.kt`, memory only | on-device storage (P5 storage ADR) | MOCK |
+  | Buttons that only explain themselves: Chia sẻ, Viết đánh giá, Video 1:30, plan date / time / mode, portfolio Lưu | short notice via `LocalNotice` | COM-1 / P5 / CONTENT | MOCK (UI only) |
 
 - Out of UX-2: **COM-1** (accounts, reviews R2, community photos, public portfolio; needs ADR-022 + M07) and **CONTENT** (region guides, stories, trips, videos, country boundary; part of DATA-1).
 

@@ -71,6 +71,16 @@ object Palette {
     val Bus = Color(0xFF08805F)
     val Surface = Bg
     val Pin = Accent
+    // UX-2 canvas colours (screens 1-17): star rating, guide sections, profile theme.
+    val Amber = Color(0xFF7A4E0E)
+    val Sky = Color(0xFFDCEFF3)
+    val Body = Color(0xFF3D4F57)
+    val Night = Color(0xFF2A5563)
+    val Gold = Color(0xFFFFD167)
+    val Violet = Color(0xFF6B4FBB)
+    val VioletDark = Color(0xFF5A3FA8)
+    val VioletSoft = Color(0xFFF1ECFB)
+    val Green = Color(0xFFD6F0DF)
 }
 
 private val LocalKitFont = staticCompositionLocalOf<FontFamily> { FontFamily.Default }
@@ -124,7 +134,7 @@ fun Icon(icon: ImageVector, size: Dp = 24.dp, tint: Color = Palette.Ink, modifie
 fun Modifier.kitShadow(shape: Shape): Modifier =
     shadow(10.dp, shape, ambientColor = Palette.Ink.copy(alpha = 0.14f), spotColor = Palette.Ink.copy(alpha = 0.14f))
 
-enum class ButtonKind { Primary, Secondary, Soft, Accent, Outline }
+enum class ButtonKind { Primary, Secondary, Soft, Accent, Outline, Violet, VioletOutline }
 
 /** Kit button: radius 14, padding 15/18, label 15 SemiBold, optional leading icon; 48 dp minimum touch target. */
 @Composable
@@ -135,6 +145,8 @@ fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = Butt
         ButtonKind.Soft -> Triple(Palette.Soft, Palette.Primary, null)
         ButtonKind.Accent -> Triple(Palette.Accent, Palette.OnPrimary, null)
         ButtonKind.Outline -> Triple(Palette.Bg, Palette.Primary, Palette.Primary)
+        ButtonKind.Violet -> Triple(Palette.VioletDark, Palette.OnPrimary, null) // profile screens (canvas 11, 12, 17)
+        ButtonKind.VioletOutline -> Triple(Palette.Bg, Palette.Ink, Palette.Violet)
     }
     // pill: the round-ended buttons of the UX-2 route screens (design screens 5-7).
     val shape = RoundedCornerShape(if (pill) 999.dp else 14.dp)

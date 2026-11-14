@@ -166,7 +166,10 @@ class UxComponentTest {
         onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()
 
         onNodeWithContentDescription(Strings.MAP_VIEW).performClick()
-        onNodeWithText(Strings.VIEW_SATELLITE).assertDoesNotExist() // no "coming soon" tile until a provider exists (ADR-034)
+        // Owner, 14-11-2026: satellite is shown now but only explains itself; the map view does not change.
+        onNodeWithText(Strings.VIEW_SATELLITE).assertHeightIsAtLeast(48.dp).performClick()
+        onNodeWithText(Strings.SATELLITE_PENDING).assertExists()
+        assertEquals(MapView.Tilted, view)
 
         onNodeWithContentDescription(Strings.MAP_VIEW).performClick() // the same button closes it again
         onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()

@@ -14,9 +14,18 @@ sealed interface Screen {
     data object Navigation : Screen
     data class Preview(val start: Int) : Screen
     data class Place(val id: String) : Screen
+    /** Place search from the map (screen 1); with [planId] the chosen place is added to that plan instead. */
+    data class FindPlace(val planId: String? = null) : Screen
+    data class Region(val id: String) : Screen
+    data class Dish(val id: String) : Screen
+    data class Trip(val id: String) : Screen
+    data class PlanEdit(val id: String) : Screen
+    data object PortfolioEdit : Screen
+    data object Settings : Screen
 }
 
 private val ROUTE_FORM = setOf(Screen.Search, Screen.PickOrigin, Screen.PickDestination)
+private val ROUTE_SCREENS = ROUTE_FORM + setOf(Screen.Results, Screen.Detail, Screen.Steps, Screen.Navigation)
 
 /**
  * One back stack per tab (UX-2, ADR-034). Immutable: every move returns a new value, so the UI state is one
@@ -51,7 +60,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
     fun openPlace(id: String) = Screen.Place(id).let { p -> if (p in stack) popTo { it == p } else push(p) }
 
     /** After process death the route is gone: route screens would be empty, so only place pages are kept. */
-    fun dropRouteScreens() = copy(stacks = stacks.mapValues { (_, s) -> s.takeWhile { it is Screen.Place } })
+    fun dropRouteScreens() = copy(stacks = stacks.mapValues { (_, s) -> s.takeWhile { it !in ROUTE_SCREENS && it !is Screen.Preview } })
 
     /** Strings for `rememberSaveable`: the active tab, then one entry per tab with its screens. */
     fun save(): List<String> = listOf(tab.name) + stacks.map { (t, s) -> (listOf(t.name) + s.map(::encode)).joinToString(SEP) }
@@ -82,6 +91,13 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             Screen.Navigation -> "navigation"
             is Screen.Preview -> "preview:${s.start}"
             is Screen.Place -> "place:${s.id}"
+            is Screen.FindPlace -> "find:${s.planId ?: ""}"
+            is Screen.Region -> "region:${s.id}"
+            is Screen.Dish -> "dish:${s.id}"
+            is Screen.Trip -> "trip:${s.id}"
+            is Screen.PlanEdit -> "plan:${s.id}"
+            Screen.PortfolioEdit -> "portfolio_edit"
+            Screen.Settings -> "settings"
         }
 
         private fun decode(v: String): Screen = when {
@@ -94,6 +110,13 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v == "navigation" -> Screen.Navigation
             v.startsWith("preview:") -> Screen.Preview(v.removePrefix("preview:").toIntOrNull() ?: throw IllegalArgumentException(v))
             v.startsWith("place:") -> Screen.Place(v.removePrefix("place:"))
+            v.startsWith("find:") -> Screen.FindPlace(v.removePrefix("find:").ifEmpty { null })
+            v.startsWith("region:") -> Screen.Region(v.removePrefix("region:"))
+            v.startsWith("dish:") -> Screen.Dish(v.removePrefix("dish:"))
+            v.startsWith("trip:") -> Screen.Trip(v.removePrefix("trip:"))
+            v.startsWith("plan:") -> Screen.PlanEdit(v.removePrefix("plan:"))
+            v == "portfolio_edit" -> Screen.PortfolioEdit
+            v == "settings" -> Screen.Settings
             else -> throw IllegalArgumentException(v)
         }
     }
