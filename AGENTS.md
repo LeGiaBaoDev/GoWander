@@ -50,6 +50,7 @@ Steps 4–5 do not apply to research or documentation-only tasks. Steps 1, 2, 8,
 | **M07** Admin + RBAC | `feat/admin-rbac` | `ecc:architecture-decision-records` (stack choice), `ecc:frontend-patterns`, `ecc:security-review`, `ecc:e2e-testing`, `ecc:accessibility` | `ecc:architect`, `ecc:security-reviewer`, `ecc:e2e-runner`, `ecc:a11y-architect` |
 | **M08** Backup + PITR | `infra/database-backup` | `ecc:postgres-patterns`, `ecc:docker-patterns`, `ecc:deployment-patterns` | `ecc:database-reviewer`, `ecc:security-reviewer` |
 | **M09** CI + observability | `infra/ci-observability` | `ecc:deployment-patterns`, `ecc:github-ops`, `ecc:security-review` | `ecc:security-reviewer`, `ecc:silent-failure-hunter` |
+| **UX-2** App redesign (ADR-034) | `feat/ux-2-redesign` | `ecc:compose-multiplatform-patterns`, `ecc:kotlin-testing`, `ecc:accessibility`, `ecc:golang-patterns` (new API), `ecc:architecture-decision-records` | `ecc:kotlin-reviewer`, `ecc:a11y-architect`, `ecc:go-reviewer`, `ecc:silent-failure-hunter` — verify Android **and** iOS every phase |
 | **M10** Pilot gate | `release/pilot` | `ecc:production-audit`, `ecc:delivery-gate`, `/ecc:quality-gate` | `ecc:security-reviewer`, `ecc:code-reviewer` |
 
 Notes:

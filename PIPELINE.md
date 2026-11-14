@@ -98,6 +98,7 @@ Parallelization is allowed for independent PoCs, but a dependent milestone canno
 | **NAV-1** | Navigation mode (MVP level) | Heading arrow, follow-me camera, warning for approximate location/low accuracy, split screen: top MapLibre 3D extruded buildings pitched along heading + bottom 2D overview, synced in real time; turn-by-turn guidance; verified on physical Android + iPhone (compass/GPS) | DEFERRED — after the MVP pilot (owner, 13-11-2026); needs HTTPS server for physical devices. **14-11-2026: owner asked again for a "Bắt đầu" (Start) button like Google Maps: full-screen map that keeps following the user, paced to how fast they move** — proposed as the next task after RD-0 (MVP part: start button, full-screen follow camera, progress along the route, rerouting later). **IN PROGRESS on `feat/navigation` (14-11-2026, ADR-033):** turn-by-turn steps from OTP, "Bắt đầu" navigation mode (follow camera, next-instruction banner, ETA, off-route + re-plan), "Đường đi" list, split "Xem trước tuyến đường" (Mapillary street photo or 3D map on top, 2D map below), full-screen route detail, 2D/3D map switch (satellite waits for a licensed provider). Verified on Android emulator with simulated GPS (`docs/evidence/nav1/`); not yet on iOS or a physical device |
 | **UPG-1** | Upgrade phase: premium 3D/AR | Photorealistic 3D city (e.g. Google Photorealistic 3D Tiles + 3D engine) and/or camera AR arrows (ARCore/ARKit + VPS); cost, licensing and device-load ADR first | DEFERRED — upgrade phase (owner, 13-11-2026). Research notes (owner, 14-11-2026): infer missing lanes/direction/elevation for bridges and tunnels with deterministic geometry (OSM `bridge`/`tunnel`/`layer`/`lanes`/`incline`, open DEM, slope/curvature/continuity constraints) and automatic metrics; AI or human review only on samples, cheap models + batch for bulk checks. Data only from licensed sources (OSM, own or Mapillary-style CC dashcam, imagery whose licence allows tracing); **no scraping other map apps**; blur faces and plates; check the legality of publishing enforcement-camera locations; community uploads need contributor licence, moderation and personal-data compliance |
 | **RD-1** | Road-vehicle routing | Car, motorbike and bicycle routing in the pilot area with lanes, one-ways, turn restrictions and speeds; routing-engine ADR (OTP has no motorbike profile; evaluate e.g. Valhalla `motor_scooter`); same normalized API errors; verified route cases per vehicle | DEFERRED — after the MVP pilot (owner, 14-11-2026); data rules as in UPG-1. **Car + bicycle on the whole-HCMC OTP graph pulled forward into RD-0** (owner, 14-11-2026); motorbike, lanes and the routing-engine ADR stay here |
+| **UX-2** | App experience redesign (ADR-034) | 5-tab IA with centre "Đi đâu?" action; per-tab back stack; places as floating cards on the map; shared place sheet; route flow (unified destination search, grouped trips, 2-button detail, split 3D/2D step view and navigation, voice guidance); Discover with nationwide region map and region portfolios; Journey + manual trip planner; Profile with Portfolio · Plans · Saved. Every phase verified on Android **and** iOS (tests + screenshots). See §5c | APPROVED DESIGN (owner, 14-11-2026) — plan `docs/plans/UX-2-ke-hoach-lam-lai-trai-nghiem.md`; preview artifact; branch `feat/ux-2-redesign` from `develop` after `feat/navigation` merges; open questions in plan §16 |
 
 **Status is a plan baseline.** An agent must inspect the actual repository before updating it.
 
@@ -167,6 +168,22 @@ Measured graph build and serve numbers recorded; bus, car and bicycle itinerarie
 
 ### Gate
 Every dataset shown in the pilot has a register row with source, licence and status `IMPORTED`, or the screen that needs it is cut from the pilot scope. Official or permitted transit data is the M01 unblock path; if none arrives, M10 must document the assumed-data limitation and the owner must accept it explicitly.
+
+## 5c. UX-2 — App experience redesign
+
+> Approved by the owner on 14-11-2026 (ADR-034). Full design, screens and test cases: `docs/plans/UX-2-ke-hoach-lam-lai-trai-nghiem.md`. Backend, OTP and route logic stay; navigation, Map, place page, Discover, Journey and Profile are rebuilt step by step.
+
+### Phases (each one: tests, Android + iOS screenshots, `ux_audit`, `e2e_ux.py`, iOS UI tests, change record, owner review)
+1. **P1 Navigation shell:** 5 tabs, centre action, per-tab back stack in `commonMain`, no first-run screen, permission on demand, hide unfinished features, minimal real Journey/Profile screens.
+2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation. **P2b:** voice guidance (platform TTS, `vi-VN`).
+3. **P3 Map places:** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
+4. **P4 Discover:** Nearby + nationwide region map + TP.HCM region portfolio; tap image → show on map.
+5. **P5 Journey + Profile:** suggested trips, manual planner, Plans/Saved tabs stored on device (ADR for local storage first).
+6. **P6 Usability test** with 3–5 people.
+- Out of UX-2: **COM-1** (accounts, reviews R2, community photos, public portfolio; needs ADR-022 + M07) and **CONTENT** (region guides, stories, trips, videos, country boundary; part of DATA-1).
+
+### Gate
+All plan §14 test cases for the shipped phases pass on Android emulator and iOS simulator; screenshots of every new screen on both platforms; no "coming soon" controls; accessibility checks (labels, 48 dp targets, contrast, list alternative to map content) pass; owner signs off after P6.
 
 ## 6. M02 — OpenTripPlanner routing PoC
 
