@@ -17,6 +17,9 @@ type Config struct {
 	// DATABASE_URL, required: postgres:// URL of the runtime role gowander_app (ADR-028). Holds a password: never log it.
 	// Query time is bounded by the role's statement_timeout (5 s, infrastructure/postgres/init), not by the app.
 	DatabaseURL string
+	// PHOTON_URL: self-hosted Photon geocoder (infrastructure/photon), default http://127.0.0.1:2322. Optional at runtime:
+	// if it is down only address search fails (GEOCODER_UNAVAILABLE); readiness does not depend on it.
+	PhotonURL string
 }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
@@ -32,6 +35,7 @@ func Load(getenv func(string) string) (Config, error) {
 		OTPURL:      or("OTP_URL", "http://127.0.0.1:8088"),
 		DataStatus:  or("ROUTING_DATA_STATUS", "ASSUMED"),
 		DatabaseURL: getenv("DATABASE_URL"),
+		PhotonURL:   or("PHOTON_URL", "http://127.0.0.1:2322"),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -44,6 +48,9 @@ func Load(getenv func(string) string) (Config, error) {
 	c.OTPTimeout = t
 	if c.DataStatus != "ASSUMED" && c.DataStatus != "OFFICIAL" {
 		errs = append(errs, fmt.Errorf("ROUTING_DATA_STATUS must be ASSUMED or OFFICIAL, got %q", c.DataStatus))
+	}
+	if u, err := url.Parse(c.PhotonURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		errs = append(errs, errors.New("PHOTON_URL must be an absolute http(s) URL without credentials"))
 	}
 	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
 		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))

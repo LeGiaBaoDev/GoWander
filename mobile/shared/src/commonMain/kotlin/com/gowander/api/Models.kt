@@ -119,6 +119,20 @@ data class PlaceDetail(
     val foods: List<Food> = emptyList(),
 )
 
+/** An address or named place from GET /api/v1/geocode (Photon, OSM data). */
+@Serializable
+data class GeoResult(
+    val name: String,
+    val detail: String? = null,
+    val lat: Double,
+    val lon: Double,
+    val ref: String? = null,
+    val approximate: Boolean = false, // a house number was typed but this result has none
+)
+
+@Serializable
+internal data class GeocodeResponse(val results: List<GeoResult>)
+
 @Serializable
 internal data class ErrorEnvelope(val error: ErrorBody)
 

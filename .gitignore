@@ -69,6 +69,7 @@ infrastructure/otp/**/*.pbf
 infrastructure/otp/**/*.zip
 infrastructure/otp/**/cache/
 infrastructure/otp/work/
+infrastructure/photon/work/
 
 # Database volumes, dumps and backups
 infrastructure/postgres/data/

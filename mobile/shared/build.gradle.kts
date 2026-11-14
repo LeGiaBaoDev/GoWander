@@ -30,6 +30,7 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
             implementation(libs.compose.ui.backhandler)
+            implementation(libs.compose.components.resources)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.maplibre.compose)
             implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -49,4 +50,10 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+// Fonts and other resources in src/commonMain/composeResources (ADR-030).
+compose.resources {
+    packageOfResClass = "com.gowander.resources"
+    publicResClass = false
 }

@@ -10,6 +10,7 @@ Output: data/discover/seed.sql (idempotent upserts, load with infrastructure/pos
     python3 scripts/build_discover_seed.py              # needs osmium and data/raw/osm/vietnam-*.osm.pbf
     python3 scripts/build_discover_seed.py --self-test
 """
+import ast
 import csv
 import hashlib
 import json
@@ -24,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STOPS = ROOT / "data" / "assumed" / "hcmc-metro-l1-gtfs" / "stops.txt"
+GTFS_BUILDER = ROOT / "scripts" / "build_metro_l1_assumed_gtfs.py"  # station names, coordinates and OSM node ids
 CURATED = ROOT / "data" / "curated" / "places.csv"
 OUT_DIR = ROOT / "data" / "discover"
 RADIUS_M = 800
@@ -33,6 +35,7 @@ OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 
 # slug, name (vi), name (en), sort order. Order is also the priority for the primary category.
 CATEGORIES = [
+    ("station", "Ga metro", "Metro stations", 5),  # ADR-030: stations are searchable like places
     ("museum", "Bảo tàng", "Museums", 10),
     ("historic", "Di tích lịch sử", "Historic sites", 20),
     ("attraction", "Điểm tham quan", "Attractions", 30),
@@ -116,6 +119,19 @@ def sql(value):
 def load_stations():
     with STOPS.open(encoding="utf-8") as f:
         return [(float(r["stop_lat"]), float(r["stop_lon"])) for r in csv.DictReader(f)]
+
+
+def station_places():
+    """The 14 Metro Line 1 stations as places (OSM nodes, ODbL). Read with ast, not import: no code runs."""
+    tree = ast.parse(GTFS_BUILDER.read_text(encoding="utf-8"))
+    rows = next(ast.literal_eval(n.value) for n in tree.body
+                if isinstance(n, ast.Assign) and any(getattr(t, "id", None) == "STATIONS" for t in n.targets))
+    return [{
+        "name": f"Ga {name}", "name_en": None, "slug": f"ga-{slugify(name)}", "short_description": None,
+        "lat": lat, "lon": lon, "address": f"Metro số 1 · {code}", "categories": ["station"],
+        "source": "OSM", "source_ref": f"node/{node}", "source_url": f"https://www.openstreetmap.org/node/{node}",
+        "license": OSM_LICENSE, "attribution": OSM_ATTRIBUTION,
+    } for code, name, lat, lon, node in rows]
 
 
 def osm_places(osm_file, stations):
@@ -240,6 +256,9 @@ def self_test():
     assert address({}) is None
     assert osm_ref("n42") == "node/42" and osm_ref("a84") == "way/42" and osm_ref("a85") == "relation/42"
     assert sql("O'Brien") == "'O''Brien'" and sql(None) == "NULL"
+    st = station_places()
+    assert len(st) == 14 and st[0]["name"] == "Ga Bến Thành" and st[0]["source_ref"] == "node/11586280308"
+    assert st[-1]["slug"] == "ga-ben-xe-suoi-tien" and st[0]["categories"] == ["station"]
     print("self-test ok")
 
 
@@ -253,7 +272,9 @@ def main():
     stations = load_stations()
     osm, skipped = osm_places(osm_file, stations)
     curated = curated_places()
-    places = sorted(osm, key=lambda p: p["source_ref"]) + curated
+    stations_as_places = station_places()
+    taken = {p["source_ref"] for p in stations_as_places}
+    places = stations_as_places + sorted((p for p in osm if p["source_ref"] not in taken), key=lambda p: p["source_ref"]) + curated
     osm_md5 = hashlib.md5(osm_file.read_bytes()).hexdigest()
     built = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     header = [
@@ -265,7 +286,7 @@ def main():
     per_cat = {s: sum(p["categories"][0] == s for p in places) for s in CATEGORY_SLUGS}
     manifest = [
         f"built_at={built}", f"osm_file={osm_file.name}", f"osm_md5={osm_md5}", f"radius_m={RADIUS_M}", f"bbox={BBOX}",
-        f"stations={len(stations)}", f"osm_places={len(osm)}", f"curated_places={len(curated)}",
+        f"stations={len(stations)}", f"station_places={len(stations_as_places)}", f"osm_places={len(osm)}", f"curated_places={len(curated)}",
         f"osm_with_name_en={sum(1 for p in osm if p['name_en'])}",
         *(f"skipped_{k}={v}" for k, v in skipped.items()), *(f"primary_{k}={v}" for k, v in per_cat.items()),
     ]

@@ -102,6 +102,29 @@ class GoWanderApiTest {
     }
 
     @Test
+    fun geocodeSendsQueryAndBiasAndParsesResults() = runTest {
+        val body = """{"results":[{"name":"770 Tỉnh lộ 15","detail":"Xã Tân Thạnh Đông, Huyện Củ Chi","lat":11.0,"lon":106.5,"ref":"way/2"}],
+            "source":{"provider":"Photon","attribution":"© OpenStreetMap contributors","license":"ODbL-1.0"}}"""
+        val res = api(HttpStatusCode.OK, body).geocode("770 tinh lo 15", near = LatLon(10.77, 106.7))
+        val url = requests.last().url
+        assertEquals("/api/v1/geocode", url.encodedPath)
+        assertEquals("770 tinh lo 15", url.parameters["q"])
+        assertEquals("10.77", url.parameters["lat"])
+        assertEquals("770 Tỉnh lộ 15", res.single().name)
+        assertEquals(false, res.single().approximate)
+
+        val rev = api(HttpStatusCode.OK, """{"results":[{"name":"Lê Lợi","detail":"Phường Bến Thành","lat":10.7726,"lon":106.6996}],"source":{}}""")
+            .reverseGeocode(LatLon(10.7725, 106.6990))
+        assertEquals("/api/v1/geocode/reverse", requests.last().url.encodedPath)
+        assertEquals("106.699", requests.last().url.parameters["lon"])
+        assertEquals("Lê Lợi", rev.single().name)
+        val down = assertFailsWith<ApiError.Server> {
+            api(HttpStatusCode.ServiceUnavailable, """{"error":{"code":"GEOCODER_UNAVAILABLE","message":"Tìm địa chỉ tạm thời không hoạt động.","requestId":"x"}}""").geocode("abc", null)
+        }
+        assertEquals("GEOCODER_UNAVAILABLE", down.code)
+    }
+
+    @Test
     fun discoverEndpoints() = runTest {
         val cats = api(HttpStatusCode.OK, Fixtures.CATEGORIES).categories()
         assertEquals("museum", cats.first().slug)
