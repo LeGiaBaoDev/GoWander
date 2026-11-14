@@ -222,6 +222,7 @@ fun PlanScreen(
     onPickOrigin: () -> Unit,
     onPickDestination: () -> Unit,
     onArriveBy: (Long?) -> Unit,
+    onMode: (TravelMode) -> Unit,
     onRecent: (Endpoint) -> Unit,
     onSwap: () -> Unit,
     onSearch: () -> Unit,
@@ -244,6 +245,13 @@ fun PlanScreen(
             Chip(Strings.USE_MY_LOCATION, onClick = onUseMyLocation)
             Spacer(Modifier.width(8.dp))
             Chip(Strings.PICK_ON_MAP + " (đi)", onClick = onPickOrigin)
+        }
+        Row(Modifier.fillMaxWidth()) {
+            listOf(TravelMode.Transit to Strings.MODE_TRANSIT, TravelMode.Bicycle to Strings.MODE_BICYCLE, TravelMode.Car to Strings.MODE_CAR)
+                .forEachIndexed { i, (mode, label) ->
+                    if (i > 0) Spacer(Modifier.width(8.dp))
+                    Chip(label, selected = state.mode == mode) { onMode(mode) }
+                }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Chip(Strings.LEAVE_NOW, selected = state.arriveBy == null) { onArriveBy(null) }
@@ -382,6 +390,7 @@ fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onSort: (RouteSort) -
                     }
                     p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
                     if (p.assumedData) Note(Strings.ASSUMED_NOTE)
+                    if (p.routes.any { r -> r.legs.any { it.mode == "CAR" } }) Note(Strings.CAR_NOTE)
                 }
             }
         }
@@ -406,10 +415,11 @@ private fun RouteOptionCard(r: Route, highlight: Boolean, tag: String?, onClick:
     }
 }
 
-private fun modeOf(leg: Leg) = when {
-    !leg.transit -> ModeKind.Walk
-    leg.mode == "BUS" -> ModeKind.Bus
-    else -> ModeKind.Metro
+private fun modeOf(leg: Leg) = when (leg.mode) {
+    "BUS" -> ModeKind.Bus
+    "CAR" -> ModeKind.Car
+    "BICYCLE" -> ModeKind.Bicycle
+    else -> if (leg.transit) ModeKind.Metro else ModeKind.Walk
 }
 
 // ---------- M6 route detail ----------
@@ -426,7 +436,8 @@ fun DetailScreen(state: RouteUiState, location: LocationState, onBack: () -> Uni
         RouteMap(route, state.origin, state.destination, location, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)), DpPadding(24.dp, 24.dp, 24.dp, 24.dp))
         if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
         Text(Strings.minutes(route.durationSec), size = 28.sp, weight = FontWeight.Bold)
-        Note("${if (p.assumedData) "Theo lịch ước tính" else Strings.SCHEDULED} · ${Strings.ARRIVE_ABOUT} ${clock(route.endTime)}")
+        val timed = route.legs.any { it.transit }
+        Note("${if (!timed) "Ước tính" else if (p.assumedData) "Theo lịch ước tính" else Strings.SCHEDULED} · ${Strings.ARRIVE_ABOUT} ${clock(route.endTime)}")
         Card(Modifier.fillMaxWidth(), gap = 4.dp) {
             route.legs.forEachIndexed { i, leg ->
                 waits[i]?.let { ListRow("${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Ink) }) }
@@ -439,23 +450,26 @@ fun DetailScreen(state: RouteUiState, location: LocationState, onBack: () -> Uni
             state.nearAlighting.forEach { PlaceRow(it) { onOpenPlace(it) } }
         }
         if (p.assumedData) Note(Strings.ASSUMED_NOTE)
+        if (route.legs.any { it.mode == "CAR" }) Note(Strings.CAR_NOTE)
     }
 }
 
 @Composable
 private fun LegRow(leg: Leg) {
     if (leg.transit) {
-        val name = leg.line?.shortName?.let { "Metro $it" } ?: leg.mode
+        val bus = leg.mode == "BUS"
+        val name = leg.line?.shortName?.let { "${if (bus) Strings.BUS else "Metro"} $it" } ?: leg.mode
         ListRow(
             "$name · ${leg.headsign?.let { "${Strings.TOWARDS} $it" } ?: ""}".trimEnd(' ', '·'),
             "${clock(leg.startTime)} ${leg.from.name} → ${leg.to.name} · ${Strings.minutes(leg.durationSec)}" + if (!leg.realtime) " · ${Strings.SCHEDULED}" else "",
-            lead = { Badge(KitIcons.metro, Palette.Metro, Palette.OnPrimary) },
+            lead = { if (bus) Badge(KitIcons.bus, Palette.Bus, Palette.OnPrimary) else Badge(KitIcons.metro, Palette.Metro, Palette.OnPrimary) },
         )
     } else {
+        val verb = when (leg.mode) { "CAR" -> Strings.DRIVE; "BICYCLE" -> Strings.CYCLE; else -> Strings.WALK }
         ListRow(
-            "${Strings.WALK} ${Strings.minutes(leg.durationSec)}",
+            "$verb ${Strings.minutes(leg.durationSec)}",
             "${if (leg.to.stopId != null) "Tới ga ${leg.to.name}" else "Tới ${leg.to.name.takeUnless { it == "Destination" } ?: Strings.DESTINATION.lowercase()}"} · ${Strings.meters(leg.distanceM)}",
-            lead = { Badge(KitIcons.walk, Palette.Subtle, Palette.Ink) },
+            lead = { Badge(if (leg.mode == "WALK") KitIcons.walk else KitIcons.route, Palette.Subtle, Palette.Ink) },
         )
     }
 }

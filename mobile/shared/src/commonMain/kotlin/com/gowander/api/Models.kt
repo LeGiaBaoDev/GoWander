@@ -14,6 +14,7 @@ data class PlanRequest(
     val dateTime: String? = null, // RFC 3339 with offset; null = now (server time)
     val timeType: String = "DEPART",
     val maxResults: Int = 3,
+    val modes: List<String>? = null, // null = server default (walk + public transport); ["CAR"] / ["BICYCLE"] alone
 )
 
 @Serializable

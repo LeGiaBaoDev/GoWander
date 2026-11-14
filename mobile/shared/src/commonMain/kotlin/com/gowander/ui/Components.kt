@@ -188,7 +188,7 @@ fun Card(modifier: Modifier = Modifier, shadow: Boolean = false, bg: Color = Pal
 fun Badge(icon: ImageVector, bg: Color, fg: Color, size: Dp = 40.dp) =
     Box(Modifier.size(size).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) { Icon(icon, size / 2, fg) }
 
-enum class ModeKind { Walk, Metro, Bus }
+enum class ModeKind { Walk, Metro, Bus, Bicycle, Car }
 
 /** Kit `mode` pill: icon + short label, radius 8; walking is light, metro/bus filled with their colour. */
 @Composable
@@ -197,6 +197,8 @@ fun ModePill(kind: ModeKind, label: String) {
         ModeKind.Walk -> Triple(Palette.Subtle, Palette.Ink, KitIcons.walk)
         ModeKind.Metro -> Triple(Palette.Metro, Palette.OnPrimary, KitIcons.metro)
         ModeKind.Bus -> Triple(Palette.Bus, Palette.OnPrimary, KitIcons.bus)
+        // shortcut: the Design Kit has no car/bicycle icon; the route icon + text label is used until it does.
+        ModeKind.Bicycle, ModeKind.Car -> Triple(Palette.Subtle, Palette.Ink, KitIcons.route)
     }
     Row(
         Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(start = 8.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),

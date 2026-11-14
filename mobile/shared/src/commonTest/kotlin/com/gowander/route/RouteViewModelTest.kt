@@ -50,6 +50,22 @@ class RouteViewModelTest {
     }
 
     @Test
+    fun travelModeIsSentAndChangingItClearsResults() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }
+        assertEquals(null, api.planCalls.last().modes) // public transport: server default (walk + metro + bus)
+        vm.setMode(TravelMode.Car)
+        assertIs<RoutePhase.Idle>(vm.state.value.phase)
+        assertEquals(TravelMode.Car, vm.state.value.mode)
+        vm.search()
+        assertEquals(listOf("CAR"), api.planCalls.last().modes)
+        vm.setMode(TravelMode.Bicycle)
+        vm.search()
+        assertEquals(listOf("BICYCLE"), api.planCalls.last().modes)
+        vm.setMode(TravelMode.Bicycle) // same mode: results kept
+        assertIs<RoutePhase.Results>(vm.state.value.phase)
+    }
+
+    @Test
     fun failureKeepsEndpointsAndRetryUsesThem() = runTest {
         api.plan = { throw ApiError.Server("ROUTING_TIMEOUT", "Tìm tuyến quá lâu, vui lòng thử lại.", 504) }
         val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }

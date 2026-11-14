@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: GoWander API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
     Quyết định: docs/decisions/ADR-027-go-routing-api.md.
@@ -228,9 +228,11 @@ components:
           type: array
           minItems: 1
           uniqueItems: true
-          items: { type: string, enum: [WALK, TRANSIT] }
+          items: { type: string, enum: [WALK, TRANSIT, CAR, BICYCLE] }
           default: [WALK, TRANSIT]
-          description: '[WALK] = chỉ đi bộ; [TRANSIT] = bắt buộc dùng phương tiện công cộng; cả hai = để hệ thống chọn.'
+          description: >-
+            [WALK] = chỉ đi bộ; [TRANSIT] = bắt buộc dùng phương tiện công cộng (Metro, xe buýt); cả hai = để hệ thống chọn.
+            [CAR] hoặc [BICYCLE] = chỉ đi bằng ô tô / xe đạp, phải đứng một mình (RD-0, ADR-032). Thời gian ô tô không tính kẹt xe.
         maxResults: { type: integer, minimum: 1, maximum: 5, default: 3 }
     PlanResponse:
       type: object
@@ -260,7 +262,7 @@ components:
       type: object
       required: [mode, transit, from, to, startTime, endTime, durationSec, distanceM, realtime, polyline]
       properties:
-        mode: { type: string, description: 'Ví dụ WALK, SUBWAY, BUS' }
+        mode: { type: string, description: 'Ví dụ WALK, SUBWAY, BUS, CAR, BICYCLE' }
         transit: { type: boolean }
         from: { $ref: '#/components/schemas/Place' }
         to: { $ref: '#/components/schemas/Place' }

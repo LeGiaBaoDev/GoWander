@@ -1,0 +1,138 @@
+feed_version=osm-assumed-2026-11-14
+osm_file=vietnam-261111.osm.pbf
+osm_md5=a870588bd665a4f92f3af92dc60d01f2
+bbox=106.35,10.35,107.05,11.2
+agency=39
+routes=151
+stops=5001
+calendar=4
+trips=234
+stop_times=9450
+frequencies=220
+shapes=138654
+relations_used=230
+stops_dropped_outside_extract_or_off_shape=117
+relations_skipped=119
+skipped_no_interval=11
+skipped_no_opening_hours=2
+skipped_no_shape=96
+skipped_too_few_stops=10
+skipped relation/13632526 ref=109 reason=no_shape
+skipped relation/14783751 ref=03 reason=no_shape
+skipped relation/15002484 ref=02 reason=no_shape
+skipped relation/15009791 ref=03 reason=no_shape
+skipped relation/15049780 ref=11 reason=no_shape
+skipped relation/15408810 ref=08 reason=no_shape
+skipped relation/16759154 ref=16 reason=no_shape
+skipped relation/17373201 ref=03 reason=no_shape
+skipped relation/17373204 ref=04 reason=no_shape
+skipped relation/17374911 ref=05 reason=no_shape
+skipped relation/17375837 ref=07 reason=no_shape
+skipped relation/17379409 ref=13 reason=no_shape
+skipped relation/17384717 ref=19 reason=no_shape
+skipped relation/17384720 ref=20 reason=no_shape
+skipped relation/17398516 ref=27 reason=no_shape
+skipped relation/17398519 ref=28 reason=no_shape
+skipped relation/17400204 ref=29 reason=no_shape
+skipped relation/17403858 ref=30 reason=no_shape
+skipped relation/17406365 ref=34 reason=no_shape
+skipped relation/17408202 ref=36 reason=no_shape
+skipped relation/17409007 ref=39 reason=no_shape
+skipped relation/17409010 ref=41 reason=no_shape
+skipped relation/17409551 ref=43 reason=no_shape
+skipped relation/17409552 ref=43 reason=no_shape
+skipped relation/17428226 ref=50 reason=no_shape
+skipped relation/17431070 ref=52 reason=no_shape
+skipped relation/17431071 ref=52 reason=no_shape
+skipped relation/17432869 ref=56 reason=no_shape
+skipped relation/17438210 ref=59 reason=no_shape
+skipped relation/17438213 ref=60-1 reason=no_shape
+skipped relation/17438214 ref=60-1 reason=no_shape
+skipped relation/17438216 ref=60-2 reason=no_shape
+skipped relation/17438217 ref=60-2 reason=no_shape
+skipped relation/17438219 ref=60-3 reason=no_shape
+skipped relation/17438220 ref=60-3 reason=no_shape
+skipped relation/17445017 ref=62 reason=no_shape
+skipped relation/17445025 ref=62-5 reason=no_shape
+skipped relation/17445026 ref=62-5 reason=no_shape
+skipped relation/17448142 ref=62-6 reason=no_shape
+skipped relation/17448145 ref=62-7 reason=no_shape
+skipped relation/17459416 ref=62-10 reason=no_shape
+skipped relation/17459417 ref=62-10 reason=no_shape
+skipped relation/17459422 ref=63-1 reason=no_shape
+skipped relation/17459423 ref=63-1 reason=no_shape
+skipped relation/17459426 ref=64 reason=no_shape
+skipped relation/17461756 ref=65 reason=no_shape
+skipped relation/17461760 ref=67 reason=no_shape
+skipped relation/17461765 ref=69 reason=no_shape
+skipped relation/17462763 ref=72 reason=no_shape
+skipped relation/17462764 ref=72 reason=no_shape
+skipped relation/17464016 ref=72-1 reason=no_shape
+skipped relation/17464017 ref=72-1 reason=no_shape
+skipped relation/17464019 ref=73 reason=no_shape
+skipped relation/17464020 ref=73 reason=no_shape
+skipped relation/17465140 ref=75 reason=no_shape
+skipped relation/17465149 ref=76 reason=no_shape
+skipped relation/17465151 ref=77 reason=no_shape
+skipped relation/17502789 ref=84 reason=no_shape
+skipped relation/17502792 ref=85 reason=no_shape
+skipped relation/17502793 ref=85 reason=no_shape
+skipped relation/17513303 ref=93 reason=no_shape
+skipped relation/17514916 ref=99 reason=no_shape
+skipped relation/17514917 ref=99 reason=no_shape
+skipped relation/17514922 ref=101 reason=no_shape
+skipped relation/17514923 ref=101 reason=no_shape
+skipped relation/17529262 ref=102 reason=no_shape
+skipped relation/17529263 ref=102 reason=no_shape
+skipped relation/17529265 ref=103 reason=no_shape
+skipped relation/17538278 ref=140 reason=no_shape
+skipped relation/17540724 ref=148 reason=no_shape
+skipped relation/17540728 ref=150 reason=no_shape
+skipped relation/17541143 ref=D4 reason=no_shape
+skipped relation/17541146 ref=180 reason=no_shape
+skipped relation/17549692 ref=07 reason=no_shape
+skipped relation/17555776 ref=10 reason=no_shape
+skipped relation/17555778 ref=11 reason=no_shape
+skipped relation/17556784 ref=16 reason=no_shape
+skipped relation/18282598 ref=61-38 reason=no_interval
+skipped relation/18282599 ref=61-38 reason=no_interval
+skipped relation/18292556 ref=61-39 reason=no_interval
+skipped relation/18292558 ref=61-51 reason=no_interval
+skipped relation/18292559 ref=61-51 reason=no_interval
+skipped relation/18292568 ref=61-55 reason=no_shape
+skipped relation/18292576 ref=61-70 reason=no_interval
+skipped relation/18293567 ref=61-70 reason=no_interval
+skipped relation/18293569 ref=61-73 reason=no_interval
+skipped relation/18293570 ref=61-73 reason=no_interval
+skipped relation/18293572 ref=61-77 reason=no_interval
+skipped relation/18293573 ref=61-77 reason=no_interval
+skipped relation/18443985 ref=153 reason=no_shape
+skipped relation/18443988 ref=154 reason=no_shape
+skipped relation/18444366 ref=154 reason=no_shape
+skipped relation/18444369 ref=156V reason=no_shape
+skipped relation/18444372 ref=157 reason=no_shape
+skipped relation/18444376 ref=160 reason=no_shape
+skipped relation/18445408 ref=162 reason=no_shape
+skipped relation/18445414 ref=164D reason=no_shape
+skipped relation/18445647 ref=168V reason=no_shape
+skipped relation/18708631 ref=60-7 reason=no_shape
+skipped relation/18876461 ref=02 reason=too_few_stops
+skipped relation/18876462 ref=02 reason=too_few_stops
+skipped relation/18876468 ref=04 reason=too_few_stops
+skipped relation/18876470 ref=61-4 reason=no_shape
+skipped relation/18876473 ref=11 reason=too_few_stops
+skipped relation/18876474 ref=11 reason=too_few_stops
+skipped relation/18877937 ref=611 reason=no_shape
+skipped relation/18877940 ref=614 reason=too_few_stops
+skipped relation/18877941 ref=614 reason=too_few_stops
+skipped relation/19012196 ref=TIA reason=no_opening_hours
+skipped relation/19012197 ref=TIA reason=no_opening_hours
+skipped relation/19475089 ref=72-2B reason=no_shape
+skipped relation/19567674 ref=86 reason=no_shape
+skipped relation/19776378 ref=- reason=too_few_stops
+skipped relation/19776549 ref=171 reason=no_shape
+skipped relation/19776550 ref=171 reason=no_shape
+skipped relation/19776553 ref=172 reason=no_shape
+skipped relation/20340577 ref=72-2C reason=too_few_stops
+skipped relation/20340578 ref=72-2C reason=too_few_stops
+skipped relation/20341214 ref=170 reason=no_shape

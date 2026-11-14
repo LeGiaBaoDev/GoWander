@@ -150,7 +150,7 @@ fun App() = KitTheme {
                 tab == Tab.Plan -> PlanScreen(
                     route, onEditDestination = { overlay = Overlay.Search }, onUseMyLocation = ::useMyLocation,
                     onPickOrigin = { overlay = Overlay.PickOrigin }, onPickDestination = { overlay = Overlay.PickDestination },
-                    onArriveBy = routeVm::setArriveBy, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
+                    onArriveBy = routeVm::setArriveBy, onMode = routeVm::setMode, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
                 )
                 else -> DiscoverScreen(discoverVm, placesListState) { place ->
                     routeVm.setDestination(Endpoint(place.lat, place.lon, place.name))

@@ -18,6 +18,9 @@ import kotlinx.coroutines.launch
 
 data class Endpoint(val lat: Double, val lon: Double, val label: String)
 
+/** Plan-screen choice; [apiModes] is what the API gets (null = its default: walk + metro + bus). RD-0, ADR-032. */
+enum class TravelMode(val apiModes: List<String>?) { Transit(null), Bicycle(listOf("BICYCLE")), Car(listOf("CAR")) }
+
 sealed interface RoutePhase {
     data object Idle : RoutePhase
     data object Loading : RoutePhase
@@ -30,6 +33,7 @@ data class RouteUiState(
     val destination: Endpoint? = null,
     val phase: RoutePhase = RoutePhase.Idle,
     val arriveBy: Long? = null, // epoch millis; null = leave now (M3 chips)
+    val mode: TravelMode = TravelMode.Transit,
     val sort: RouteSort = RouteSort.Fastest,
     val recentDestinations: List<Endpoint> = emptyList(), // newest first, this session only
     val detailOpen: Boolean = false, // M6 for the selected route
@@ -54,6 +58,13 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
         if (epochMillis == _state.value.arriveBy) return
         job?.cancel()
         _state.update { it.copy(arriveBy = epochMillis, phase = RoutePhase.Idle, detailOpen = false) }
+    }
+
+    /** Public transport / bicycle / car. Clears stale results like an endpoint change. */
+    fun setMode(mode: TravelMode) {
+        if (mode == _state.value.mode) return
+        job?.cancel()
+        _state.update { it.copy(mode = mode, phase = RoutePhase.Idle, detailOpen = false) }
     }
 
     /** M5 chips: reorder without a new request; the chosen route stays chosen. */
@@ -100,10 +111,15 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
                     PlanRequest(
                         LatLon(origin.lat, origin.lon), LatLon(destination.lat, destination.lon),
                         dateTime = arrive?.let(::pilotIso), timeType = if (arrive != null) "ARRIVE" else "DEPART",
+                        modes = _state.value.mode.apiModes,
                     ),
                 )
                 if (res.routes.isEmpty()) RoutePhase.Failed(Strings.NO_ROUTE, retryable = false)
-                else RoutePhase.Results(sortRoutes(res.routes, _state.value.sort), selected = 0, assumedData = res.dataStatus == "ASSUMED")
+                else RoutePhase.Results(
+                    sortRoutes(res.routes, _state.value.sort), selected = 0,
+                    // Car/bicycle-only results use no timetable, so the assumed-timetable label does not apply.
+                    assumedData = res.dataStatus == "ASSUMED" && res.routes.any { r -> r.legs.any { it.transit } },
+                )
             } catch (e: ApiError) {
                 failure(e)
             }

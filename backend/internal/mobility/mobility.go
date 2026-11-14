@@ -17,8 +17,9 @@ type Coordinate struct {
 type Query struct {
 	Origin, Destination Coordinate
 	DateTime            time.Time
-	ArriveBy            bool // true: arrive before DateTime; false: depart after DateTime
-	Walk, Transit       bool // allowed modes; at least one is true
+	ArriveBy            bool   // true: arrive before DateTime; false: depart after DateTime
+	Walk, Transit       bool   // allowed modes; at least one is true unless Direct is set
+	Direct              string // "CAR" or "BICYCLE": that mode alone, no transit (RD-0); "" otherwise
 	MaxResults          int
 }
 

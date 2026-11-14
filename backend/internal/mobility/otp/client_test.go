@@ -103,17 +103,20 @@ func TestPlanRouteVariables(t *testing.T) {
 		name          string
 		arrive        bool
 		walk, transit bool
+		direct        string
 		timeKey       string
 		modes         string
 	}{
-		{"arrive walk-only", true, true, false, "latestArrival", `{"direct":["WALK"],"directOnly":true}`},
-		{"depart transit-only", false, false, true, "earliestDeparture", `{"transitOnly":true}`},
+		{"arrive walk-only", true, true, false, "", "latestArrival", `{"direct":["WALK"],"directOnly":true}`},
+		{"depart transit-only", false, false, true, "", "earliestDeparture", `{"transitOnly":true}`},
+		{"car", false, false, false, "CAR", "earliestDeparture", `{"direct":["CAR"],"directOnly":true}`},
+		{"bicycle", false, false, false, "BICYCLE", "earliestDeparture", `{"direct":["BICYCLE"],"directOnly":true}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cl, got := newClient(t, time.Second, respond(fixture(t, "rc01-transit.json")))
 			q := baseQuery
-			q.ArriveBy, q.Walk, q.Transit = c.arrive, c.walk, c.transit
+			q.ArriveBy, q.Walk, q.Transit, q.Direct = c.arrive, c.walk, c.transit, c.direct
 			if _, err := cl.PlanRoute(context.Background(), q); err != nil {
 				t.Fatal(err)
 			}
