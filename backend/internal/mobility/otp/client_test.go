@@ -117,12 +117,16 @@ func TestPlanRouteVariables(t *testing.T) {
 		{"depart transit-only", false, false, true, "", "earliestDeparture", `{"transitOnly":true}`},
 		{"car", false, false, false, "CAR", "earliestDeparture", `{"direct":["CAR"],"directOnly":true}`},
 		{"bicycle", false, false, false, "BICYCLE", "earliestDeparture", `{"direct":["BICYCLE"],"directOnly":true}`},
+		{"bus only", false, false, false, "BUS", "earliestDeparture", `{"transit":{"transit":[{"mode":"BUS"}]},"transitOnly":true}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cl, got := newClient(t, time.Second, respond(fixture(t, "rc01-transit.json")))
 			q := baseQuery
 			q.ArriveBy, q.Walk, q.Transit, q.Direct = c.arrive, c.walk, c.transit, c.direct
+			if c.direct == "BUS" {
+				q.Direct, q.BusOnly = "", true
+			}
 			if _, err := cl.PlanRoute(context.Background(), q); err != nil {
 				t.Fatal(err)
 			}

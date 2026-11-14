@@ -27,7 +27,9 @@ Không có gì được biến mất mà không có đường quay lại rõ rà
 | Xem trước (mở từ Đường đi) | — | Back về Đường đi; "Quay lại tuyến đường" về màn dẫn đường |
 | Thoát dẫn đường | Màn dẫn đường | Về Chi tiết tuyến, tuyến vẫn còn, bấm Bắt đầu lại được |
 | Chọn Vệ tinh (chưa có nhà cung cấp) | Không chuyển sang bản đồ trống | Hiện ghi chú "Sắp có" |
-| Nút "VI" | Mở menu Tiếng Việt / English | Chọn Tiếng Việt thì đóng; English báo "sắp có" |
+| Nút "VI ▾" | Menu thả xuống nổi trên bản đồ (Tiếng Việt, English, 中文, 한국어, 日本語) | Chọn Tiếng Việt hoặc bấm ra ngoài thì đóng; ngôn ngữ khác báo "sắp có" |
+| Bấm một địa điểm (gợi ý, tìm kiếm, Discover) | Vào thẳng màn tuyến, không vào trang mô tả | Dòng "Thông tin về …" trên màn tuyến mở trang mô tả |
+| Xem trước: ︿ / ﹀ trên mặt đường (**chỉ ở chế độ Vệ tinh**, màn chia đôi) | Nhích 20 m tới/lùi dọc tuyến | 2D/3D không có mũi tên; Trước / Sau nhảy theo chỉ dẫn; ▶▶ tự chạy, bấm lại để dừng |
 | Màn chào (lần đầu) | — | Chỉ hiện ở lần mở app đầu tiên; mở lại app thì vào thẳng bản đồ |
 
 Kiểm tra tự động: `mobile/tools/e2e_ux.py` (từng dòng ở trên là một kiểm tra); `UxComponentTest.mapViewPanel…`.
@@ -42,8 +44,12 @@ Kiểm tra tự động: `mobile/tools/e2e_ux.py` (từng dòng ở trên là m�
 - Các nút cùng loại đặt cùng chỗ trên mọi màn: "Loại bản đồ" luôn ở góc trên phải, ngay dưới phần trên cùng của màn.
 - Chữ trên nút luôn một dòng và không bị cắt, kể cả trên iPhone SE (375 pt). `UxComponentTest.routeActionsStayOnOneLineOnSmallIphones` so chiều rộng tự nhiên của chữ với chiều rộng được cấp. Bài học: đo chiều cao không phát hiện được chữ bị cắt khi `maxLines = 1`, và cờ `didOverflowWidth` của Compose báo sai trong trường hợp này.
 - Màu chữ/nền đạt WCAG AA ≥ 4,5:1 (`ContrastTest`, chạy cả Android và iOS).
+- Bản đồ không dùng nút có sẵn của MapLibre (la bàn không nhãn, thanh ghi công bung ra giữa bản đồ trên iOS); ghi công OSM/OpenMapTiles là dòng chữ nhỏ góc dưới phải. Nút nổi trên bản đồ phải tránh tai thỏ/Dynamic Island (`WindowInsets.safeDrawing`).
+- Kết quả Buýt/Metro ghi "Đi bộ tổng … phút" (đi bộ ra/vào trạm); Ô tô, Xe đạp là phương tiện độc lập, không có chặng đi bộ.
 - **Thử cả hai nền tảng.** Màn iPhone hẹp hơn emulator Android: lỗi xuống hàng chỉ thấy trên iOS (chủ dự án phát hiện 14-11-2026).
 - Mỗi test UX mới phải được chứng minh **fail trên giao diện lỗi** trước khi tin nó đạt.
+- Kiểm tra số chính xác (bước +1), không chỉ "có thay đổi": kiểm tra "khác nhau" đã để lọt lỗi vuốt sang bước kế mà lại lùi 2 bước.
+- Camera bản đồ nghiêng cao làm tốn bộ nhớ: nghiêng 78° ở zoom 21 làm app crash vì hết bộ nhớ (1,1 GB); giữ ≤ 65° và đo bộ nhớ (`adb shell dumpsys meminfo`) khi đổi camera.
 - Ảnh chụp lưu ở `docs/evidence/ux/`, xem lại trước khi merge.
 
 ## 4. Cách chạy

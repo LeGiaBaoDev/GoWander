@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +54,7 @@ import com.gowander.ui.Palette
 import com.gowander.ui.SectionTitle
 import com.gowander.ui.Strings
 import com.gowander.ui.Text
+import org.jetbrains.compose.resources.imageResource
 import org.jetbrains.compose.resources.painterResource
 
 /** Kit S0 "Màn hình chào": full logo with the GoWander wordmark, the tagline, one "Bắt đầu" button. */
@@ -61,7 +65,10 @@ fun WelcomeScreen(onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.weight(1f))
-        Image(painterResource(Res.drawable.logo_full), contentDescription = Strings.APP_NAME, Modifier.width(250.dp))
+        // Owner 14-11-2026: bigger logo. shortcut: the kit's logo is 350 px, so it upscales (FilterQuality.High); swap in a hi-res/vector logo when the designer exports one.
+        val logo = imageResource(Res.drawable.logo_full)
+        // aspectRatio: without it the height stays at the PNG's pixel height and Fit shrinks the logo back to ~110 dp.
+        Image(logo, Strings.APP_NAME, Modifier.fillMaxWidth(0.85f).widthIn(max = 340.dp).aspectRatio(logo.width.toFloat() / logo.height), filterQuality = FilterQuality.High)
         Spacer(Modifier.height(16.dp))
         Text(Strings.TAGLINE, size = 16.sp, color = Palette.Muted, weight = FontWeight.Medium)
         Spacer(Modifier.weight(1.2f))
@@ -77,7 +84,8 @@ fun FirstRunScreen(onAllowLocation: () -> Unit, onLater: () -> Unit) {
         Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Image(painterResource(Res.drawable.logo_icon), contentDescription = Strings.APP_NAME, Modifier.width(140.dp).align(Alignment.CenterHorizontally))
+        val logo = imageResource(Res.drawable.logo_full) // icon + GoWander name
+        Image(logo, Strings.APP_NAME, Modifier.width(200.dp).aspectRatio(logo.width.toFloat() / logo.height).align(Alignment.CenterHorizontally), filterQuality = FilterQuality.High)
         SectionTitle(Strings.CHOOSE_LANGUAGE)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(Strings.VIETNAMESE, selected = true) { englishNote = false }

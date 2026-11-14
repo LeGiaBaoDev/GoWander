@@ -140,12 +140,26 @@ private fun AppContent(askLocationNow: Boolean) {
         val now = routeVm.state.value
         if (now.origin != null && now.destination != null) overlay = Overlay.Results
     }
-    fun goToPlace(p: PlaceSummary) {
+    fun goToPlaceId(id: String) {
         routeVm.closeDetail() // otherwise the route detail keeps covering the place (review M06b)
         tab = Tab.Discover
         overlay = Overlay.None
-        discoverVm.openPlace(p.id)
+        discoverVm.openPlace(id)
     }
+    fun goToPlace(p: PlaceSummary) = goToPlaceId(p.id)
+    // Tapping any place goes to the route first (owner, 14-11-2026); its description is one tap away from there.
+    var infoPlaceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var infoPlaceName by rememberSaveable { mutableStateOf<String?>(null) }
+    fun routeToPlace(id: String, name: String, lat: Double, lon: Double) {
+        routeVm.setDestination(Endpoint(lat, lon, name))
+        infoPlaceId = id
+        infoPlaceName = name
+        tab = Tab.Plan
+        overlay = Overlay.None
+        search()
+    }
+    // Only while the destination is still that place.
+    val placeInfo = infoPlaceName?.takeIf { it == route.destination?.label }
     // After process death the overlay is restored but the ViewModel is new: an empty Results overlay falls back to the tab.
     if (overlay == Overlay.Results && route.phase is com.gowander.route.RoutePhase.Idle && (route.origin == null || route.destination == null)) overlay = Overlay.None
 
@@ -215,13 +229,13 @@ private fun AppContent(askLocationNow: Boolean) {
                 }
                 route.detailOpen -> DetailScreen(
                     route, location, onBack = routeVm::closeDetail, onOpenPlace = ::goToPlace,
-                    onStart = ::startNavigation, onPreview = { openPreview(0) }, onSteps = { navSub = "steps" }, onMode = routeVm::switchModeInDetail,
+                    onStart = ::startNavigation, onPreview = { openPreview(0) }, onSteps = { navSub = "steps" }, onMode = routeVm::switchModeInDetail, placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let(::goToPlaceId) },
                 )
                 overlay == Overlay.Search -> SearchScreen(
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
                     geocode = { q -> sharedApi.geocode(q, near) },
                     onBack = { overlay = Overlay.None },
-                    onPick = { p -> routeVm.setDestination(Endpoint(p.lat, p.lon, p.name)); overlay = Overlay.None; tab = Tab.Plan },
+                    onPick = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) },
                     onPickAddress = { a -> routeVm.setDestination(Endpoint(a.lat, a.lon, a.name)); overlay = Overlay.None; tab = Tab.Plan },
                     onPickOnMap = { overlay = Overlay.PickDestination },
                 )
@@ -245,20 +259,19 @@ private fun AppContent(askLocationNow: Boolean) {
                 overlay == Overlay.Results -> ResultsScreen(
                     route, onBack = { overlay = Overlay.None }, onMode = { routeVm.setMode(it); routeVm.search() }, onSort = routeVm::setSort, onOpen = routeVm::openDetail,
                     onRetry = routeVm::retry, onChangeDestination = { overlay = Overlay.Search },
+                    placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let(::goToPlaceId) },
                 )
                 tab == Tab.Map -> MapHome(
                     route, location, nearby, onSearch = { overlay = Overlay.Search }, onLocate = ::useMyLocation,
-                    onOpenPlace = ::goToPlace, onSeeAll = { tab = Tab.Discover },
+                    onOpenPlace = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) }, onSeeAll = { tab = Tab.Discover },
                 )
                 tab == Tab.Plan -> PlanScreen(
                     route, onEditDestination = { overlay = Overlay.Search }, onUseMyLocation = ::useMyLocation,
                     onPickOrigin = { overlay = Overlay.PickOrigin }, onPickDestination = { overlay = Overlay.PickDestination },
                     onArriveBy = routeVm::setArriveBy, onMode = { routeVm.setMode(it); if (route.destination != null) search() }, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
                 )
-                else -> DiscoverScreen(discoverVm, placesListState) { place ->
-                    routeVm.setDestination(Endpoint(place.lat, place.lon, place.name))
-                    tab = Tab.Plan
-                    search() // Flow B: straight to results when the origin is known
+                else -> DiscoverScreen(discoverVm, placesListState, onOpen = { p -> routeToPlace(p.id, p.name, p.lat, p.lon) }) { place ->
+                    routeToPlace(place.id, place.name, place.lat, place.lon) // "Chỉ đường" from the place page
                 }
             }
         }

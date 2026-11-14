@@ -79,6 +79,32 @@ class NavTrack(private val line: List<Pair<Double, Double>>, stepPoints: List<Pa
         return NavProgress(next, toNext, (totalM - along).coerceAtLeast(0.0), off, along)
     }
 
+    /** Distance along the route of instruction [k]. */
+    fun stepAlong(k: Int): Double = stepAt.getOrElse(k) { totalM }
+
+    /** Index of the last instruction at or before [along] metres (what the preview card shows while nudging). */
+    fun stepIndexAt(along: Double): Int = stepAt.indexOfLast { it <= along + 0.5 }.coerceAtLeast(0)
+
+    /** Points every [spacingM] along the route from instruction [from] to [to] (route preview "drive"); ends on [to]. */
+    fun sample(from: Int, to: Int, spacingM: Double): List<Pair<Double, Double>> {
+        val a = stepAt.getOrElse(from) { 0.0 }
+        val b = stepAt.getOrElse(to) { totalM }
+        if (b <= a) return listOf(pointAt(b))
+        val n = ((b - a) / spacingM).toInt().coerceAtLeast(1)
+        return (1..n).map { pointAt(a + (b - a) * it / n) }
+    }
+
+    /** The point [along] metres from the start of the line (linear between vertices). */
+    fun pointAt(along: Double): Pair<Double, Double> {
+        if (line.size < 2) return line.firstOrNull() ?: (0.0 to 0.0)
+        val i = (0 until line.size - 1).firstOrNull { cum[it + 1] >= along } ?: (line.size - 2)
+        val span = cum[i + 1] - cum[i]
+        val t = if (span == 0.0) 0.0 else ((along - cum[i]) / span).coerceIn(0.0, 1.0)
+        val (la, lo) = line[i]
+        val (lb, lob) = line[i + 1]
+        return la + (lb - la) * t to lo + (lob - lo) * t
+    }
+
     /** (distance along the line, distance from it) of the closest point on the line at or after [minAlong]. */
     private fun project(lat: Double, lon: Double, minAlong: Double): Pair<Double, Double> {
         if (line.size < 2) return 0.0 to (line.firstOrNull()?.let { meters(it, lat to lon) } ?: 0.0)

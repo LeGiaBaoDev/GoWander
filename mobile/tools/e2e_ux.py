@@ -93,10 +93,23 @@ def journey():
     audit("Bản đồ chính")
     tap(desc="Ngôn ngữ: Tiếng Việt")
     check(find("Tiếng Việt") is not None and find("English") is not None, "Bấm 'VI': mở menu ngôn ngữ")
+    check(find("中文") is not None and find("한국어") is not None, "Menu ngôn ngữ thả xuống, đủ ngôn ngữ theo thứ tự phổ biến")
+    audit("Menu ngôn ngữ (mở)")
     tap("English")
-    check(find("English sắp có; hiện app dùng tiếng Việt.") is not None, "Chọn English: báo 'sắp có'")
+    check(find("English: sắp có") is not None, "Chọn English: báo 'sắp có'")
     tap("Tiếng Việt")
     check(gone("English"), "Chọn Tiếng Việt: menu đóng")
+    # Tapping a suggested place: straight to the route, with a link to the place page.
+    place = find("Chợ Bến Thành", timeout=4)
+    if place is not None:
+        tap("Chợ Bến Thành")
+        check(find("Buýt", timeout=15) is not None and find(r"~Thông tin về .*", timeout=15) is not None,
+              "Bấm địa điểm gợi ý: vào thẳng màn tuyến (có tab phương tiện) + dòng 'Thông tin về …'")
+        tap(r"~Thông tin về .*")
+        check(find("Chỉ đường", timeout=10) is not None, "Bấm 'Thông tin về …': mở trang mô tả địa điểm")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        tap("Map")
 
     # Map view panel: opens, closes after a choice, closes on an outside tap.
     tap(desc="Loại bản đồ")
@@ -106,8 +119,6 @@ def journey():
     tap(desc="Loại bản đồ")
     tap(desc="Đóng bảng chọn")
     check(gone("3D"), "Bấm ra ngoài bảng: bảng đóng")
-    tap(desc="Loại bản đồ")
-    tap("2D")
 
     # Nearby sheet: collapses, and its title row brings it back.
     if find(desc="Thu gọn gợi ý", timeout=6) is not None:
@@ -118,7 +129,8 @@ def journey():
 
     # Plan tab: destination by search, car mode.
     tap("Tìm tuyến")
-    check(find("Công cộng") is not None and find("Đi bộ") is not None, "Tab Tìm tuyến: thấy 4 tab phương tiện")
+    check(find("Buýt") is not None and find("Metro") is not None and find("Đi bộ") is not None and gone("Công cộng"),
+          "Tab Tìm tuyến: 5 tab Buýt / Metro / Ô tô / Xe đạp / Đi bộ, không còn 'Công cộng'")
     audit("Tìm tuyến (M3)")
     tap("Điểm đến")
     tap("Gõ tên ga hoặc địa điểm (không cần dấu)")
@@ -126,6 +138,11 @@ def journey():
     time.sleep(1.5)
     adb("shell", "input", "text", "%sdang%sque")
     tap("Trương Đăng Quế", timeout=15)
+    tap("Buýt")  # default tab: searching it shows bus trips with the walking to and from the stops
+    bus = find(r"~Đi bộ tổng \d+ phút.*", timeout=20)
+    check(bus is not None, "Tab Buýt: mỗi tuyến ghi rõ phần đi bộ ra/vào trạm ('Đi bộ tổng … phút')")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(1)
     tap("Ô tô")
     first = find(r"~\d+ phút", timeout=20)
     check(first is not None, "Chọn tab Ô tô: có kết quả ngay, không phải bấm thêm")
@@ -161,16 +178,22 @@ def journey():
     tap(step.get("text"))
     check(find("‹ Quay lại tuyến đường") is not None, "Chạm một bước: mở Xem trước")
     audit("Xem trước tuyến")
+    check(find(desc="Tiến lên 20 m", timeout=2) is None, "Xem trước 2D/3D: không có mũi tên trên đường (chỉ dành cho Vệ tinh)")
+    tap(desc="Tự chạy xem trước toàn tuyến")
+    check(find(desc="Tạm dừng xem trước", timeout=4) is not None, "Bấm ▶▶: tự chạy, nút đổi thành Tạm dừng")
+    tap(desc="Tạm dừng xem trước")
+    check(find(desc="Tự chạy xem trước toàn tuyến", timeout=4) is not None, "Bấm Tạm dừng: dừng lại")
     before = find(r"~Bước \d+/\d+").get("text")
     tap("Sau ›")
     after = find(r"~Bước \d+/\d+").get("text")
-    check(before != after, f"Nút Sau: {before} -> {after}")
+    check(num(after) == num(before) + 1 if (num := lambda t: int(re.search(r"Bước (\d+)/", t).group(1))) else False, f"Nút Sau: đúng +1 ({before} -> {after})")
     card = find(r"~Bước \d+/\d+")
     y = (ux_audit.bounds(card)[1] + ux_audit.bounds(card)[3]) // 2
     adb("shell", "input", "swipe", "900", str(y), "200", str(y), "250")
     time.sleep(1.5)
     swiped = find(r"~Bước \d+/\d+").get("text")
-    check(swiped != after, f"Vuốt trái trên thẻ: {after} -> {swiped}")
+    num = lambda t: int(re.search(r"Bước (\d+)/", t).group(1))
+    check(num(swiped) == num(after) + 1, f"Vuốt trái trên thẻ: sang đúng bước kế tiếp ({after} -> {swiped})")
     adb("shell", "input", "keyevent", "4")
     # The steps screen: its title, and no "Thoát" (that would mean we jumped straight back to navigation).
     check(find("Đường đi", timeout=4) is not None and gone("Thoát"), "Back trong Xem trước (mở từ Đường đi): về Đường đi")

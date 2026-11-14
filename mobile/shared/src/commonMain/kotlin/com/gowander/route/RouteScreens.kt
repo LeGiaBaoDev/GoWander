@@ -34,6 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -278,13 +282,14 @@ fun PlanScreen(
     }
 }
 
-private val TRAVEL_MODES = listOf(TravelMode.Transit, TravelMode.Car, TravelMode.Bicycle, TravelMode.Walk)
+private val TRAVEL_MODES = listOf(TravelMode.Bus, TravelMode.Metro, TravelMode.Car, TravelMode.Bicycle, TravelMode.Walk)
 
 @Composable
 fun TravelModeTabs(mode: TravelMode, onMode: (TravelMode) -> Unit) = ModeTabs(
     TRAVEL_MODES.map {
         when (it) {
-            TravelMode.Transit -> KitIcons.bus to Strings.MODE_TRANSIT
+            TravelMode.Bus -> KitIcons.bus to Strings.MODE_BUS
+            TravelMode.Metro -> KitIcons.metro to Strings.MODE_METRO
             TravelMode.Car -> ExtraIcons.car to Strings.MODE_CAR
             TravelMode.Bicycle -> ExtraIcons.bike to Strings.MODE_BICYCLE
             TravelMode.Walk -> KitIcons.walk to Strings.MODE_WALK
@@ -316,6 +321,11 @@ fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 private fun roundUpToQuarter(ms: Long) = ((ms + 899_999L) / 900_000L) * 900_000L
 
+/** Route first, description second: the way back to the place page after tapping a place. */
+@Composable
+fun PlaceInfoRow(name: String, onClick: () -> Unit) =
+    ListRow("${Strings.ABOUT_PLACE} $name", Strings.ABOUT_PLACE_HINT, lead = { Badge(KitIcons.landmark, Palette.Soft, Palette.Primary) }, onClick = onClick)
+
 /** "Bắt đầu" (primary) + "Xem trước" + "Đường đi" on one row; must stay one line each down to iPhone SE width. */
 @Composable
 fun RouteActions(onStart: () -> Unit, onPreview: () -> Unit, onSteps: () -> Unit, modifier: Modifier = Modifier) {
@@ -326,22 +336,44 @@ fun RouteActions(onStart: () -> Unit, onPreview: () -> Unit, onSteps: () -> Unit
     }
 }
 
-/** The "VI" button of the kit: opens a small language menu; English is announced as coming instead of doing nothing. */
+/** Languages by how many GoWander users are expected to need them (HCMC residents first, then visitors). */
+private val LANGUAGES = listOf("VI" to "Tiếng Việt", "EN" to "English", "ZH" to "中文", "KO" to "한국어", "JA" to "日本語")
+
+/**
+ * The "VI" button of the kit: a dropdown that floats over the map (a Popup, so nothing next to it gets squeezed).
+ * Only Vietnamese exists today (ADR-022); the others say "Sắp có" instead of doing nothing. Closes on a choice or
+ * a tap outside.
+ */
 @Composable
 fun LanguageButton(modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
-    var englishNote by remember { mutableStateOf(false) }
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    var note by remember { mutableStateOf<String?>(null) }
+    val drop = with(LocalDensity.current) { IntOffset(0, 60.dp.roundToPx()) }
+    Box(modifier) {
         Box(
             Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg)
                 .semantics { contentDescription = Strings.LANGUAGE_MENU }
-                .clickable(role = Role.Button) { open = !open; englishNote = false },
+                .clickable(role = Role.Button) { open = !open; note = null },
             contentAlignment = Alignment.Center,
-        ) { Text(Strings.LANGUAGE_VI, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
-        if (open) Card(Modifier.width(240.dp), shadow = true, gap = 8.dp) {
-            Chip(Strings.VIETNAMESE, selected = true) { open = false }
-            Chip(Strings.ENGLISH) { englishNote = true }
-            if (englishNote) Note(Strings.ENGLISH_SOON)
+        ) { Text(Strings.LANGUAGE_VI + " ▾", size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
+        if (open) Popup(alignment = Alignment.TopEnd, offset = drop, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+            Card(Modifier.width(260.dp), shadow = true, gap = 2.dp) {
+                Text(Strings.CHOOSE_LANGUAGE, Modifier.padding(bottom = 4.dp), size = 15.sp, weight = FontWeight.SemiBold)
+                LANGUAGES.forEach { (code, name) ->
+                    val current = code == "VI"
+                    Row(
+                        Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).clip(RoundedCornerShape(10.dp))
+                            .semantics(mergeDescendants = true) { selected = current }
+                            .clickable(role = Role.RadioButton) { if (current) open = false else note = "$name: ${Strings.SOON.lowercase()}" }
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(name, Modifier.weight(1f), color = if (current) Palette.Primary else Palette.Ink, weight = if (current) FontWeight.SemiBold else FontWeight.Normal)
+                        if (current) Icon(KitIcons.check, 18.dp, Palette.Primary) else Text(Strings.SOON, size = 12.sp, color = Palette.Muted)
+                    }
+                }
+                note?.let { Note(it) }
+            }
         }
     }
 }
@@ -431,11 +463,22 @@ private fun OptionRow(title: String, detail: String?, icon: androidx.compose.ui.
 
 /** M5 with its states: loading, results, M7 (user-fixable: no route / out of coverage), M8 (network) and retryable errors. */
 @Composable
-fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onMode: (TravelMode) -> Unit, onSort: (RouteSort) -> Unit, onOpen: (Int) -> Unit, onRetry: () -> Unit, onChangeDestination: () -> Unit) {
+fun ResultsScreen(
+    state: RouteUiState,
+    onBack: () -> Unit,
+    onMode: (TravelMode) -> Unit,
+    onSort: (RouteSort) -> Unit,
+    onOpen: (Int) -> Unit,
+    onRetry: () -> Unit,
+    onChangeDestination: () -> Unit,
+    placeInfo: String? = null,
+    onPlaceInfo: () -> Unit = {},
+) {
     val title = "${state.origin?.label ?: "?"} → ${state.destination?.label ?: "?"}"
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Header(title, onBack = onBack)
         TravelModeTabs(state.mode, onMode) // switch mode on the results, as in Google/Naver/Kakao
+        if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
         Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (val p = state.phase) {
                 RoutePhase.Idle -> Note(Strings.NEED_BOTH)
@@ -453,12 +496,12 @@ fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onMode: (TravelMode) 
                     Button(Strings.CHANGE_DESTINATION, Modifier.fillMaxWidth(), onClick = onChangeDestination)
                 }
                 is RoutePhase.Results -> {
-                    if (state.mode == TravelMode.Transit) Row {
+                    if (state.mode.isTransit) Row {
                         Chip(Strings.FASTEST, selected = state.sort == RouteSort.Fastest) { onSort(RouteSort.Fastest) }
                         Spacer(Modifier.width(8.dp))
                         Chip(Strings.LEAST_WALKING, selected = state.sort == RouteSort.LeastWalking) { onSort(RouteSort.LeastWalking) }
                     }
-                    p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0 && state.mode == TravelMode.Transit) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
+                    p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0 && state.mode.isTransit) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
                     if (p.assumedData) Note(Strings.ASSUMED_NOTE)
                     if (p.routes.any { r -> r.legs.any { it.mode == "CAR" } }) Note(Strings.CAR_NOTE)
                 }
@@ -481,7 +524,10 @@ private fun RouteOptionCard(r: Route, highlight: Boolean, tag: String?, onClick:
                 Spacer(Modifier.width(4.dp))
             }
         }
-        Note("${Strings.LEAVE_AT} ${clock(r.startTime)} · ${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
+        // Bus/metro trips always include walking to and from the stops: say how much (owner, 14-11-2026).
+        val walkMin = r.legs.filter { it.mode == "WALK" }.sumOf { it.durationSec } / 60
+        val walk = if (r.legs.any { it.transit } && walkMin > 0) "${Strings.WALK_TOTAL} $walkMin ${Strings.MINUTES_SHORT} · " else ""
+        Note("$walk${Strings.LEAVE_AT} ${clock(r.startTime)} · ${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
     }
 }
 
@@ -505,6 +551,8 @@ fun DetailScreen(
     onPreview: () -> Unit,
     onSteps: () -> Unit,
     onMode: (TravelMode) -> Unit,
+    placeInfo: String? = null,
+    onPlaceInfo: () -> Unit = {},
 ) {
     val p = state.phase as? RoutePhase.Results ?: return
     val route = p.routes.getOrNull(p.selected) ?: return
@@ -552,6 +600,7 @@ fun DetailScreen(
             TravelModeTabs(state.mode, onMode) // switch vehicle right here, as on Google's route sheet
             RouteActions(onStart, onPreview, onSteps)
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
                 if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
                 route.legs.forEachIndexed { i, leg ->
                     waits[i]?.let { ListRow("${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Ink) }) }

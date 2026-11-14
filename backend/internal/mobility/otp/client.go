@@ -130,6 +130,8 @@ func variables(q mobility.Query) map[string]any {
 	}
 	// No "modes" key means OTP's default (walking plus every transit mode); OTP 2.10 throws on an explicit null.
 	switch {
+	case q.BusOnly:
+		v["modes"] = map[string]any{"transitOnly": true, "transit": map[string]any{"transit": []map[string]string{{"mode": "BUS"}}}}
 	case q.Direct != "":
 		v["modes"] = map[string]any{"directOnly": true, "direct": []string{q.Direct}}
 	case q.Walk && !q.Transit:

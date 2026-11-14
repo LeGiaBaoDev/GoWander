@@ -66,11 +66,13 @@ func ParseQuery(body io.Reader, now time.Time) (Query, error) {
 		}
 		if len(req.Modes) == 1 && (req.Modes[0] == "CAR" || req.Modes[0] == "BICYCLE") {
 			q.Direct = req.Modes[0]
+		} else if len(req.Modes) == 1 && req.Modes[0] == "BUS" {
+			q.BusOnly = true
 		} else {
 			for _, m := range req.Modes {
 				seen := map[string]*bool{"WALK": &q.Walk, "TRANSIT": &q.Transit}[m]
 				if seen == nil || *seen {
-					return Query{}, invalid("modes nhận WALK, TRANSIT (mỗi giá trị một lần), hoặc CAR hay BICYCLE đứng một mình.")
+					return Query{}, invalid("modes nhận WALK, TRANSIT (mỗi giá trị một lần), hoặc BUS, CAR, BICYCLE đứng một mình.")
 				}
 				*seen = true
 			}

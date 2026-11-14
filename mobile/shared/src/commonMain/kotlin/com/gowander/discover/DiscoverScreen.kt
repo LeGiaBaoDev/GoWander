@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowander.api.PlaceDetail
+import com.gowander.api.PlaceSummary
 import com.gowander.route.PlaceRow
 import com.gowander.route.categoryIcon
 import com.gowander.ui.Button
@@ -63,7 +64,7 @@ import com.gowander.ui.Title
 /** D1 Discover list and D2 place detail (kit). Directions sends the place to route planning (Flow B). */
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
 @Composable
-fun DiscoverScreen(vm: DiscoverViewModel, listState: LazyListState, onDirections: (PlaceDetail) -> Unit) {
+fun DiscoverScreen(vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit = { vm.openPlace(it.id) }, onDirections: (PlaceDetail) -> Unit) {
     val s by vm.state.collectAsState()
     // Declared after App's handlers, so it wins while a place is open: Back closes the detail first.
     BackHandler(enabled = s.detail != DetailState.None, onBack = vm::closePlace)
@@ -78,12 +79,12 @@ fun DiscoverScreen(vm: DiscoverViewModel, listState: LazyListState, onDirections
             Text(d.message, color = Palette.Accent, bold = true)
             Button(Strings.RETRY, Modifier.fillMaxWidth()) { vm.openPlace(d.id) }
         }
-        DetailState.None -> PlaceList(s, vm, listState)
+        DetailState.None -> PlaceList(s, vm, listState, onOpen)
     }
 }
 
 @Composable
-private fun PlaceList(s: DiscoverUiState, vm: DiscoverViewModel, listState: LazyListState) {
+private fun PlaceList(s: DiscoverUiState, vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit) {
     var text by rememberSaveable { mutableStateOf(s.query ?: "") }
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(horizontal = 20.dp)) {
         Title(Strings.TAB_DISCOVER_TITLE, Modifier.padding(top = 20.dp, bottom = 12.dp))
@@ -118,7 +119,7 @@ private fun PlaceList(s: DiscoverUiState, vm: DiscoverViewModel, listState: Lazy
                     Button(Strings.RETRY, Modifier.fillMaxWidth(), onClick = vm::retry)
                 }
                 ListPhase.Ready -> if (s.places.isEmpty()) Text(Strings.EMPTY_PLACES, Modifier.padding(vertical = 16.dp)) else LazyColumn(Modifier.fillMaxSize(), state = listState) {
-                    items(s.places, key = { it.id }) { PlaceRow(it) { vm.openPlace(it.id) } }
+                    items(s.places, key = { it.id }) { PlaceRow(it) { onOpen(it) } }
                     item {
                         when {
                             s.loadingMore -> Text(Strings.LOADING, Modifier.padding(vertical = 16.dp))

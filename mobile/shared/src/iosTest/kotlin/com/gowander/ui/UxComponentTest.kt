@@ -19,8 +19,11 @@ import com.gowander.route.MapView
 import com.gowander.route.MapViewSwitch
 import com.gowander.route.LanguageButton
 import com.gowander.route.RouteActions
+import com.gowander.route.TravelMode
+import com.gowander.route.TravelModeTabs
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
@@ -74,15 +77,45 @@ class UxComponentTest {
         }
     }
 
+    /** Five vehicle tabs (Buýt, Metro, Ô tô, Xe đạp, Đi bộ) on an iPhone SE: no label may be cut. */
+    @Test
+    fun fiveModeTabsFitOnSmallIphones() = runComposeUiTest {
+        setContent { Box(Modifier.width(319.dp)) { TravelModeTabs(TravelMode.Bus) {} } }
+        for (label in listOf(Strings.MODE_BUS, Strings.MODE_METRO, Strings.MODE_CAR, Strings.MODE_BICYCLE, Strings.MODE_WALK)) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+            val layout = layouts.single()
+            assertTrue(layout.multiParagraph.intrinsics.maxIntrinsicWidth <= layout.size.width + 0.5f && layout.lineCount == 1, "$label is cut")
+            onNodeWithText(label).assertHeightIsAtLeast(48.dp)
+        }
+        onNodeWithText(Strings.MODE_TRANSIT).assertDoesNotExist() // no vague "Công cộng" tab any more
+    }
+
     @Test
     fun languageButtonOpensAMenuAndExplainsEnglish() = runComposeUiTest {
         setContent { LanguageButton() }
         onNodeWithContentDescription(Strings.LANGUAGE_MENU).assertHeightIsAtLeast(48.dp).performClick()
-        onNodeWithText(Strings.VIETNAMESE).assertIsSelected()
-        onNodeWithText(Strings.ENGLISH).performClick()
-        onNodeWithText(Strings.ENGLISH_SOON).assertExists()
+        onNodeWithText(Strings.VIETNAMESE).assertIsSelected().assertHeightIsAtLeast(48.dp)
+        onNodeWithText(Strings.ENGLISH).assertIsNotSelected().performClick()
+        onNodeWithText("English: sắp có").assertExists() // explains instead of doing nothing
+        onNodeWithText("中文").assertExists() // more languages listed, most used first
         onNodeWithText(Strings.VIETNAMESE).performClick() // choosing closes the menu
         onNodeWithText(Strings.ENGLISH).assertDoesNotExist()
+    }
+
+    /** Owner 14-11-2026: the welcome logo must be big, and the first-run screen shows the full logo (with the name). */
+    @Test
+    fun onboardingLogosAreLarge() = runComposeUiTest {
+        var step by mutableStateOf(0)
+        // Real iPhone density (3x): at density 1 the PNG's pixel height looked big enough and hid the bug.
+        setContent {
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(3f)) {
+                Box(Modifier.requiredSize(402.dp, 874.dp)) { if (step == 0) com.gowander.onboarding.WelcomeScreen {} else com.gowander.onboarding.FirstRunScreen({}, {}) }
+            }
+        }
+        onNodeWithContentDescription(Strings.APP_NAME).assertWidthIsAtLeast(300.dp).assertHeightIsAtLeast(190.dp) // 350x233 logo keeps its ratio
+        step = 1
+        onNodeWithContentDescription(Strings.APP_NAME).assertWidthIsAtLeast(200.dp).assertHeightIsAtLeast(130.dp)
     }
 
     @Test

@@ -79,6 +79,19 @@ class NavigationTest {
         assertTrue(onward.alongM >= 400.0)
         assertEquals(400.0, track.progress(0.0, 0.0036, fromAlongM = 400.0).alongM, 1.0)
 
+        // Drive preview: points every ~100 m from step 0 to step 1 (300 m), moving forward, ending on step 1.
+        val path = track.sample(0, 1, spacingM = 100.0)
+        assertEquals(3, path.size)
+        assertTrue(path.zipWithNext().all { (a, b) -> b.second > a.second })
+        assertEquals(0.0027, path.last().second, 0.00001)
+        assertEquals(listOf(0.0 to 0.006), track.sample(2, 2, spacingM = 100.0).map { it.first to (it.second * 1e6).toLong() / 1e6 })
+
+        // Preview nudges: the instruction shown is the last one at or before the position along the route.
+        assertEquals(300.0, track.stepAlong(1), 3.0)
+        assertEquals(0, track.stepIndexAt(299.0))
+        assertEquals(1, track.stepIndexAt(301.0))
+        assertEquals(2, track.stepIndexAt(track.totalM))
+
         val end = track.progress(0.0, 0.006)
         assertEquals(2, end.nextStep)
         assertTrue(end.remainingM < 1.0)

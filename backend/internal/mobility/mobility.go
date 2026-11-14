@@ -20,6 +20,7 @@ type Query struct {
 	ArriveBy            bool   // true: arrive before DateTime; false: depart after DateTime
 	Walk, Transit       bool   // allowed modes; at least one is true unless Direct is set
 	Direct              string // "CAR" or "BICYCLE": that mode alone, no transit (RD-0); "" otherwise
+	BusOnly             bool   // "BUS": public transport by bus only, walking to and from stops (owner: separate Buýt tab)
 	MaxResults          int
 }
 

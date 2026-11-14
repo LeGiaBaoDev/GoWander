@@ -5,14 +5,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import org.maplibre.compose.camera.CameraMoveReason
-import org.maplibre.compose.overlay.MapOverlay
-import org.maplibre.compose.overlay.include
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -63,6 +66,7 @@ import org.maplibre.compose.location.BearingUpdate
 import org.maplibre.compose.location.LocationState
 import org.maplibre.compose.location.LocationTrackingEffect
 import org.maplibre.compose.location.updateCamera
+import org.maplibre.compose.map.CameraConstraints
 import org.maplibre.compose.map.MapState
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.rememberMapState
@@ -75,6 +79,8 @@ import org.maplibre.spatialk.geojson.Position
 
 // ADR-025: OpenFreeMap, no API key.
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+
+private val STREET_LEVEL = CameraConstraints { maxZoom = 21.0; maxPitch = 65.0 }
 
 /** Map view chosen by the user (Google Maps "Loại bản đồ"). Satellite waits for a licensed imagery provider (ADR-033). */
 enum class MapView { Flat, Tilted, Satellite }
@@ -107,6 +113,7 @@ fun RouteMap(
     highlight: Pair<Double, Double>? = null, // NAV-1 preview: the instruction's point
     viewSwitch: Boolean = false, // show the 2D / 3D / satellite button on this map
     insets: PaddingValues = PaddingValues(0.dp), // area covered by cards: logo, attribution and camera centre avoid it
+    streetLevel: Boolean = false, // preview top half: allow eye-level zoom and tilt beyond MapLibre's defaults (20, 60°)
 ) {
     val viewState = LocalMapView.current
     val view = viewState.value
@@ -169,7 +176,18 @@ fun RouteMap(
     Box(modifier) {
         // Logo + attribution only (required by the data licences). The default compass appeared unlabeled on top of the
         // "Loại bản đồ" button when the map rotates in navigation (UX audit T2/T3, 14-11-2026); "Căn giữa lại" covers it.
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = { include(MapOverlay.AttributionOnly) })
+        // No built-in controls: the default compass sat unlabeled on our button, and the expanding attribution bar
+        // opened across the middle of the map on iOS (14-11-2026). The licence credit is drawn below instead.
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = { },
+            cameraConstraints = if (streetLevel) STREET_LEVEL else CameraConstraints.Standard,
+        )
+        // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
+        Text(
+            Strings.MAP_CREDIT,
+            Modifier.align(Alignment.BottomEnd).padding(insets).padding(end = 8.dp, bottom = 4.dp)
+                .clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
+            size = 10.sp, color = Palette.Muted,
+        )
         if (follow && !following) {
             Button(
                 Strings.RECENTER, Modifier.align(Alignment.BottomStart).padding(insets).padding(start = 16.dp, bottom = 12.dp).kitShadow(RoundedCornerShape(14.dp)),
@@ -204,7 +222,10 @@ fun MapViewSwitch(
         )
         // Top right, just below whatever covers the top of the map (search bar, banner), like Google's layers button.
         Column(
-            Modifier.align(Alignment.TopEnd).padding(top = buttonPadding.calculateTopPadding()).padding(top = 12.dp, end = 12.dp),
+            // Below the status bar / notch first (taller on iPhone: the button hid behind "VI" on iOS, 14-11-2026),
+            // then below whatever the screen puts at the top.
+            Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                .padding(top = buttonPadding.calculateTopPadding()).padding(top = 12.dp, end = 12.dp),
             horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             IconButton(ExtraIcons.layers, Strings.MAP_VIEW, Modifier.kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg)) { onOpenChange(!open) }

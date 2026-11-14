@@ -40,6 +40,10 @@ func TestParseQueryAllFields(t *testing.T) {
 
 func TestParseQueryDirectModes(t *testing.T) {
 	const od = `"origin":{"lat":10.77,"lon":106.69},"destination":{"lat":10.87,"lon":106.81}`
+	q, err := ParseQuery(strings.NewReader(`{`+od+`,"modes":["BUS"]}`), testNow)
+	if err != nil || !q.BusOnly || q.Direct != "" {
+		t.Fatalf("BUS: %+v %v", q, err)
+	}
 	for _, mode := range []string{"CAR", "BICYCLE"} {
 		q, err := ParseQuery(strings.NewReader(`{`+od+`,"modes":["`+mode+`"]}`), testNow)
 		if err != nil {
@@ -73,6 +77,7 @@ func TestParseQueryInvalid(t *testing.T) {
 		"car and bicycle":     `{` + od + `,"modes":["CAR","BICYCLE"]}`,
 		"walk and bicycle":    `{` + od + `,"modes":["WALK","BICYCLE"]}`,
 		"duplicate car":       `{` + od + `,"modes":["CAR","CAR"]}`,
+		"bus with car":        `{` + od + `,"modes":["BUS","CAR"]}`,
 		"motorbike not yet":   `{` + od + `,"modes":["MOTORBIKE"]}`,
 		"maxResults zero":     `{` + od + `,"maxResults":0}`,
 		"maxResults too big":  `{` + od + `,"maxResults":6}`,
