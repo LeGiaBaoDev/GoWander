@@ -22,7 +22,7 @@ Two entry points:
 - **Destination-first:** select origin/destination → compare *real, supported* bus / metro / walking itineraries → choose a route.
 - **Discover-first:** browse food, places, historical stories and curated trip ideas → select destination → open route planning.
 
-Later releases add personal exploration, community/reviews/following, contribution-based rewards and partnerships. A separate **Admin Web** manages content, transit data, moderation, reliability and eventually business transactions.
+Later releases add personal exploration, community/reviews/following, contribution-based rewards and partnerships, and **road-vehicle routing (car, motorbike, bicycle)** after the MVP pilot (`PIPELINE.md` RD-1; decided by the owner 14-11-2026). The MVP stays bus / metro / walking. A separate **Admin Web** manages content, transit data, moderation, reliability and eventually business transactions.
 
 **Non-goals:** replicate Google Maps end-to-end; guarantee realtime ETA without a verified feed; build an all-purpose social network; rank users through levels/leaderboards; ship commerce/advanced AI in core MVP.
 

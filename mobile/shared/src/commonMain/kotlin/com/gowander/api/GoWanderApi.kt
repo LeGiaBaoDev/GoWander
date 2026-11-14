@@ -49,6 +49,8 @@ interface GoWanderApi {
     suspend fun places(category: String?, query: String?, cursor: String?, limit: Int): PlacePage
     suspend fun nearby(at: LatLon, radiusM: Int, limit: Int): List<PlaceSummary>
     suspend fun place(id: String): PlaceDetail
+    suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
+    suspend fun reverseGeocode(at: LatLon): List<GeoResult>
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
@@ -92,6 +94,20 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
         }.places
 
     override suspend fun place(id: String): PlaceDetail = call("/api/v1/places/${id.encodeURLPathPart()}") {}
+
+    override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> =
+        call<GeocodeResponse>("/api/v1/geocode") {
+            parameter("q", query)
+            parameter("lat", near?.lat)
+            parameter("lon", near?.lon)
+            parameter("limit", 5)
+        }.results
+
+    override suspend fun reverseGeocode(at: LatLon): List<GeoResult> =
+        call<GeocodeResponse>("/api/v1/geocode/reverse") {
+            parameter("lat", at.lat)
+            parameter("lon", at.lon)
+        }.results
 
     // Not named `build`: inside the request lambda that would call HttpRequestBuilder.build() instead.
     private suspend inline fun <reified T> call(path: String, crossinline configure: HttpRequestBuilder.() -> Unit): T {

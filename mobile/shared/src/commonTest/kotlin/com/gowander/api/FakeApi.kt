@@ -15,7 +15,12 @@ class FakeApi : GoWanderApi {
         placeCalls += Triple(category, query, cursor)
         return placesResult(category, query, cursor)
     }
-    override suspend fun nearby(at: LatLon, radiusM: Int, limit: Int): List<PlaceSummary> =
-        apiJson.decodeFromString<PlacePage>(Fixtures.PLACES_NEARBY).places
+    val nearbyCalls = mutableListOf<LatLon>()
+    override suspend fun nearby(at: LatLon, radiusM: Int, limit: Int): List<PlaceSummary> {
+        nearbyCalls += at
+        return apiJson.decodeFromString<PlacePage>(Fixtures.PLACES_NEARBY).places
+    }
     override suspend fun place(id: String) = detailResult(id)
+    override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> = emptyList()
+    override suspend fun reverseGeocode(at: LatLon): List<GeoResult> = emptyList()
 }

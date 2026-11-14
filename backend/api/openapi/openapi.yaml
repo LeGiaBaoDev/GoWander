@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: GoWander API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
     Quyết định: docs/decisions/ADR-027-go-routing-api.md.
@@ -112,6 +112,55 @@ paths:
               schema: { $ref: '#/components/schemas/PlaceDetail' }
         '400': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/geocode:
+    get:
+      operationId: geocode
+      summary: Tìm địa chỉ hoặc địa danh (Photon tự chạy, dữ liệu OSM). Không ảnh hưởng readiness.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 200 } }
+        - { name: lat, in: query, schema: { type: number, minimum: -90, maximum: 90 }, description: 'Ưu tiên kết quả gần điểm này (cần cả lon)' }
+        - { name: lon, in: query, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 10, default: 5 } }
+      responses:
+        '200':
+          description: Kết quả, kèm nguồn phải hiển thị
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results, source]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, lat, lon]
+                      properties:
+                        name: { type: string }
+                        detail: { type: string }
+                        lat: { type: number }
+                        lon: { type: number }
+                        ref: { type: string, description: 'Đối tượng OSM, ví dụ way/123' }
+                        approximate: { type: boolean, description: 'Người dùng gõ số nhà nhưng kết quả không có số nhà' }
+                  source:
+                    type: object
+                    properties:
+                      provider: { type: string }
+                      attribution: { type: string }
+                      license: { type: string }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/geocode/reverse:
+    get:
+      operationId: reverseGeocode
+      summary: Địa chỉ/địa danh tại một điểm (gợi ý khi chọn trên bản đồ, M4). Cùng dạng response với /api/v1/geocode.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+      responses:
+        '200': { description: 'Tối đa 3 kết quả, kèm source' }
+        '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
   /health/live:
     get:
@@ -319,6 +368,6 @@ components:
           properties:
             code:
               type: string
-              enum: [INVALID_REQUEST, NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE, ROUTING_TIMEOUT, ROUTING_UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR, PLACE_NOT_FOUND, DATA_STORE_UNAVAILABLE]
+              enum: [INVALID_REQUEST, NO_ROUTE_FOUND, OUT_OF_COVERAGE, DATA_UNAVAILABLE, ROUTING_TIMEOUT, ROUTING_UNAVAILABLE, NOT_FOUND, INTERNAL_ERROR, PLACE_NOT_FOUND, DATA_STORE_UNAVAILABLE, GEOCODER_UNAVAILABLE]
             message: { type: string, description: 'Tiếng Việt, hiển thị được cho người dùng' }
             requestId: { type: string }

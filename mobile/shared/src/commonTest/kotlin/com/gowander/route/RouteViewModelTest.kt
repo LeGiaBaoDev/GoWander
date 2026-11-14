@@ -105,4 +105,48 @@ class RouteViewModelTest {
         assertEquals(thuDuc, vm.state.value.origin)
         assertEquals(benThanh, vm.state.value.destination)
     }
+
+    @Test
+    fun arriveBySendsArriveAndPilotTimeDepartNowSendsNoTime() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }
+        assertEquals("DEPART", api.planCalls.last().timeType)
+        assertEquals(null, api.planCalls.last().dateTime)
+        vm.setArriveBy(1_795_073_400_000L) // 2026-11-19 14:30 in Ho Chi Minh City
+        vm.search()
+        assertEquals("ARRIVE", api.planCalls.last().timeType)
+        assertEquals("2026-11-19T14:30:00+07:00", api.planCalls.last().dateTime)
+        vm.setArriveBy(null)
+        assertIs<RoutePhase.Idle>(vm.state.value.phase) // changing the time clears stale results
+    }
+
+    @Test
+    fun sortReordersResultsAndKeepsTheSelectedRoute() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }
+        val before = assertIs<RoutePhase.Results>(vm.state.value.phase)
+        val chosen = before.routes[1]
+        vm.selectRoute(1)
+        vm.setSort(RouteSort.LeastWalking)
+        val after = assertIs<RoutePhase.Results>(vm.state.value.phase)
+        assertEquals(sortRoutes(before.routes, RouteSort.LeastWalking), after.routes)
+        assertEquals(chosen, after.routes[after.selected])
+        assertEquals(RouteSort.LeastWalking, vm.state.value.sort)
+    }
+
+    @Test
+    fun recentDestinationsAreUniqueNewestFirstAndCapped() = runTest {
+        val vm = vm()
+        (1..7).forEach { vm.setDestination(Endpoint(10.0 + it, 106.0, "P$it")) }
+        vm.setDestination(Endpoint(11.0, 106.0, "P1"))
+        assertEquals(listOf("P1", "P7", "P6", "P5", "P4"), vm.state.value.recentDestinations.map { it.label })
+    }
+
+    @Test
+    fun detailLoadsPlacesNearTheAlightingStation() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }
+        vm.openDetail(0)
+        assertEquals(true, vm.state.value.detailOpen)
+        assertTrue(vm.state.value.nearAlighting.isNotEmpty())
+        vm.closeDetail()
+        assertEquals(false, vm.state.value.detailOpen)
+    }
 }

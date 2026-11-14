@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/geocode"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility/otp"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/config"
@@ -101,5 +102,6 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	})
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
+	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
 	return mux
 }
