@@ -66,6 +66,17 @@ class RouteViewModelTest {
     }
 
     @Test
+    fun switchingModeInsideRouteDetailKeepsTheDetailOpen() = runTest {
+        val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search(); openDetail(1) }
+        assertTrue(vm.state.value.detailOpen)
+        vm.switchModeInDetail(TravelMode.Car)
+        assertEquals(listOf("CAR"), api.planCalls.last().modes)
+        assertEquals(TravelMode.Car, vm.state.value.mode)
+        assertTrue(vm.state.value.detailOpen) // the user stays on the detail screen
+        assertEquals(0, assertIs<RoutePhase.Results>(vm.state.value.phase).selected)
+    }
+
+    @Test
     fun failureKeepsEndpointsAndRetryUsesThem() = runTest {
         api.plan = { throw ApiError.Server("ROUTING_TIMEOUT", "Tìm tuyến quá lâu, vui lòng thử lại.", 504) }
         val vm = vm().apply { setOrigin(benThanh); setDestination(thuDuc); search() }

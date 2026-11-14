@@ -49,6 +49,16 @@ type Leg struct {
 	Headsign    string    `json:"headsign,omitempty"`
 	Line        *Line     `json:"line,omitempty"`
 	Polyline    string    `json:"polyline"`
+	Steps       []Step    `json:"steps,omitempty"` // turn-by-turn for walk/bicycle/car legs (NAV-1); none for transit
+}
+
+// Step is one manoeuvre of a street leg. Direction is OTP's relativeDirection (DEPART, LEFT, RIGHT, CONTINUE, ...).
+type Step struct {
+	Direction string  `json:"direction"`
+	Street    string  `json:"street"`
+	DistanceM float64 `json:"distanceM"`
+	Lat       float64 `json:"lat"`
+	Lon       float64 `json:"lon"`
 }
 
 type Route struct {

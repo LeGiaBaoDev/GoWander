@@ -96,6 +96,12 @@ func TestPlanRouteMapsItinerary(t *testing.T) {
 		!walk.StartTime.Equal(time.Date(2026, 11, 17, 9, 34, 40, 0, ict)) { // estimated time wins over scheduled
 		t.Fatalf("walk leg %+v", walk)
 	}
+	if len(metro.Steps) != 0 || len(walk.Steps) != 2 {
+		t.Fatalf("steps: metro %+v walk %+v", metro.Steps, walk.Steps)
+	}
+	if s := walk.Steps[1]; s.Direction != "LEFT" || s.Street != "path" || s.DistanceM != 5 || s.Lat != 10.87958 || s.Lon != 106.81419 {
+		t.Fatalf("step %+v", s)
+	}
 }
 
 func TestPlanRouteVariables(t *testing.T) {

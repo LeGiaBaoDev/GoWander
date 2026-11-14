@@ -11,13 +11,16 @@ import kotlinx.serialization.json.putJsonObject
 
 const val EMPTY_FEATURES = """{"type":"FeatureCollection","features":[]}"""
 
-/** Line features of a route's legs (transit or walking), decoded from the API polylines. GeoJSON is lon, lat. */
+/**
+ * Line features of a route's legs, decoded from the API polylines. GeoJSON is lon, lat. [transit] true = the solid
+ * layer (transit, car, bicycle); false = the dashed walking layer.
+ */
 fun legsGeoJson(route: Route?, transit: Boolean): String {
     if (route == null) return EMPTY_FEATURES
     return buildJsonObject {
         put("type", "FeatureCollection")
         putJsonArray("features") {
-            route.legs.filter { it.transit == transit }.forEach { leg ->
+            route.legs.filter { (it.transit || it.mode == "CAR" || it.mode == "BICYCLE") == transit }.forEach { leg ->
                 val points = decodePolyline(leg.polyline)
                 if (points.size < 2) return@forEach
                 add(buildJsonObject {

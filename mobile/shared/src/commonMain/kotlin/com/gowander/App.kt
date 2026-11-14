@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,18 @@ import com.gowander.api.createGoWanderApi
 import com.gowander.discover.DiscoverScreen
 import com.gowander.discover.DiscoverViewModel
 import com.gowander.route.DetailScreen
+import com.gowander.route.NavigationScreen
+import com.gowander.route.PreviewScreen
+import com.gowander.route.StepsScreen
+import com.gowander.route.StreetPhoto
+import com.gowander.ui.Button
+import com.gowander.ui.ButtonKind
+import com.gowander.ui.Text
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import com.gowander.route.Endpoint
 import com.gowander.route.MapHome
 import com.gowander.route.PickScreen
@@ -59,6 +72,13 @@ private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
 @Composable
 fun App() = KitTheme {
+    val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
+    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent() }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun AppContent() {
     val routeVm = viewModel { RouteViewModel(sharedApi) }
     val discoverVm = viewModel { DiscoverViewModel(sharedApi) }
     val route by routeVm.state.collectAsState()
@@ -110,10 +130,49 @@ fun App() = KitTheme {
     BackHandler(enabled = !route.detailOpen && overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(enabled = overlay == Overlay.None && tab != Tab.Map) { tab = Tab.Map }
 
+    // NAV-1: navigation mode and its two sub-screens sit above everything else; back closes the sub-screen first.
+    var navigating by rememberSaveable { mutableStateOf(false) }
+    var navSub by rememberSaveable { mutableStateOf<String?>(null) } // "steps" or "preview"
+    var previewStart by rememberSaveable { mutableStateOf(0) }
+    var previewFromSteps by rememberSaveable { mutableStateOf(false) }
+    // Back goes to the screen the user came from: preview -> steps when opened from the list, otherwise the route.
+    fun closeSub() { navSub = if (navSub == "preview" && previewFromSteps) "steps" else null }
+    BackHandler(enabled = navigating && navSub == null) { navigating = false }
+    BackHandler(enabled = navSub != null) { closeSub() }
+    fun startNavigation() {
+        if (location.permission !is LocationPermission.Granted) location.requestPermission()
+        navigating = true
+    }
+    fun openPreview(i: Int, fromSteps: Boolean = false) { previewStart = i; previewFromSteps = fromSteps; navSub = "preview" }
+    val loadPhoto: suspend (Double, Double) -> StreetPhoto? = { lat, lon ->
+        try {
+            sharedApi.streetImage(LatLon(lat, lon))?.let { r ->
+                StreetPhoto(sharedApi.imageBytes(r.image.url).decodeToImageBitmap(), "${r.source.attribution} · ${r.image.capturedAt.take(7)}")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null // no token, offline, or an undecodable image: the preview shows the 3D map instead
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                route.detailOpen -> DetailScreen(route, location, onBack = routeVm::closeDetail, onOpenPlace = ::goToPlace)
+                navSub == "preview" -> PreviewScreen(route, previewStart, loadPhoto, onBack = ::closeSub, onBackToRoute = { navSub = null })
+                navSub == "steps" -> StepsScreen(route, onBack = { navSub = null }, onPreview = { openPreview(it, fromSteps = true) })
+                navigating && route.phase is com.gowander.route.RoutePhase.Results -> NavigationScreen(
+                    route, location, onExit = { navigating = false }, onSteps = { navSub = "steps" }, onPreview = { openPreview(it) },
+                    onReroute = { location.lastLocation?.position?.let { routeVm.setOrigin(Endpoint(it.latitude, it.longitude, Strings.MY_LOCATION)); routeVm.search() } },
+                )
+                navigating -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (route.phase is com.gowander.route.RoutePhase.Failed) (route.phase as com.gowander.route.RoutePhase.Failed).message else Strings.SEARCHING)
+                    Button(Strings.EXIT, Modifier.fillMaxWidth(), kind = ButtonKind.Accent) { navigating = false }
+                }
+                route.detailOpen -> DetailScreen(
+                    route, location, onBack = routeVm::closeDetail, onOpenPlace = ::goToPlace,
+                    onStart = ::startNavigation, onPreview = { openPreview(0) }, onSteps = { navSub = "steps" }, onMode = routeVm::switchModeInDetail,
+                )
                 overlay == Overlay.Search -> SearchScreen(
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
                     geocode = { q -> sharedApi.geocode(q, near) },
@@ -140,7 +199,7 @@ fun App() = KitTheme {
                     tab = Tab.Plan
                 }
                 overlay == Overlay.Results -> ResultsScreen(
-                    route, onBack = { overlay = Overlay.None }, onSort = routeVm::setSort, onOpen = routeVm::openDetail,
+                    route, onBack = { overlay = Overlay.None }, onMode = { routeVm.setMode(it); routeVm.search() }, onSort = routeVm::setSort, onOpen = routeVm::openDetail,
                     onRetry = routeVm::retry, onChangeDestination = { overlay = Overlay.Search },
                 )
                 tab == Tab.Map -> MapHome(
@@ -150,7 +209,7 @@ fun App() = KitTheme {
                 tab == Tab.Plan -> PlanScreen(
                     route, onEditDestination = { overlay = Overlay.Search }, onUseMyLocation = ::useMyLocation,
                     onPickOrigin = { overlay = Overlay.PickOrigin }, onPickDestination = { overlay = Overlay.PickDestination },
-                    onArriveBy = routeVm::setArriveBy, onMode = routeVm::setMode, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
+                    onArriveBy = routeVm::setArriveBy, onMode = { routeVm.setMode(it); if (route.destination != null) search() }, onRecent = routeVm::setDestination, onSwap = routeVm::swap, onSearch = ::search,
                 )
                 else -> DiscoverScreen(discoverVm, placesListState) { place ->
                     routeVm.setDestination(Endpoint(place.lat, place.lon, place.name))
@@ -159,7 +218,7 @@ fun App() = KitTheme {
                 }
             }
         }
-        if (overlay == Overlay.None && !route.detailOpen) {
+        if (overlay == Overlay.None && !route.detailOpen && !navigating && navSub == null) {
             BottomNav(tab, Modifier.windowInsetsPadding(WindowInsets.navigationBars)) { tab = it; overlay = Overlay.None }
         }
     }

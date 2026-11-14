@@ -13,5 +13,7 @@
      "end":{"scheduledTime":"2026-11-17T09:34:41+07:00","estimated":null},
      "from":{"name":"Bến xe Suối Tiên","lat":10.879569,"lon":106.81417,"stop":{"gtfsId":"1:L1-14"}},
      "to":{"name":"Destination","lat":10.8796,"lon":106.8142,"stop":null},
-     "route":null,"legGeometry":{"points":"x_y"}}
+     "route":null,"legGeometry":{"points":"x_y"},
+     "steps":[{"distance":7.5,"relativeDirection":"DEPART","streetName":"Xa lộ Hà Nội","lat":10.87957,"lon":106.81418},
+              {"distance":5.0,"relativeDirection":"LEFT","streetName":"path","lat":10.87958,"lon":106.81419}]}
   ]}}]}}}

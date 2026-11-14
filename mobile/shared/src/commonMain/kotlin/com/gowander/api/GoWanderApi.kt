@@ -6,9 +6,11 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
@@ -51,6 +53,10 @@ interface GoWanderApi {
     suspend fun place(id: String): PlaceDetail
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
+    /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
+    suspend fun streetImage(at: LatLon): StreetImageResponse?
+    /** Raw bytes of an image URL returned by the API (street photo). */
+    suspend fun imageBytes(url: String): ByteArray
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
@@ -108,6 +114,27 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             parameter("lat", at.lat)
             parameter("lon", at.lon)
         }.results
+
+    override suspend fun streetImage(at: LatLon): StreetImageResponse? = try {
+        call<StreetImageResponse>("/api/v1/street-images/nearest") {
+            parameter("lat", at.lat)
+            parameter("lon", at.lon)
+        }
+    } catch (e: ApiError.Server) {
+        if (e.code == "STREET_IMAGE_NOT_FOUND") null else throw e
+    }
+
+    override suspend fun imageBytes(url: String): ByteArray {
+        val response = try {
+            client.get(url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw ApiError.Network(e)
+        }
+        if (!response.status.isSuccess()) throw ApiError.Unexpected("image HTTP ${response.status.value}")
+        return response.bodyAsBytes()
+    }
 
     // Not named `build`: inside the request lambda that would call HttpRequestBuilder.build() instead.
     private suspend inline fun <reified T> call(path: String, crossinline configure: HttpRequestBuilder.() -> Unit): T {

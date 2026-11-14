@@ -25,6 +25,14 @@ class RouteGeoJsonTest {
     }
 
     @Test
+    fun carAndBicycleLegsAreSolidNotDashed() {
+        val car = route.copy(legs = listOf(route.legs[0].copy(mode = "CAR"), route.legs[2].copy(mode = "BICYCLE")))
+        val solid = Json.parseToJsonElement(legsGeoJson(car, transit = true)).jsonObject["features"]!!.jsonArray
+        assertEquals(2, solid.size)
+        assertEquals(EMPTY_FEATURES, legsGeoJson(car, transit = false).replace(" ", ""))
+    }
+
+    @Test
     fun countsLegsThatCannotBeDrawn() {
         assertEquals(0, undrawableLegs(route))
         val broken = route.copy(legs = route.legs.mapIndexed { i, l -> if (i == 1) l.copy(polyline = "_p~iF") else l })

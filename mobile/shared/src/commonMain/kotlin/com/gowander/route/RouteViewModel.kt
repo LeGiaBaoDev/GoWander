@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 data class Endpoint(val lat: Double, val lon: Double, val label: String)
 
 /** Plan-screen choice; [apiModes] is what the API gets (null = its default: walk + metro + bus). RD-0, ADR-032. */
-enum class TravelMode(val apiModes: List<String>?) { Transit(null), Bicycle(listOf("BICYCLE")), Car(listOf("CAR")) }
+enum class TravelMode(val apiModes: List<String>?) { Transit(null), Car(listOf("CAR")), Bicycle(listOf("BICYCLE")), Walk(listOf("WALK")) }
 
 sealed interface RoutePhase {
     data object Idle : RoutePhase
@@ -67,6 +67,13 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
         _state.update { it.copy(mode = mode, phase = RoutePhase.Idle, detailOpen = false) }
     }
 
+    /** Mode tabs inside the route detail: search again and show the new fastest route's detail (no trip back to M3). */
+    fun switchModeInDetail(mode: TravelMode) {
+        if (mode == _state.value.mode) return
+        _state.update { it.copy(mode = mode) }
+        search(openDetailAfter = true)
+    }
+
     /** M5 chips: reorder without a new request; the chosen route stays chosen. */
     fun setSort(sort: RouteSort) = _state.update { s ->
         val p = s.phase as? RoutePhase.Results ?: return@update s.copy(sort = sort)
@@ -100,7 +107,9 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
 
     fun retry() = search()
 
-    fun search() {
+    fun search() = search(openDetailAfter = false)
+
+    private fun search(openDetailAfter: Boolean) {
         val (origin, destination) = _state.value.let { (it.origin ?: return) to (it.destination ?: return) }
         job?.cancel() // the newest request wins
         _state.update { it.copy(phase = RoutePhase.Loading, detailOpen = false) }
@@ -124,6 +133,7 @@ class RouteViewModel(private val api: GoWanderApi) : ViewModel() {
                 failure(e)
             }
             _state.update { it.copy(phase = phase) }
+            if (openDetailAfter && phase is RoutePhase.Results) openDetail(0)
         }
     }
 

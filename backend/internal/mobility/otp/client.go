@@ -213,6 +213,9 @@ func route(n itinerary) (mobility.Route, error) {
 		if l.LegGeometry != nil {
 			leg.Polyline = l.LegGeometry.Points
 		}
+		for _, s := range l.Steps {
+			leg.Steps = append(leg.Steps, mobility.Step{Direction: s.RelativeDirection, Street: s.StreetName, DistanceM: s.Distance, Lat: s.Lat, Lon: s.Lon})
+		}
 		r.Legs = append(r.Legs, leg)
 	}
 	return r, nil
@@ -303,4 +306,11 @@ type leg struct {
 	LegGeometry *struct {
 		Points string `json:"points"`
 	} `json:"legGeometry"`
+	Steps []struct {
+		Distance          float64 `json:"distance"`
+		RelativeDirection string  `json:"relativeDirection"`
+		StreetName        string  `json:"streetName"`
+		Lat               float64 `json:"lat"`
+		Lon               float64 `json:"lon"`
+	} `json:"steps"`
 }

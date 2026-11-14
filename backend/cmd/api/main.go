@@ -18,6 +18,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/config"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/database"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/streetview"
 )
 
 func main() {
@@ -103,5 +104,6 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
+	streetview.Handler{Finder: streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, 4*time.Second), Log: log}.Mount(mux)
 	return mux
 }

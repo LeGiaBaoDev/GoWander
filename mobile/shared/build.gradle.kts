@@ -49,6 +49,10 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.kotlinx.coroutines.test)
         }
+        // Compose UI tests render with Skia on the iOS simulator; the Android host tests have no renderer.
+        iosTest.dependencies {
+            implementation(libs.compose.ui.test)
+        }
     }
 }
 
