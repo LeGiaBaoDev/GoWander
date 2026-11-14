@@ -10,6 +10,7 @@ at Bến Thành. Exit 1 if a check fails. Stdlib only; waits for text instead of
 import os
 import re
 import subprocess
+import unicodedata
 import sys
 import time
 
@@ -19,6 +20,7 @@ import ux_audit  # noqa: E402
 ADB = ux_audit.ADB
 APP = ux_audit.PACKAGE
 results = []  # (ok, check)
+SHOTS = os.environ.get("UX_SHOTS")  # folder for screenshots; unset = none
 report = []
 
 
@@ -69,6 +71,10 @@ def audit(screen):
     report.extend(f"- {c} `{w}`: {d}" for c, w, d in problems)
     report.append("")
     check(not problems, f"[{screen}] T1–T4: kích thước, nhãn, chồng lấn, thanh trạng thái")
+    # Screenshot of every audited screen for the visual review against the design (docs/evidence/ux2/android-*.png).
+    if SHOTS:
+        with open(os.path.join(SHOTS, "android-" + re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", screen.replace("đ", "d").replace("Đ", "D")).encode("ascii", "ignore").decode().lower()).strip("-") + ".png"), "wb") as f:
+            f.write(subprocess.run([ADB, "exec-out", "screencap", "-p"], capture_output=True).stdout)
 
 
 def journey():
@@ -124,7 +130,10 @@ def journey():
     row = find(r"~.+ · .+", timeout=15)
     if row is not None:
         name = row.get("text")
-        tap(name)
+        # Tap the node found, not a fresh search by text: the list may reload in between (flaky run 14-11-2026).
+        x1, y1, x2, y2 = ux_audit.bounds(row)
+        adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+        time.sleep(1.0)
         check(find("Chỉ đường", timeout=10) is not None, "Khám phá: bấm địa điểm mở trang địa điểm, không tự nhảy sang tuyến (T4)")
         adb("shell", "input", "keyevent", "4")
         check(find(name, timeout=6) is not None, "Back từ trang địa điểm: về danh sách Khám phá")
@@ -138,75 +147,101 @@ def journey():
 
     # Centre action "Đi đâu?": search, pick, straight to the routes (T2), no extra "Tìm" step.
     tap("Đi đâu?")
-    tap("Gõ tên ga hoặc địa điểm (không cần dấu)")
+    # Design screen 3: back + pill field "Bạn muốn đến đâu?", "Từ: … · Đổi", "Chọn trên bản đồ" first.
+    check(find(desc="Tìm điểm đến", timeout=8) is not None and find("^Từ") is not None and find("Đổi") is not None and find("Chọn trên bản đồ") is not None,
+          "Đi đâu?: ô tìm + dòng 'Từ: … · Đổi' + 'Chọn trên bản đồ' (mẫu màn 3)")
+    audit("Đi đâu?")
+    tap(desc="Tìm điểm đến")
     adb("shell", "input", "text", "truong")
     time.sleep(1.5)
     adb("shell", "input", "text", "%sdang%sque")
+    check(find("Kết quả", timeout=15) is not None, "Gõ tên: kết quả nằm dưới tiêu đề 'Kết quả'")
     tap("Trương Đăng Quế", timeout=15)
     check(find("Buýt", timeout=15) is not None and find("Metro") is not None and gone("Công cộng"), "Chọn điểm đến: vào thẳng danh sách tuyến, 5 tab phương tiện")
     bus = find(r"~Đi bộ tổng \d+ phút.*", timeout=20)
     check(bus is not None, "Tab Buýt: mỗi tuyến ghi rõ phần đi bộ ra/vào trạm ('Đi bộ tổng … phút')")
-    tap("Đổi điểm đi, điểm đến hoặc giờ")
-    check(find("Chuyến đi", timeout=6) is not None and find("Tìm tuyến") is not None, "Đổi chuyến: mở form điểm đi / điểm đến / giờ")
-    adb("shell", "input", "keyevent", "4")
-    check(find("Đổi điểm đi, điểm đến hoặc giờ", timeout=6) is not None, "Back từ form: về đúng danh sách tuyến")
+    # UX-2 screen 4: From / To edited in place, swap and time on the results; no separate trip form.
+    check(find(desc="^Điểm đi: ", timeout=4) is not None and find(desc="^Điểm đến: ") is not None and find(desc="Đổi chiều", timeout=2) is not None
+          and find("Đổi điểm đi, điểm đến hoặc giờ", timeout=1) is None, "Danh sách tuyến: sửa điểm đi / điểm đến / đổi chiều ngay ở đầu màn")
+    check(sum(1 for n in nodes() if n.get("text") == "Nhanh nhất") <= 1, "Không lặp nhãn 'Nhanh nhất' trên thẻ (chỉ còn chip sắp xếp)")
+    later = find("Chuyến sau:", timeout=2)
+    check(True, "Chuyến giống nhau gộp một thẻ" + (" (có 'Chuyến sau')" if later is not None else " (lần này không có chuyến trùng)"))
+    tap("^Đi ngay")
+    check(find("Khởi hành ngay", timeout=3) is not None, "Bấm 'Đi ngay ▾': mở lựa chọn giờ")
+    tap("^Đi ngay")
+    check(gone("Khởi hành ngay"), "Bấm lại 'Đi ngay ▴': lựa chọn giờ đóng lại")
+    audit("Danh sách tuyến")
     tap("Ô tô")
     first = find(r"~\d+ phút", timeout=20)
     check(first is not None, "Chọn tab Ô tô: có kết quả ngay, không phải bấm thêm")
-    audit("Kết quả")
     check(find("Nhanh nhất", timeout=2) is None, "Ô tô: không hiện chip/nhãn 'Nhanh nhất / Ít đi bộ' vô nghĩa")
 
-    # Route detail: full-screen map, the sheet expands and collapses.
+    # Route detail (screen 5): full-screen map, the sheet expands and collapses, two actions.
     tap(first.get("text"))
-    check(find("Bắt đầu") is not None, "Mở chi tiết: thấy nút Bắt đầu")
+    check(find("Bắt đầu") is not None and find("Xem từng bước") is not None and find("Xem trước", timeout=1) is None,
+          "Chi tiết tuyến: 2 nút Bắt đầu · Xem từng bước (không còn 'Xem trước' riêng)")
     check(gone("Khám phá"), "Chi tiết tuyến: thanh tab dưới ẩn (màn con)")
     audit("Chi tiết tuyến")
     tap(desc="Mở rộng")
     check(find(desc="Thu gọn") is not None, "Bấm phần đầu thẻ: thẻ mở rộng, nhãn đổi thành 'Thu gọn'")
     tap(desc="Thu gọn")
-    tap("Xe đạp")
-    check(find(r"~Đạp xe \d+ phút", timeout=20) is not None and find("Bắt đầu") is not None,
-          "Đổi sang Xe đạp ngay trong Chi tiết tuyến: có tuyến xe đạp, vẫn ở màn chi tiết")
-    tap("Ô tô")
-    check(find(r"~Lái xe \d+ phút", timeout=20) is not None, "Đổi lại Ô tô trong Chi tiết tuyến")
+    check(find(r"~Lái xe \d+ phút", timeout=4) is not None and find("^Đến ", timeout=2) is not None and gone("Xe đạp"),
+          "Chi tiết tuyến như mẫu màn 5: dòng thời gian các chặng đến điểm đến, không có thanh phương tiện")
 
-    # Navigation: banner, pause on pan + recenter, steps, preview, back stack.
-    tap("Bắt đầu")
-    check(find("Thoát") is not None and find(r"~(Bắt đầu|Rẽ|Chếch|Đi thẳng|Tiếp tục).*", timeout=8) is not None, "Bắt đầu: băng chỉ hướng + nút Thoát")
-    audit("Dẫn đường")
-    adb("shell", "input", "swipe", "540", "1100", "300", "900", "300")
-    check(find("Căn giữa lại", timeout=6) is not None, "Kéo bản đồ khi dẫn đường: hiện 'Căn giữa lại'")
-    tap("Căn giữa lại")
-    check(gone("Căn giữa lại"), "Bấm 'Căn giữa lại': nút biến mất, bản đồ đi theo lại")
-    tap("Đường đi")
-    step = find(r"~(Rẽ|Chếch).*")
-    check(step is not None, "Đường đi: danh sách các bước rẽ")
-    audit("Đường đi")
-    tap(step.get("text"))
-    check(find("‹ Quay lại tuyến đường") is not None, "Chạm một bước: mở Xem trước")
-    audit("Xem trước tuyến")
-    check(find(desc="Tiến lên 20 m", timeout=2) is None, "Xem trước 2D/3D: không có mũi tên trên đường (chỉ dành cho Vệ tinh)")
+    # Step by step (screen 6): always split, 3D street view on top with ︿ / ﹀, 2D below, card with Trước / ▶▶ / Sau.
+    tap("Xem từng bước")
+    check(find("Góc nhìn trên đường · 3D", timeout=8) is not None and find(desc="Tiến lên 20 m") is not None and find(r"~Bước \d+/\d+.*") is not None,
+          "Xem từng bước: chia đôi, 3D trên có ︿ / ﹀, 2D dưới, thẻ bước")
+    check(find("2D") is not None and find("3D") is not None and find("Chạy") is not None, "Xem từng bước: bản đồ dưới có 2D | 3D, nút '▶▶ Chạy' có chữ (mẫu màn 6)")
+    audit("Xem từng bước")
+    tap("3D")
+    x1, y1, x2, y2 = ux_audit.bounds(find("3D"))
+    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+    on = [n for n in nodes() if "true" in (n.get("selected"), n.get("checked")) and ux_audit.bounds(n)[0] <= cx <= ux_audit.bounds(n)[2] and ux_audit.bounds(n)[1] <= cy <= ux_audit.bounds(n)[3]]
+    check(on, "Chọn 3D ở bản đồ dưới: nút 3D được chọn (báo cho trình đọc màn hình)")
+    tap("2D")
     tap(desc="Tự chạy xem trước toàn tuyến")
     check(find(desc="Tạm dừng xem trước", timeout=4) is not None, "Bấm ▶▶: tự chạy, nút đổi thành Tạm dừng")
     tap(desc="Tạm dừng xem trước")
     check(find(desc="Tự chạy xem trước toàn tuyến", timeout=4) is not None, "Bấm Tạm dừng: dừng lại")
-    before = find(r"~Bước \d+/\d+").get("text")
+    num = lambda t: int(re.search(r"Bước (\d+)/", t).group(1))
+    before = find(r"~Bước \d+/\d+.*").get("text")
     tap("Sau ›")
-    after = find(r"~Bước \d+/\d+").get("text")
-    check(num(after) == num(before) + 1 if (num := lambda t: int(re.search(r"Bước (\d+)/", t).group(1))) else False, f"Nút Sau: đúng +1 ({before} -> {after})")
-    card = find(r"~Bước \d+/\d+")
+    after = find(r"~Bước \d+/\d+.*").get("text")
+    check(num(after) == num(before) + 1, f"Nút Sau: đúng +1 ({before} -> {after})")
+    card = find(r"~Bước \d+/\d+.*")
     y = (ux_audit.bounds(card)[1] + ux_audit.bounds(card)[3]) // 2
     adb("shell", "input", "swipe", "900", str(y), "200", str(y), "250")
     time.sleep(1.5)
-    swiped = find(r"~Bước \d+/\d+").get("text")
-    num = lambda t: int(re.search(r"Bước (\d+)/", t).group(1))
+    swiped = find(r"~Bước \d+/\d+.*").get("text")
     check(num(swiped) == num(after) + 1, f"Vuốt trái trên thẻ: sang đúng bước kế tiếp ({after} -> {swiped})")
+    tap(desc="Đường đi")
+    step = find(r"~(Rẽ|Chếch).*")
+    check(step is not None, "Nút danh sách: mở các bước rẽ")
+    tap(step.get("text"))
+    check(find(r"~Bước \d+/\d+.*", timeout=6) is not None and find(r"~(Rẽ|Chếch).*") is not None, "Chọn một bước trong danh sách: về màn Xem từng bước tại bước đó")
+    adb("shell", "input", "keyevent", "4")
+    check(find("Xem từng bước", timeout=6) is not None, "Back từ Xem từng bước: về Chi tiết tuyến (không qua danh sách)")
+
+    # Navigation (screen 7): split 3D / 2D, banner, steps list, back stack.
+    tap("Bắt đầu")
+    check(find("Thoát") is not None and find(r"~(Bắt đầu|Rẽ|Chếch|Đi thẳng|Tiếp tục).*", timeout=8) is not None, "Bắt đầu: băng chỉ hướng + nút Thoát")
+    check(find(desc="Loại bản đồ: 2D", timeout=4) is not None, "Dẫn đường: nút kiểu bản đồ dưới ghi '2D' (mẫu màn 7)")
+    audit("Dẫn đường")
+    tap(desc="Loại bản đồ: 2D")
+    check(find(desc="Loại bản đồ: 3D", timeout=4) is not None, "Bấm nút '2D': bản đồ dưới đổi sang 3D")
+    tap(desc="Loại bản đồ: 3D")
+    tap(desc="Đường đi")
+    step = find(r"~(Rẽ|Chếch).*")
+    check(step is not None, "Dẫn đường › Đường đi: danh sách các bước rẽ")
+    audit("Đường đi")
+    tap(step.get("text"))
+    check(find(desc="Tiến lên 20 m", timeout=6) is not None, "Chạm một bước: mở Xem từng bước (chia đôi)")
     adb("shell", "input", "keyevent", "4")
     # The steps screen: its title, and no "Thoát" (that would mean we jumped straight back to navigation).
-    check(find("Đường đi", timeout=4) is not None and gone("Thoát"), "Back trong Xem trước (mở từ Đường đi): về Đường đi")
-    tap(find(r"~(Rẽ|Chếch).*").get("text"))
-    tap("‹ Quay lại tuyến đường")
-    check(find("Thoát", timeout=4) is not None, "'Quay lại tuyến đường': về màn dẫn đường")
+    check(find("Đường đi", timeout=4) is not None and gone("Thoát"), "Back trong Xem từng bước (mở từ Đường đi): về Đường đi")
+    adb("shell", "input", "keyevent", "4")
+    check(find("Thoát", timeout=4) is not None, "Back từ Đường đi: về màn dẫn đường")
     tap("Thoát")
     check(find("Bắt đầu") is not None, "Thoát: về chi tiết tuyến, tuyến vẫn còn")
     adb("shell", "input", "keyevent", "4")

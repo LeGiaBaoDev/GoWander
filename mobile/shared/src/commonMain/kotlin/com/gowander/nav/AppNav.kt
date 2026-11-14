@@ -8,8 +8,6 @@ sealed interface Screen {
     data object Search : Screen
     data object PickOrigin : Screen
     data object PickDestination : Screen
-    /** Temporary trip form (origin, destination, time) until the results header edits in place (UX-2 P2). */
-    data object Plan : Screen
     data object Results : Screen
     data object Detail : Screen
     data object Steps : Screen
@@ -18,7 +16,7 @@ sealed interface Screen {
     data class Place(val id: String) : Screen
 }
 
-private val ROUTE_FORM = setOf(Screen.Search, Screen.PickOrigin, Screen.PickDestination, Screen.Plan)
+private val ROUTE_FORM = setOf(Screen.Search, Screen.PickOrigin, Screen.PickDestination)
 
 /**
  * One back stack per tab (UX-2, ADR-034). Immutable: every move returns a new value, so the UI state is one
@@ -43,7 +41,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
         return if (i < 0) this else with(stack.take(i + 1))
     }
 
-    /** The trip form screens (search, pick, edit) give way to the results; an open results screen is reused. */
+    /** The trip form screens (search, pick on map) give way to the results; an open results screen is reused. */
     fun showResults(): AppNav {
         val kept = stack.dropLastWhile { it in ROUTE_FORM }
         return with(if (kept.lastOrNull() == Screen.Results) kept else kept + Screen.Results)
@@ -78,7 +76,6 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             Screen.Search -> "search"
             Screen.PickOrigin -> "pick_origin"
             Screen.PickDestination -> "pick_destination"
-            Screen.Plan -> "plan"
             Screen.Results -> "results"
             Screen.Detail -> "detail"
             Screen.Steps -> "steps"
@@ -91,7 +88,6 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v == "search" -> Screen.Search
             v == "pick_origin" -> Screen.PickOrigin
             v == "pick_destination" -> Screen.PickDestination
-            v == "plan" -> Screen.Plan
             v == "results" -> Screen.Results
             v == "detail" -> Screen.Detail
             v == "steps" -> Screen.Steps

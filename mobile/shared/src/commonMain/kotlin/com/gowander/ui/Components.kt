@@ -124,18 +124,20 @@ fun Icon(icon: ImageVector, size: Dp = 24.dp, tint: Color = Palette.Ink, modifie
 fun Modifier.kitShadow(shape: Shape): Modifier =
     shadow(10.dp, shape, ambientColor = Palette.Ink.copy(alpha = 0.14f), spotColor = Palette.Ink.copy(alpha = 0.14f))
 
-enum class ButtonKind { Primary, Secondary, Soft, Accent }
+enum class ButtonKind { Primary, Secondary, Soft, Accent, Outline }
 
 /** Kit button: radius 14, padding 15/18, label 15 SemiBold, optional leading icon; 48 dp minimum touch target. */
 @Composable
-fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, onClick: () -> Unit) {
+fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, pill: Boolean = false, onClick: () -> Unit) {
     val (bg, fg, border) = when (kind) {
         ButtonKind.Primary -> Triple(Palette.Primary, Palette.OnPrimary, null)
         ButtonKind.Secondary -> Triple(Palette.Bg, Palette.Ink, Palette.Line)
         ButtonKind.Soft -> Triple(Palette.Soft, Palette.Primary, null)
         ButtonKind.Accent -> Triple(Palette.Accent, Palette.OnPrimary, null)
+        ButtonKind.Outline -> Triple(Palette.Bg, Palette.Primary, Palette.Primary)
     }
-    val shape = RoundedCornerShape(14.dp)
+    // pill: the round-ended buttons of the UX-2 route screens (design screens 5-7).
+    val shape = RoundedCornerShape(if (pill) 999.dp else 14.dp)
     Row(
         modifier.sizeIn(minHeight = 48.dp).clip(shape).background(bg, shape)
             .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)

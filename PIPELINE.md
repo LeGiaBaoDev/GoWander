@@ -177,11 +177,17 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 
 ### Phases (each one: tests, Android + iOS screenshots, `ux_audit`, `e2e_ux.py`, iOS UI tests, change record, owner review)
 1. **P1 Navigation shell:** 5 tabs, centre action, per-tab back stack in `commonMain`, no first-run screen, permission on demand, hide unfinished features, minimal real Journey/Profile screens.
-2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation. **P2b:** voice guidance (platform TTS, `vi-VN`).
+2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation; lower map has a 2D / 3D switch (satellite later). **DONE 14-11-2026** (Android E2E 63/63, iOS tests 65/65). **P2b:** voice guidance (platform TTS, `vi-VN`).
 3. **P3 Map places:** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
 4. **P4 Discover:** Nearby + nationwide region map + TP.HCM region portfolio; tap image → show on map.
 5. **P5 Journey + Profile:** suggested trips, manual planner, Plans/Saved tabs stored on device (ADR for local storage first).
 6. **P6 Usability test** with 3–5 people.
+- **Mock data rule (owner, 14-11-2026: "cái nào chưa có thì cứ mockup data nha, nhưng nhớ ghi trong pipeline là có dữ liệu mockup"):** every canvas screen is built in full now. Where real data or a backend does not exist yet (reviews, region portfolios, food/sight photos, trip plans, user portfolio, satellite imagery…), the screen uses **mock data** from one place per feature (a file named `Mock*.kt` in `commonMain`, each item marked as sample). The **mock data register** below lists every mock; replacing a mock with real data removes its row. The pilot (M10) may not ship a row still marked `MOCK` unless the owner accepts it in writing.
+
+  | Screen / feature | Mock source | Replace with | Status |
+  |---|---|---|---|
+  | Lower-map **Vệ tinh** (screens 6, 7) | none yet: only 2D / 3D shown, no "coming soon" control | licensed satellite provider (ADR-033), then add the third choice | LATER |
+
 - Out of UX-2: **COM-1** (accounts, reviews R2, community photos, public portfolio; needs ADR-022 + M07) and **CONTENT** (region guides, stories, trips, videos, country boundary; part of DATA-1).
 
 ### Gate

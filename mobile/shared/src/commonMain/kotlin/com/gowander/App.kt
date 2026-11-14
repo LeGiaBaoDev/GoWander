@@ -47,7 +47,6 @@ import com.gowander.route.MapHome
 import com.gowander.route.NavigationScreen
 import com.gowander.route.PickScreen
 import com.gowander.route.PinOption
-import com.gowander.route.PlanScreen
 import com.gowander.route.PreviewScreen
 import com.gowander.route.ResultsScreen
 import com.gowander.route.RoutePhase
@@ -164,13 +163,13 @@ private fun AppContent() {
         routeVm.setDestination(e)
         infoPlaceId = placeId
         infoPlaceName = placeId?.let { e.label }
-        // Inside the trip form the pick only fills the form; everywhere else it goes straight to the routes.
-        if (Screen.Plan in nav.stack) nav = nav.popTo { it == Screen.Plan } else showRoutes()
+        showRoutes()
     }
 
     fun chooseOrigin(e: Endpoint) {
         routeVm.setOrigin(e)
-        if (Screen.Plan in nav.stack) nav = nav.popTo { it == Screen.Plan } else showRoutes()
+        // Changed from the search screen before a destination exists: back to the search, not to empty results.
+        if (routeVm.state.value.destination == null) nav = nav.pop() else showRoutes()
     }
 
     // After process death the ViewModel restarts empty while the stacks are restored: route screens would be blank.
@@ -220,7 +219,8 @@ private fun AppContent() {
         onOpen = { i -> routeVm.openDetail(i); nav = nav.push(Screen.Detail) },
         onRetry = routeVm::retry, onChangeDestination = { nav = nav.push(Screen.Search) },
         placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let { nav = nav.openPlace(it) } },
-        onEditTrip = { nav = nav.push(Screen.Plan) }, onUseMyLocation = ::useMyLocation, onPickOrigin = { nav = nav.push(Screen.PickOrigin) },
+        onUseMyLocation = { useMyLocation(); searchWhenOrigin = true }, onPickOrigin = { nav = nav.push(Screen.PickOrigin) },
+        onSwap = { routeVm.swap(); routeVm.search() }, onArriveBy = { routeVm.setArriveBy(it); routeVm.search() },
     )
 
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
@@ -234,6 +234,8 @@ private fun AppContent() {
                     // Address or place: the same flow, straight to the routes (ADR-034, T2).
                     onPickAddress = { a -> chooseDestination(Endpoint(a.lat, a.lon, a.name), null) },
                     onPickOnMap = { nav = nav.push(Screen.PickDestination) },
+                    origin = route.origin?.label, onChangeOrigin = { nav = nav.push(Screen.PickOrigin) },
+                    recent = route.recentDestinations, onPickRecent = { e -> chooseDestination(e, null) },
                 )
                 Screen.PickOrigin, Screen.PickDestination -> PickScreen(
                     forOrigin = top == Screen.PickOrigin, location = location, state = route,
@@ -248,26 +250,20 @@ private fun AppContent() {
                     },
                     onBack = ::back,
                 ) { e -> if (top == Screen.PickOrigin) chooseOrigin(e) else chooseDestination(e, null) }
-                Screen.Plan -> PlanScreen(
-                    route, onEditDestination = { nav = nav.push(Screen.Search) }, onUseMyLocation = ::useMyLocation,
-                    onPickOrigin = { nav = nav.push(Screen.PickOrigin) }, onPickDestination = { nav = nav.push(Screen.PickDestination) },
-                    onArriveBy = routeVm::setArriveBy, onMode = routeVm::setMode, onRecent = routeVm::setDestination, onSwap = routeVm::swap,
-                    onBack = ::back, onSearch = ::showRoutes,
-                )
                 Screen.Results -> Results()
                 // While a mode switch reloads, the results screen shows the loading and any failure in place.
                 Screen.Detail -> if (route.phase is RoutePhase.Results) DetailScreen(
                     route, location, onBack = ::back, onOpenPlace = { p -> nav = nav.openPlace(p.id) },
-                    onStart = ::startNavigation, onPreview = { nav = nav.push(Screen.Preview(0)) }, onSteps = { nav = nav.push(Screen.Steps) },
-                    onMode = routeVm::switchModeInDetail, placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let { nav = nav.openPlace(it) } },
+                    onStart = ::startNavigation, onSteps = { nav = nav.push(Screen.Preview(0)) }, // "Xem từng bước" (screen 6)
+                    placeInfo = placeInfo, onPlaceInfo = { infoPlaceId?.let { nav = nav.openPlace(it) } },
                 ) else Results()
-                Screen.Steps -> StepsScreen(route, onBack = ::back, onPreview = { nav = nav.push(Screen.Preview(it)) })
-                is Screen.Preview -> PreviewScreen(
-                    route, top.start, loadPhoto, onBack = ::back,
-                    onBackToRoute = { nav = nav.popTo { it == Screen.Navigation || it == Screen.Detail } },
-                )
+                // The step list: opened from the step-by-step view it jumps back to it at the chosen step; from navigation it opens it.
+                Screen.Steps -> StepsScreen(route, onBack = ::back) { i ->
+                    nav = if (nav.stack.getOrNull(nav.stack.size - 2) is Screen.Preview) nav.pop().pop().push(Screen.Preview(i)) else nav.push(Screen.Preview(i))
+                }
+                is Screen.Preview -> PreviewScreen(route, top.start, loadPhoto, onBack = ::back, onList = { nav = nav.push(Screen.Steps) })
                 Screen.Navigation -> if (route.phase is RoutePhase.Results) NavigationScreen(
-                    route, location, onExit = ::back, onSteps = { nav = nav.push(Screen.Steps) }, onPreview = { nav = nav.push(Screen.Preview(it)) },
+                    route, location, onExit = ::back, onSteps = { nav = nav.push(Screen.Steps) },
                     onReroute = { location.lastLocation?.position?.let { routeVm.setOrigin(Endpoint(it.latitude, it.longitude, Strings.MY_LOCATION)); routeVm.search() } },
                 ) else Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     val failed = route.phase as? RoutePhase.Failed

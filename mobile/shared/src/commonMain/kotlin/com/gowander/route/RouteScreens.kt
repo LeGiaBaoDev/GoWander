@@ -1,5 +1,19 @@
 package com.gowander.route
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.plus
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import com.gowander.ui.kitShadow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -173,6 +187,10 @@ fun SearchScreen(
     onPick: (PlaceSummary) -> Unit,
     onPickAddress: (GeoResult) -> Unit,
     onPickOnMap: () -> Unit,
+    origin: String? = null,
+    onChangeOrigin: () -> Unit = {},
+    recent: List<Endpoint> = emptyList(),
+    onPickRecent: (Endpoint) -> Unit = {},
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }
@@ -190,20 +208,37 @@ fun SearchScreen(
             launch { try { addresses = geocode(q); addressError = null } catch (e: ApiError) { addresses = emptyList(); addressError = message(e) } }
         }
     }
-    Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Header(Strings.SEARCH_DESTINATION, onBack = onBack)
-        val shape = RoundedCornerShape(16.dp)
-        Row(Modifier.fillMaxWidth().border(1.5.dp, Palette.Primary, shape).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(KitIcons.search, 18.dp, Palette.Primary)
-            Spacer(Modifier.width(10.dp))
-            BasicTextField(
-                text, { text = it }, Modifier.weight(1f).semantics { contentDescription = Strings.SEARCH_DESTINATION },
-                singleLine = true, textStyle = TextStyle(fontSize = 15.sp, color = Palette.Ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                decorationBox = { inner -> if (text.isEmpty()) Text(Strings.TYPE_TO_SEARCH, color = Palette.Muted, maxLines = 1); inner() },
-            )
+    Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding()) {
+        // UX-2 screen 3: back + pill field on one row, "Từ: … · Đổi" under it, a divider, then the list.
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(KitIcons.back, Strings.BACK, tint = Palette.Ink, onClick = onBack)
+                Spacer(Modifier.width(6.dp))
+                val shape = RoundedCornerShape(24.dp)
+                Row(Modifier.weight(1f).height(48.dp).border(2.dp, Palette.Primary, shape).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(
+                        text, { text = it }, Modifier.weight(1f).semantics { contentDescription = Strings.SEARCH_DESTINATION },
+                        singleLine = true, textStyle = TextStyle(fontSize = 16.sp, color = Palette.Ink),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        decorationBox = { inner -> if (text.isEmpty()) Text(Strings.WHERE_TO, size = 16.sp, color = Palette.Muted, maxLines = 1); inner() },
+                    )
+                }
+            }
+            Row(Modifier.padding(start = 54.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(Palette.Primary))
+                Spacer(Modifier.width(8.dp))
+                Text("${Strings.FROM}: ", size = 13.sp, color = Palette.Muted)
+                Text(origin ?: Strings.NOT_SET, Modifier.weight(1f), size = 13.sp, weight = FontWeight.SemiBold, maxLines = 1)
+                Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(role = Role.Button, onClick = onChangeOrigin), contentAlignment = Alignment.CenterEnd) {
+                    Text(Strings.CHANGE, size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
+                }
+            }
         }
-        Column(Modifier.verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+            ListRow(Strings.PICK_ON_MAP, lead = { Badge(KitIcons.map, Palette.Soft, Palette.Primary) }, onClick = onPickOnMap)
+            // Design screen 3: places and addresses under one "Kết quả"; the subtitle says which is which.
+            if (results.isNotEmpty() || addresses.isNotEmpty()) SectionTitle(Strings.RESULTS, Modifier.padding(top = 8.dp))
             error?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Palette.Accent, bold = true) }
             results.forEach { p ->
                 val station = p.category?.slug == "station"
@@ -214,70 +249,23 @@ fun SearchScreen(
                 )
             }
             if (addresses.isNotEmpty() || addressError != null) {
-                SectionTitle(Strings.ADDRESSES, Modifier.padding(top = 8.dp))
                 addressError?.let { Note(it) }
                 addresses.forEach { a ->
                     // Honest about OSM gaps: a typed house number that was not found is shown as approximate.
-                    val detail = listOfNotNull(a.detail, Strings.APPROXIMATE.takeIf { a.approximate }).joinToString(" · ").ifEmpty { null }
+                    val detail = listOfNotNull(Strings.ADDRESS, a.detail, Strings.APPROXIMATE.takeIf { a.approximate }).joinToString(" · ")
                     ListRow(a.name, detail, lead = { Badge(KitIcons.pin, Palette.AccentSoft, Palette.Accent) }, onClick = { onPickAddress(a) })
                 }
                 if (addresses.isNotEmpty()) Note(Strings.OSM_ATTRIBUTION)
             }
-            ListRow(Strings.PICK_ON_MAP, lead = { Badge(KitIcons.map, Palette.Subtle, Palette.Primary) }, onClick = onPickOnMap)
+            if (text.trim().length < 2 && recent.isNotEmpty()) {
+                SectionTitle(Strings.RECENT, Modifier.padding(top = 16.dp))
+                recent.forEach { e -> ListRow(e.label, null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Muted) }, onClick = { onPickRecent(e) }) }
+            }
         }
     }
 }
 
 // ---------- M3 plan ----------
-
-/** M3: origin and destination card, leave-now / arrive-by chips, pick on map, recent destinations, search button. */
-@Composable
-fun PlanScreen(
-    state: RouteUiState,
-    onEditDestination: () -> Unit,
-    onUseMyLocation: () -> Unit,
-    onPickOrigin: () -> Unit,
-    onPickDestination: () -> Unit,
-    onArriveBy: (Long?) -> Unit,
-    onMode: (TravelMode) -> Unit,
-    onRecent: (Endpoint) -> Unit,
-    onSwap: () -> Unit,
-    onBack: () -> Unit,
-    onSearch: () -> Unit,
-) {
-    Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Header(Strings.EDIT_TRIP_TITLE, onBack = onBack) // opened over the results (UX-2 P1), so it needs its own Back
-        // Layout of Google Maps / Naver Map / KakaoMap directions: endpoints card with swap on the right, mode tabs
-        // right under it, then time. "My location" and "pick on map" sit on the row they change (no extra chip rows).
-        Card(Modifier.fillMaxWidth(), gap = 0.dp) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    ListRow(
-                        state.origin?.label ?: Strings.NOT_SET, Strings.ORIGIN,
-                        lead = { Badge(KitIcons.locate, Palette.Soft, Palette.Primary, 36.dp) },
-                        trail = { IconButton(KitIcons.locate, Strings.USE_MY_LOCATION, onClick = onUseMyLocation) },
-                        onClick = onPickOrigin,
-                    )
-                    ListRow(
-                        state.destination?.label ?: Strings.NOT_SET, Strings.DESTINATION,
-                        lead = { Badge(KitIcons.pin, Palette.AccentSoft, Palette.Accent, 36.dp) },
-                        trail = { IconButton(KitIcons.map, Strings.DESTINATION_ON_MAP, onClick = onPickDestination) },
-                        onClick = onEditDestination,
-                    )
-                }
-                IconButton(ExtraIcons.swap, Strings.SWAP, tint = Palette.Ink, onClick = onSwap)
-            }
-        }
-        TravelModeTabs(state.mode, onMode)
-        TimeChips(state.arriveBy, onArriveBy)
-        if (state.recentDestinations.isNotEmpty()) {
-            SectionTitle(Strings.RECENT)
-            state.recentDestinations.forEach { e -> ListRow(e.label, null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Muted) }, onClick = { onRecent(e) }) }
-        }
-        if (state.origin == null || state.destination == null) Note(Strings.NEED_BOTH)
-        Button(Strings.FIND_ROUTE, Modifier.fillMaxWidth(), icon = KitIcons.route, onClick = onSearch)
-    }
-}
 
 private val TRAVEL_MODES = listOf(TravelMode.Bus, TravelMode.Metro, TravelMode.Car, TravelMode.Bicycle, TravelMode.Walk)
 
@@ -298,6 +286,24 @@ fun TravelModeTabs(mode: TravelMode, onMode: (TravelMode) -> Unit) = ModeTabs(
 /** "Khởi hành ngay" or "Đến trước HH:MM" with 15-minute steps (simple, accessible, no time-picker library). */
 @Composable
 private fun TimeChips(arriveBy: Long?, onArriveBy: (Long?) -> Unit) {
+    // UX-2 screen 4: one "Đi ngay ▾" button; the choices open under it and close again on the same button.
+    var open by rememberSaveable { mutableStateOf(false) }
+    val shape = RoundedCornerShape(999.dp)
+    Row(
+        // 48 dp touch target around the 36 dp pill of the design.
+        Modifier.padding(start = 52.dp).sizeIn(minHeight = 48.dp).clickable(role = Role.Button) { open = !open },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.height(36.dp).clip(shape).background(Palette.Bg).border(1.dp, Palette.Line, shape).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(KitIcons.clock, 16.dp, Palette.Primary)
+            Spacer(Modifier.width(6.dp))
+            Text("${if (arriveBy != null) "${Strings.ARRIVE_BY} ${pilotClock(arriveBy)}" else Strings.GO_NOW} ${if (open) "▴" else "▾"}", size = 13.sp, weight = FontWeight.SemiBold)
+        }
+    }
+    if (!open) return
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Chip(Strings.LEAVE_NOW, selected = arriveBy == null) { onArriveBy(null) }
         Spacer(Modifier.width(8.dp))
@@ -323,13 +329,46 @@ private fun roundUpToQuarter(ms: Long) = ((ms + 899_999L) / 900_000L) * 900_000L
 fun PlaceInfoRow(name: String, onClick: () -> Unit) =
     ListRow("${Strings.ABOUT_PLACE} $name", Strings.ABOUT_PLACE_HINT, lead = { Badge(KitIcons.landmark, Palette.Soft, Palette.Primary) }, onClick = onClick)
 
-/** "Bắt đầu" (primary) + "Xem trước" + "Đường đi" on one row; must stay one line each down to iPhone SE width. */
+/** UX-2 screen 5: "Bắt đầu" + "Xem từng bước" (one step-by-step screen, no separate preview); one line each on an iPhone SE. */
 @Composable
-fun RouteActions(onStart: () -> Unit, onPreview: () -> Unit, onSteps: () -> Unit, modifier: Modifier = Modifier) {
+fun RouteActions(onStart: () -> Unit, onSteps: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(Strings.START, Modifier.weight(1.3f), icon = KitIcons.locate, compact = true, onClick = onStart)
-        Button(Strings.PREVIEW, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onPreview)
-        Button(Strings.STEPS, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onSteps)
+        Button(Strings.START, Modifier.weight(1f), icon = ExtraIcons.send, compact = true, pill = true, onClick = onStart)
+        Button(Strings.STEP_BY_STEP, Modifier.weight(1f), kind = ButtonKind.Outline, icon = ExtraIcons.list, compact = true, pill = true, onClick = onSteps)
+    }
+}
+
+/** Back, then From / To rows (each tappable to change it) and the swap button: Google Maps' directions header. */
+@Composable
+private fun TripHeader(state: RouteUiState, onBack: () -> Unit, onPickOrigin: () -> Unit, onUseMyLocation: () -> Unit, onChangeDestination: () -> Unit, onSwap: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(KitIcons.back, Strings.BACK, tint = Palette.Ink, onClick = onBack)
+        Spacer(Modifier.width(4.dp))
+        val shape = RoundedCornerShape(14.dp)
+        Column(Modifier.weight(1f).clip(shape).border(1.dp, Palette.Line, shape)) {
+            // Origin: round teal dot; the locate icon brings back "my location" after the origin was changed.
+            EndpointRow(state.origin?.label ?: Strings.NOT_SET, Strings.ORIGIN, CircleShape, Palette.Primary, bold = false, onClick = onPickOrigin) {
+                IconButton(KitIcons.locate, Strings.USE_MY_LOCATION, onClick = onUseMyLocation)
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
+            EndpointRow(state.destination?.label ?: Strings.NOT_SET, Strings.DESTINATION, RoundedCornerShape(2.dp), Palette.Accent, bold = true, onClick = onChangeDestination)
+        }
+        Spacer(Modifier.width(8.dp))
+        IconButton(ExtraIcons.swap, Strings.SWAP, Modifier.border(1.dp, Palette.Line, CircleShape), onClick = onSwap)
+    }
+}
+
+/** One From / To line of the trip header: shape + colour say which end it is, the spoken label says it too. */
+@Composable
+private fun EndpointRow(label: String, role: String, dot: androidx.compose.ui.graphics.Shape, color: androidx.compose.ui.graphics.Color, bold: Boolean, onClick: () -> Unit, trail: (@Composable () -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).clickable(role = Role.Button, onClick = onClick).semantics { contentDescription = "$role: $label" }.padding(start = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(10.dp).clip(dot).background(color))
+        Spacer(Modifier.width(10.dp))
+        Text(label, Modifier.weight(1f), size = 14.sp, weight = if (bold) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+        trail?.invoke()
     }
 }
 
@@ -470,16 +509,23 @@ fun ResultsScreen(
     onChangeDestination: () -> Unit,
     placeInfo: String? = null,
     onPlaceInfo: () -> Unit = {},
-    onEditTrip: () -> Unit = {},
     onUseMyLocation: () -> Unit = {},
     onPickOrigin: () -> Unit = {},
+    onSwap: () -> Unit = {},
+    onArriveBy: (Long?) -> Unit = {},
 ) {
-    val title = "${state.origin?.label ?: "?"} → ${state.destination?.label ?: "?"}"
-    Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Header(title, onBack = onBack)
-        // shortcut: opens the trip form until the header edits in place (UX-2 P2).
-        ListRow(Strings.EDIT_TRIP, null, lead = { Badge(KitIcons.pen, Palette.Soft, Palette.Primary) }, onClick = onEditTrip)
-        TravelModeTabs(state.mode, onMode) // switch mode on the results, as in Google/Naver/Kakao
+    Column(Modifier.fillMaxSize().background(Palette.Subtle).verticalScroll(rememberScrollState())) {
+        // UX-2 screen 4: white header (From / To edited in place, swap, time, modes) over a light list background.
+        Column(
+            Modifier.fillMaxWidth().background(Palette.Bg).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TripHeader(state, onBack, onPickOrigin, onUseMyLocation, onChangeDestination, onSwap)
+            TimeChips(state.arriveBy, onArriveBy)
+            TravelModeTabs(state.mode, onMode) // switch mode on the results, as in Google/Naver/Kakao
+        }
+        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
         Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (val p = state.phase) {
@@ -508,21 +554,26 @@ fun ResultsScreen(
                         Spacer(Modifier.width(8.dp))
                         Chip(Strings.LEAST_WALKING, selected = state.sort == RouteSort.LeastWalking) { onSort(RouteSort.LeastWalking) }
                     }
-                    p.routes.forEachIndexed { i, r -> RouteOptionCard(r, highlight = i == 0, tag = if (i == 0 && state.mode.isTransit) (if (state.sort == RouteSort.Fastest) Strings.FASTEST else Strings.LEAST_WALKING) else null) { onOpen(i) } }
+                    // The same trip at later times is one card with its departures (plan §7.3); the sort chips above
+                    // already say what "first" means, so no repeated "Nhanh nhất" label on the card.
+                    val groups = remember(p.routes) { groupTrips(p.routes) }
+                    groups.forEachIndexed { gi, g -> RouteOptionCard(p.routes[g.first], highlight = gi == 0, later = g.later.map { it to clock(p.routes[it].startTime) }, onOpenLater = onOpen) { onOpen(g.first) } }
+                    if (state.mode == TravelMode.Metro) Note(Strings.METRO_WITH_BUS)
                     if (p.assumedData) Note(Strings.ASSUMED_NOTE)
                     if (p.routes.any { r -> r.legs.any { it.mode == "CAR" } }) Note(Strings.CAR_NOTE)
                 }
             }
         }
+        }
     }
 }
 
 @Composable
-private fun RouteOptionCard(r: Route, highlight: Boolean, tag: String?, onClick: () -> Unit) {
+private fun RouteOptionCard(r: Route, highlight: Boolean, later: List<Pair<Int, String>>, onOpenLater: (Int) -> Unit, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shadow = highlight, onClick = onClick) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(Strings.minutes(r.durationSec), Modifier.weight(1f), size = 26.sp, weight = FontWeight.Bold)
-            if (tag != null) Text(tag, Modifier.clip(RoundedCornerShape(999.dp)).background(Palette.Soft).padding(horizontal = 10.dp, vertical = 5.dp), size = 12.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
+            Text("${clock(r.startTime)} → ${clock(r.endTime)}", size = 13.sp, color = Palette.Muted)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             r.legs.forEachIndexed { j, leg ->
@@ -534,7 +585,12 @@ private fun RouteOptionCard(r: Route, highlight: Boolean, tag: String?, onClick:
         // Bus/metro trips always include walking to and from the stops: say how much (owner, 14-11-2026).
         val walkMin = r.legs.filter { it.mode == "WALK" }.sumOf { it.durationSec } / 60
         val walk = if (r.legs.any { it.transit } && walkMin > 0) "${Strings.WALK_TOTAL} $walkMin ${Strings.MINUTES_SHORT} · " else ""
-        Note("$walk${Strings.LEAVE_AT} ${clock(r.startTime)} · ${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
+        Note("$walk${if (r.transfers == 0) Strings.NO_TRANSFER else "${r.transfers} ${Strings.TRANSFERS}"}")
+        // Each later departure is its own target: it opens that exact trip.
+        if (later.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Note(Strings.LATER_TRIPS)
+            later.forEach { (i, time) -> Chip(time) { onOpenLater(i) } }
+        }
     }
 }
 
@@ -555,9 +611,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenPlace: (PlaceSummary) -> Unit,
     onStart: () -> Unit,
-    onPreview: () -> Unit,
     onSteps: () -> Unit,
-    onMode: (TravelMode) -> Unit,
     placeInfo: String? = null,
     onPlaceInfo: () -> Unit = {},
 ) {
@@ -572,11 +626,14 @@ fun DetailScreen(
             route, state.origin, state.destination, location, Modifier.fillMaxSize(),
             viewSwitch = true, insets = PaddingValues(top = 80.dp, bottom = if (expanded) 600.dp else 390.dp),
         )
-        Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header(Strings.ROUTE_DETAIL, floating = true, onBack = onBack) }
-        Card(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding().padding(12.dp)
-                .heightIn(max = if (expanded) 590.dp else 380.dp),
-            shadow = true, gap = 10.dp,
+        // Design screen 5: only a round back button over the map (the sheet says what this is).
+        Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header("", floating = true, onBack = onBack) }
+        val sheet = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = if (expanded) 620.dp else 400.dp)
+                .kitShadow(sheet).clip(sheet).background(Palette.Bg)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Handle + summary are one 48 dp+ target that opens or closes the leg list (a drag sheet is more code than
             // this MVP needs); the arrow says which way it goes.
@@ -595,24 +652,20 @@ fun DetailScreen(
                 Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.width(40.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line))
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(Strings.minutes(route.durationSec), size = 28.sp, weight = FontWeight.Bold)
-                        val timed = route.legs.any { it.transit }
-                        Note("${if (!timed) "Ước tính" else if (p.assumedData) "Theo lịch ước tính" else Strings.SCHEDULED} · ${Strings.ARRIVE_ABOUT} ${clock(route.endTime)}")
-                    }
-                    Text(if (expanded) "▾" else "▴", size = 20.sp, color = Palette.Muted)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(Strings.minutes(route.durationSec), Modifier.weight(1f), size = 26.sp, weight = FontWeight.Bold)
+                    Note("${clock(route.startTime)} → ${clock(route.endTime)} · ${Strings.TO_PLACE} ${state.destination?.label ?: Strings.DESTINATION.lowercase()}")
                 }
             }
-            TravelModeTabs(state.mode, onMode) // switch vehicle right here, as on Google's route sheet
-            RouteActions(onStart, onPreview, onSteps)
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
                 if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
+                // Timeline like the design: dot per stop, solid line on a vehicle, dotted line on foot.
                 route.legs.forEachIndexed { i, leg ->
-                    waits[i]?.let { ListRow("${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Ink) }) }
-                    LegRow(leg)
+                    waits[i]?.let { TimelineRow(TimelineMark.Wait, "${Strings.WAIT} $it phút", if (leg.transit) Strings.SCHEDULED else null) }
+                    LegRow(leg, first = i == 0)
                 }
+                TimelineRow(TimelineMark.End, "${Strings.ARRIVE_AT} ${state.destination?.label ?: Strings.DESTINATION.lowercase()}", null)
                 if (state.nearAlighting.isNotEmpty()) {
                     val alightLeg = route.legs.lastOrNull { it.transit }
                     val near = if (alightLeg != null) "${Strings.NEAR_STATION} ${alightLeg.to.name}" else "${Strings.NEAR} ${state.destination?.label ?: ""}"
@@ -622,26 +675,57 @@ fun DetailScreen(
                 if (p.assumedData) Note(Strings.ASSUMED_NOTE)
                 if (route.legs.any { it.mode == "CAR" }) Note(Strings.CAR_NOTE)
             }
+            RouteActions(onStart, onSteps) // design: the two actions sit at the bottom of the sheet
+        }
+    }
+}
+
+internal enum class TimelineMark { Start, Stop, Wait, End }
+
+/** One line of the route timeline: a mark, the line down to the next row (solid = vehicle, dotted = on foot), text. */
+@Composable
+private fun TimelineRow(mark: TimelineMark, title: String, detail: String?, line: Color? = null, dotted: Boolean = false) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Column(Modifier.width(20.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(4.dp))
+            when (mark) {
+                TimelineMark.Start -> Box(Modifier.size(12.dp).clip(CircleShape).background(Palette.Primary))
+                TimelineMark.End -> Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Accent))
+                TimelineMark.Wait -> Icon(KitIcons.clock, 12.dp, Palette.Muted)
+                TimelineMark.Stop -> Box(Modifier.size(12.dp).clip(CircleShape).background(Palette.Bg).border(3.dp, line ?: Palette.Bus, CircleShape))
+            }
+            if (line != null) Canvas(Modifier.weight(1f).width(4.dp).padding(vertical = 2.dp)) {
+                val x = size.width / 2
+                if (dotted) drawLine(Palette.Muted, Offset(x, 0f), Offset(x, size.height), 3.dp.toPx(), StrokeCap.Round, PathEffect.dashPathEffect(floatArrayOf(0.1f, 7.dp.toPx())))
+                else drawLine(line, Offset(x, 0f), Offset(x, size.height), 4.dp.toPx())
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f).padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, size = 14.sp, weight = FontWeight.SemiBold)
+            if (detail != null) Text(detail, size = 12.sp, color = Palette.Muted)
         }
     }
 }
 
 @Composable
-private fun LegRow(leg: Leg) {
+private fun LegRow(leg: Leg, first: Boolean) {
     if (leg.transit) {
         val bus = leg.mode == "BUS"
         val name = leg.line?.shortName?.let { "${if (bus) Strings.BUS else "Metro"} $it" } ?: leg.mode
-        ListRow(
+        TimelineRow(
+            TimelineMark.Stop,
             "$name · ${leg.headsign?.let { "${Strings.TOWARDS} $it" } ?: ""}".trimEnd(' ', '·'),
             "${clock(leg.startTime)} ${leg.from.name} → ${leg.to.name} · ${Strings.minutes(leg.durationSec)}" + if (!leg.realtime) " · ${Strings.SCHEDULED}" else "",
-            lead = { if (bus) Badge(KitIcons.bus, Palette.Bus, Palette.OnPrimary) else Badge(KitIcons.metro, Palette.Metro, Palette.OnPrimary) },
+            line = if (bus) Palette.Bus else Palette.Metro,
         )
     } else {
         val verb = when (leg.mode) { "CAR" -> Strings.DRIVE; "BICYCLE" -> Strings.CYCLE; else -> Strings.WALK }
-        ListRow(
+        TimelineRow(
+            if (first) TimelineMark.Start else TimelineMark.Stop,
             "$verb ${Strings.minutes(leg.durationSec)}",
             "${if (leg.to.stopId != null) "Tới ga ${leg.to.name}" else "Tới ${leg.to.name.takeUnless { it == "Destination" } ?: Strings.DESTINATION.lowercase()}"} · ${Strings.meters(leg.distanceM)}",
-            lead = { Badge(when (leg.mode) { "CAR" -> ExtraIcons.car; "BICYCLE" -> ExtraIcons.bike; else -> KitIcons.walk }, Palette.Subtle, Palette.Ink) },
+            line = Palette.Muted, dotted = leg.mode == "WALK",
         )
     }
 }

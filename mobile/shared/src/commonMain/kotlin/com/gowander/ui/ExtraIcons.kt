@@ -43,5 +43,7 @@ object ExtraIcons {
     val close: ImageVector by lazy { strokeIcon("x", "M18 6 6 18", "m6 6 12 12") }
     val fastForward: ImageVector by lazy { strokeIcon("fast-forward", "M13 19l9-7-9-7z", "M2 19l9-7-9-7z") }
     val pause: ImageVector by lazy { strokeIcon("pause", "M6 4h4v16H6z", "M14 4h4v16h-4z") }
+    val list: ImageVector by lazy { strokeIcon("list", "M8 6h13", "M8 12h13", "M8 18h13", "M3 6h.01", "M3 12h.01", "M3 18h.01") }
+    val send: ImageVector by lazy { strokeIcon("navigation", "M3 11 22 2l-9 19-2-8-8-2z") }
     val swap: ImageVector by lazy { strokeIcon("arrow-up-down", "m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16") }
 }

@@ -114,6 +114,8 @@ fun RouteMap(
     viewSwitch: Boolean = false, // show the 2D / 3D / satellite button on this map
     insets: PaddingValues = PaddingValues(0.dp), // area covered by cards: logo, attribution and camera centre avoid it
     streetLevel: Boolean = false, // preview top half: allow eye-level zoom and tilt beyond MapLibre's defaults (20, 60°)
+    followZoom: Double = 17.5, // UX-2 split navigation: street view on top follows closer than the 2D map below
+    followPitch: Double? = null, // null: from the user's 2D / 3D choice
 ) {
     val viewState = LocalMapView.current
     val view = viewState.value
@@ -141,7 +143,7 @@ fun RouteMap(
     if (follow && location != null) {
         val reason = mapState.cameraMoveReason
         LaunchedEffect(reason) { if (reason == CameraMoveReason.Gesture) following = false }
-        LaunchedEffect(view, following) { if (following) mapState.animateCamera(CameraUpdate(zoom = 17.5, pitch = if (view == MapView.Flat) 0.0 else 55.0)) }
+        LaunchedEffect(view, following) { if (following) mapState.animateCamera(CameraUpdate(zoom = followZoom, pitch = followPitch ?: if (view == MapView.Flat) 0.0 else 55.0)) }
         // Bearing from course or compass, whichever is more accurate.
         LocationTrackingEffect(locationState = location, enabled = following) { updateCamera(mapState, updateBearing = BearingUpdate.TrackAutomatic) }
     }

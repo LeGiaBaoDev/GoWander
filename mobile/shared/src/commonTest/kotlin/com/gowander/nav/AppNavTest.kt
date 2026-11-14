@@ -39,8 +39,8 @@ class AppNavTest {
         assertEquals(listOf(Screen.Place("p1"), Screen.Results), AppNav().push(Screen.Place("p1")).showResults().stack)
         // "Đi đâu?" -> search -> pick: the search screen is replaced, Back returns to the map.
         assertEquals(listOf(Screen.Results), AppNav().push(Screen.Search).showResults().stack)
-        // Editing the trip from the results: back on the same results, not a second copy.
-        val edited = AppNav().push(Screen.Results).push(Screen.Plan).push(Screen.Search).showResults()
+        // Changing the origin or destination from the results header: back on the same results, not a second copy.
+        val edited = AppNav().push(Screen.Results).push(Screen.PickOrigin).showResults()
         assertEquals(listOf(Screen.Results), edited.stack)
         // Picking on the map from the search screen.
         assertEquals(listOf(Screen.Results), AppNav().push(Screen.Search).push(Screen.PickDestination).showResults().stack)

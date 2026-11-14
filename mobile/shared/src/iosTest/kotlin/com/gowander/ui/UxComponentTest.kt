@@ -61,11 +61,16 @@ class UxComponentTest {
         assertEquals(2, clicks)
     }
 
-    /** iPhone SE (375 pt) minus the sheet margins: the three route actions must each stay on one line. */
+    /** iPhone SE (375 pt) minus the sheet margins: "Bắt đầu" and "Xem từng bước" (UX-2 screen 5) each stay on one line. */
     @Test
     fun routeActionsStayOnOneLineOnSmallIphones() = runComposeUiTest {
-        setContent { Box(Modifier.width(319.dp)) { RouteActions({}, {}, {}) } }
-        for (label in listOf(Strings.START, Strings.PREVIEW, Strings.STEPS)) {
+        var started = 0
+        var stepped = 0
+        setContent { Box(Modifier.width(319.dp)) { RouteActions({ started++ }, { stepped++ }) } }
+        onNodeWithText(Strings.PREVIEW).assertDoesNotExist() // one step-by-step screen, no separate "Xem trước"
+        onNodeWithText(Strings.STEP_BY_STEP).performClick()
+        assertEquals(0 to 1, started to stepped)
+        for (label in listOf(Strings.START, Strings.STEP_BY_STEP)) {
             // Labels are maxLines = 1, so a label that does not fit is cut, not wrapped: check the text layout itself.
             val layouts = mutableListOf<TextLayoutResult>()
             onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)

@@ -43,3 +43,12 @@ class RouteMathTest {
         assertEquals("16:00", pilotClock(1795073400_000L + 90 * 60_000L))
     }
 }
+
+class DistanceLabelTest {
+    @kotlin.test.Test
+    fun kilometresUseTheVietnameseDecimalComma() {
+        kotlin.test.assertEquals("1,2 km", distanceLabel(1_234.0))
+        kotlin.test.assertEquals("120 m", distanceLabel(118.0))
+        kotlin.test.assertEquals("1,5 km", com.gowander.ui.Strings.meters(1_560.0))
+    }
+}
