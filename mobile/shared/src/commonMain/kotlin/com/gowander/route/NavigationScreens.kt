@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.semantics.selected
 import com.gowander.ui.kitShadow
+import com.gowander.Prefs
+import com.gowander.home.LocalNotice
+import com.gowander.ui.Icon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -105,6 +108,7 @@ private const val NUDGE_M = 20.0 // one tap on ︿ / ﹀ moves this far along th
 private const val LOOK_AHEAD_M = 8.0
 private const val NAV_STREET_ZOOM = 19.0 // moving: one step back from the preview's eye level, fewer tiles per second
 private const val OVERVIEW_ZOOM = 16.5
+private const val NO_VOICE_TOLD = "no_vi_voice_told"
 
 // Vietnamese decimal comma: "1,2 km" (design screen 7).
 fun distanceLabel(m: Double): String = if (m < 1000) "${((m / 10).roundToInt() * 10).coerceAtLeast(10)} m" else "${(m / 100).roundToInt() / 10.0} km".replace('.', ',')
@@ -144,6 +148,21 @@ fun NavigationScreen(
     if (progress != null && progress.offRouteM < JOIN_M) joined = true
     val offRoute = joined && progress != null && !arrived && progress.offRouteM > OFF_ROUTE_M
 
+    // P2b voice (plan §8.3): the device's vi-VN voice; the sentence is also shown under the banner.
+    val notice = LocalNotice.current
+    val speaker = rememberSpeaker()
+    var voice by rememberSaveable { mutableStateOf(VoiceMode.load()) }
+    val cues = remember(route) { VoiceCues() }
+    var spoken by remember(route) { mutableStateOf<String?>(null) }
+    LaunchedEffect(progress, arrived, offRoute) {
+        val cue = cues.next(progress, steps, arrived, offRoute, destination) ?: return@LaunchedEffect
+        if (audible(cue, voice)) { spoken = cue.text; speaker.speak(cue.text) }
+    }
+    LaunchedEffect(speaker.ready) {
+        // Said once per device, then guidance is text only.
+        if (speaker.ready == false && !Prefs.getBool(NO_VOICE_TOLD)) { Prefs.setBool(NO_VOICE_TOLD, true); notice(Strings.NO_VI_VOICE) }
+    }
+
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.fillMaxWidth().weight(420f)) {
             // Street view following the user (zoom a little wider than the preview: it moves, so fewer tiles per second).
@@ -167,6 +186,17 @@ fun NavigationScreen(
                         )
                     }
                 }
+                spoken?.takeIf { voice != VoiceMode.Off }?.let { line ->
+                    Row(
+                        Modifier.fillMaxWidth().kitShadow(RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(Palette.Bg.copy(alpha = 0.95f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(ExtraIcons.volume, 18.dp, Palette.Primary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("“$line”", size = 13.sp, maxLines = 2)
+                    }
+                }
                 if (fix == null) Note(Strings.WAITING_GPS, Modifier.clip(RoundedCornerShape(10.dp)).background(Palette.Bg).padding(8.dp))
                 if (offRoute) Card(Modifier.fillMaxWidth(), shadow = true, gap = 8.dp) {
                     Text(Strings.OFF_ROUTE, weight = FontWeight.SemiBold)
@@ -180,10 +210,23 @@ fun NavigationScreen(
                 route, state.origin, state.destination, location, Modifier.fillMaxSize().padding(top = 3.dp), follow = true,
                 followZoom = OVERVIEW_ZOOM, insets = PaddingValues(bottom = 146.dp), // pitch from the 2D / 3D choice below
             )
-            // Design screen 7: one round button names the lower map's view; a tap switches 2D <-> 3D.
-            val tilted = viewState.value == MapView.Tilted
+            // Design screen 7: speaker (Bật -> Chỉ cảnh báo -> Tắt, saved) above the 2D / 3D button.
+            val voiceLabel = when (voice) { VoiceMode.On -> Strings.VOICE_ON; VoiceMode.AlertsOnly -> Strings.VOICE_ALERTS; VoiceMode.Off -> Strings.VOICE_OFF }
             Box(
                 Modifier.align(Alignment.TopEnd).padding(top = 15.dp, end = 12.dp).size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg)
+                    .semantics { contentDescription = "${Strings.VOICE}: $voiceLabel" }
+                    .clickable(role = Role.Button) {
+                        voice = voice.next()
+                        VoiceMode.save(voice)
+                        if (voice == VoiceMode.Off) speaker.stop()
+                        notice("${Strings.VOICE}: ${when (voice) { VoiceMode.On -> Strings.VOICE_ON; VoiceMode.AlertsOnly -> Strings.VOICE_ALERTS; VoiceMode.Off -> Strings.VOICE_OFF }}")
+                    },
+                contentAlignment = Alignment.Center,
+            ) { Icon(when (voice) { VoiceMode.On -> ExtraIcons.volume; VoiceMode.AlertsOnly -> KitIcons.bell; VoiceMode.Off -> ExtraIcons.volumeOff }, 22.dp, Palette.Primary) }
+            // One round button names the lower map's view; a tap switches 2D <-> 3D.
+            val tilted = viewState.value == MapView.Tilted
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(top = 71.dp, end = 12.dp).size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg)
                     .semantics { contentDescription = "${Strings.MAP_VIEW}: ${if (tilted) Strings.VIEW_3D else Strings.VIEW_2D}" }
                     .clickable(role = Role.Button) { viewState.value = if (tilted) MapView.Flat else MapView.Tilted },
                 contentAlignment = Alignment.Center,

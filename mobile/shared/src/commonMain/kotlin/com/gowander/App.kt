@@ -57,6 +57,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -110,6 +113,7 @@ private const val ONBOARDED = "onboarded"
 private const val PHOTO_CACHE_SIZE = 24
 private const val NEARBY_RADIUS_M = 1500 // screen 1: cards spread over the map around the user
 private const val NEARBY_LIMIT = 40
+private val NAV_CLEAR_STRIP = 32.dp // BottomNav's transparent top, where the centre circle rises
 private const val SPREAD_DEG = 0.004
 
 /** The back stacks survive rotation and process death as plain strings (UX-2, ADR-034). */
@@ -283,9 +287,13 @@ private fun AppContent() {
     )
 
     CompositionLocalProvider(LocalNotice provides { noticeText = it }) {
-    Column(Modifier.fillMaxSize().background(Palette.Bg)) {
-        // The raised "Đi đâu?" circle rises ~12 dp above the bar: lists end above it so no row hides under it (UX audit T3).
-        Box(Modifier.weight(1f).fillMaxWidth().padding(bottom = if (!nav.canPop && nav.tab != Tab.Map) 14.dp else 0.dp)) {
+    Box(Modifier.fillMaxSize().background(Palette.Bg)) {
+        // The bar floats over the content: the map runs down to the bar itself, under the clear strip that holds the
+        // raised "Đi đâu?" circle (no white band, owner 15-11-2026). Lists stop above the circle so no row hides under it.
+        var barHeight by remember { mutableStateOf(0.dp) }
+        val density = LocalDensity.current
+        val below = when { nav.canPop -> 0.dp; nav.tab == Tab.Map -> (barHeight - NAV_CLEAR_STRIP).coerceAtLeast(0.dp); else -> barHeight + 14.dp }
+        Box(Modifier.fillMaxSize().padding(bottom = below)) {
             when (val top = nav.top) {
                 Screen.Search -> SearchScreen(
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
@@ -403,7 +411,10 @@ private fun AppContent() {
             }
         }
         if (!nav.canPop) {
-            BottomNav(nav.tab, Modifier.windowInsetsPadding(WindowInsets.navigationBars), onGo = { nav = nav.push(Screen.Search) }) { nav = nav.select(it) }
+            Column(Modifier.align(Alignment.BottomCenter).onSizeChanged { barHeight = with(density) { it.height.toDp() } }) {
+                BottomNav(nav.tab, onGo = { nav = nav.push(Screen.Search) }) { nav = nav.select(it) }
+                Box(Modifier.fillMaxWidth().background(Palette.Bg).windowInsetsBottomHeight(WindowInsets.navigationBars)) // solid under the gesture bar
+            }
         }
     }
     // Short message for actions that only explain themselves (share, video, satellite…); read out by screen readers.

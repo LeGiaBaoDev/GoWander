@@ -177,7 +177,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 
 ### Phases (each one: tests, Android + iOS screenshots, `ux_audit`, `e2e_ux.py`, iOS UI tests, change record, owner review)
 1. **P1 Navigation shell:** 5 tabs, centre action, per-tab back stack in `commonMain`, no first-run screen, permission on demand, hide unfinished features, minimal real Journey/Profile screens.
-2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation; lower map has a 2D / 3D switch (satellite later). **DONE 14-11-2026** (Android E2E 63/63, iOS tests 65/65). **P2b:** voice guidance (platform TTS, `vi-VN`).
+2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation; lower map has a 2D / 3D switch (satellite later). **DONE 14-11-2026** (Android E2E 63/63, iOS tests 65/65). **P2b:** voice guidance (platform TTS, `vi-VN`). **DONE 15-11-2026** (Android E2E 89/89, iOS tests 77/77; field test on real phones still required before pilot).
    **All 17 canvas screens drawn 15-11-2026** with mock data where real data is missing (register above); Android E2E 85/85, iOS tests 73/73. Phases P3–P5 below now replace mocks with real data and storage.
 3. **P3 Map places:** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
 4. **P4 Discover:** Nearby + nationwide region map + TP.HCM region portfolio; tap image → show on map.
