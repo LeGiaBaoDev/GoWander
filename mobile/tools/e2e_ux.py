@@ -81,39 +81,31 @@ def journey():
           "Lần đầu mở app: màn chào có logo đầy đủ (biểu tượng + chữ GoWander) và khẩu hiệu")
     audit("Màn chào (S0)")
     tap("Bắt đầu")
-    check(find("Chọn ngôn ngữ") is not None and find("Cho phép GoWander biết vị trí của bạn?") is not None, "Bắt đầu: màn chọn ngôn ngữ và vị trí (S1)")
-    tap("English")
-    check(find("English sắp có; hiện app dùng tiếng Việt.") is not None, "Chọn English: báo 'sắp có' thay vì im lặng")
-    audit("Lần đầu (S1)")
-    tap("Để sau, tôi sẽ nhập điểm đi")
-    check(find("Bạn muốn đến đâu?", timeout=15) is not None, "Để sau: vào thẳng bản đồ")
+    # UX-2 (ADR-034): no first-run form; location is asked only when a feature needs it.
+    check(find("Bạn muốn đến đâu?", timeout=15) is not None and gone("Chọn ngôn ngữ"), "Bắt đầu: vào thẳng bản đồ, không có màn chọn ngôn ngữ / vị trí")
     adb("shell", "am", "force-stop", APP)
     adb("shell", "monkey", "-p", APP, "-c", "android.intent.category.LAUNCHER", "1")
     check(find("Bạn muốn đến đâu?", timeout=25) is not None and gone("Move Smart. Explore More."), "Mở lại app: không hiện màn chào lần nữa")
     audit("Bản đồ chính")
-    tap(desc="Ngôn ngữ: Tiếng Việt")
-    check(find("Tiếng Việt") is not None and find("English") is not None, "Bấm 'VI': mở menu ngôn ngữ")
-    check(find("中文") is not None and find("한국어") is not None, "Menu ngôn ngữ thả xuống, đủ ngôn ngữ theo thứ tự phổ biến")
-    audit("Menu ngôn ngữ (mở)")
-    tap("English")
-    check(find("English: sắp có") is not None, "Chọn English: báo 'sắp có'")
-    tap("Tiếng Việt")
-    check(gone("English"), "Chọn Tiếng Việt: menu đóng")
-    # Tapping a suggested place: straight to the route, with a link to the place page.
-    place = find("Chợ Bến Thành", timeout=4)
-    if place is not None:
-        tap("Chợ Bến Thành")
-        check(find("Buýt", timeout=15) is not None and find(r"~Thông tin về .*", timeout=15) is not None,
-              "Bấm địa điểm gợi ý: vào thẳng màn tuyến (có tab phương tiện) + dòng 'Thông tin về …'")
-        tap(r"~Thông tin về .*")
-        check(find("Chỉ đường", timeout=10) is not None, "Bấm 'Thông tin về …': mở trang mô tả địa điểm")
-        adb("shell", "input", "keyevent", "4")
-        time.sleep(1)
-        tap("Map")
+    tabs = ["Bản đồ", "Khám phá", "Đi đâu?", "Hành trình", "Hồ sơ"]
+    check(all(find(t, timeout=3) is not None for t in tabs), "Thanh dưới 5 mục: Bản đồ · Khám phá · Đi đâu? · Hành trình · Hồ sơ")
+    check(find(desc="Ngôn ngữ: Tiếng Việt", timeout=2) is None, "Không còn nút 'VI' khi chưa có tiếng Anh (ADR-034)")
 
-    # Map view panel: opens, closes after a choice, closes on an outside tap.
+    # A suggested place opens its page; "Chỉ đường" goes to the routes; Back returns to the page (T3, T11).
+    if find("Chợ Bến Thành", timeout=4) is not None:
+        tap("Chợ Bến Thành")
+        check(find("Chỉ đường", timeout=10) is not None, "Bấm địa điểm gợi ý: mở trang địa điểm (có nút Chỉ đường)")
+        audit("Trang địa điểm")
+        tap("Chỉ đường")
+        check(find("Buýt", timeout=15) is not None and find(r"~Thông tin về .*", timeout=15) is not None, "Chỉ đường: vào danh sách tuyến + dòng 'Thông tin về …'")
+        adb("shell", "input", "keyevent", "4")
+        check(find("Chỉ đường", timeout=6) is not None, "Back từ danh sách tuyến: về đúng trang địa điểm")
+        adb("shell", "input", "keyevent", "4")
+        check(find("Bạn muốn đến đâu?", timeout=6) is not None, "Back lần nữa: về bản đồ")
+
+    # Map view panel: 2D / 3D only (no "coming soon" satellite), closes after a choice and on an outside tap.
     tap(desc="Loại bản đồ")
-    check(find("3D") is not None, "Bấm 'Loại bản đồ': hiện 2D / 3D / Vệ tinh")
+    check(find("3D") is not None and find("Vệ tinh", timeout=1) is None, "Bấm 'Loại bản đồ': chỉ 2D / 3D, không có ô Vệ tinh 'sắp có'")
     tap("3D")
     check(gone("3D"), "Chọn 3D: bảng tự đóng")
     tap(desc="Loại bản đồ")
@@ -127,22 +119,37 @@ def journey():
         tap(desc="Hiện gợi ý gần bạn")
         check(find(desc="Thu gọn gợi ý") is not None, "Bấm tiêu đề: gợi ý hiện lại")
 
-    # Plan tab: destination by search, car mode.
-    tap("Tìm tuyến")
-    check(find("Buýt") is not None and find("Metro") is not None and find("Đi bộ") is not None and gone("Công cộng"),
-          "Tab Tìm tuyến: 5 tab Buýt / Metro / Ô tô / Xe đạp / Đi bộ, không còn 'Công cộng'")
-    audit("Tìm tuyến (M3)")
-    tap("Điểm đến")
+    # Each tab keeps its own back stack (ADR-034).
+    tap("Khám phá")
+    row = find(r"~.+ · .+", timeout=15)
+    if row is not None:
+        name = row.get("text")
+        tap(name)
+        check(find("Chỉ đường", timeout=10) is not None, "Khám phá: bấm địa điểm mở trang địa điểm, không tự nhảy sang tuyến (T4)")
+        adb("shell", "input", "keyevent", "4")
+        check(find(name, timeout=6) is not None, "Back từ trang địa điểm: về danh sách Khám phá")
+    tap("Hành trình")
+    check(find("Nơi bạn đã tìm đường", timeout=6) is not None, "Tab Hành trình: có nội dung thật (nơi đã tìm đường)")
+    audit("Hành trình")
+    tap("Hồ sơ")
+    check(find("Nguồn dữ liệu và giấy phép", timeout=6) is not None and find("Bạn đang dùng chế độ khách") is not None, "Tab Hồ sơ: chế độ khách + nguồn dữ liệu và giấy phép")
+    audit("Hồ sơ")
+    tap("Bản đồ")
+
+    # Centre action "Đi đâu?": search, pick, straight to the routes (T2), no extra "Tìm" step.
+    tap("Đi đâu?")
     tap("Gõ tên ga hoặc địa điểm (không cần dấu)")
     adb("shell", "input", "text", "truong")
     time.sleep(1.5)
     adb("shell", "input", "text", "%sdang%sque")
     tap("Trương Đăng Quế", timeout=15)
-    tap("Buýt")  # default tab: searching it shows bus trips with the walking to and from the stops
+    check(find("Buýt", timeout=15) is not None and find("Metro") is not None and gone("Công cộng"), "Chọn điểm đến: vào thẳng danh sách tuyến, 5 tab phương tiện")
     bus = find(r"~Đi bộ tổng \d+ phút.*", timeout=20)
     check(bus is not None, "Tab Buýt: mỗi tuyến ghi rõ phần đi bộ ra/vào trạm ('Đi bộ tổng … phút')")
+    tap("Đổi điểm đi, điểm đến hoặc giờ")
+    check(find("Chuyến đi", timeout=6) is not None and find("Tìm tuyến") is not None, "Đổi chuyến: mở form điểm đi / điểm đến / giờ")
     adb("shell", "input", "keyevent", "4")
-    time.sleep(1)
+    check(find("Đổi điểm đi, điểm đến hoặc giờ", timeout=6) is not None, "Back từ form: về đúng danh sách tuyến")
     tap("Ô tô")
     first = find(r"~\d+ phút", timeout=20)
     check(first is not None, "Chọn tab Ô tô: có kết quả ngay, không phải bấm thêm")
@@ -152,7 +159,7 @@ def journey():
     # Route detail: full-screen map, the sheet expands and collapses.
     tap(first.get("text"))
     check(find("Bắt đầu") is not None, "Mở chi tiết: thấy nút Bắt đầu")
-    check(gone("Discover"), "Chi tiết tuyến: thanh tab dưới ẩn (màn con)")
+    check(gone("Khám phá"), "Chi tiết tuyến: thanh tab dưới ẩn (màn con)")
     audit("Chi tiết tuyến")
     tap(desc="Mở rộng")
     check(find(desc="Thu gọn") is not None, "Bấm phần đầu thẻ: thẻ mở rộng, nhãn đổi thành 'Thu gọn'")
@@ -205,7 +212,7 @@ def journey():
     adb("shell", "input", "keyevent", "4")
     time.sleep(1)
     adb("shell", "input", "keyevent", "4")
-    check(find("Discover", timeout=6) is not None, "Back về màn tab: thanh tab dưới hiện lại")
+    check(find("Khám phá", timeout=6) is not None and find("Bạn muốn đến đâu?") is not None, "Back từ danh sách tuyến: về bản đồ, thanh tab dưới hiện lại")
 
 
 def main():

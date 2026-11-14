@@ -3,9 +3,25 @@ package com.gowander.ui
 /** Every user-facing text of M06 in one place, so English can be added later (ADR-022, ADR-029 §4). */
 object Strings {
     const val DEMO_LABEL = "DEMO - dữ liệu giả định, không phải lịch chạy chính thức"
-    const val TAB_MAP = "Map"
-    const val TAB_DISCOVER = "Discover"
-    const val TAB_PLAN = "Tìm tuyến"
+    const val TAB_MAP = "Bản đồ"
+    const val TAB_DISCOVER = "Khám phá"
+    const val TAB_GO = "Đi đâu?"
+    const val RECENT_TRIPS = "Nơi bạn đã tìm đường"
+    const val RECENT_TRIPS_EMPTY = "Các nơi bạn tìm đường trong lần dùng này sẽ hiện ở đây."
+    const val ROUTE_AGAIN = "Xem lại tuyến đường"
+    const val GUEST = "Bạn đang dùng chế độ khách"
+    const val GUEST_NOTE = "Không cần tài khoản. Mọi thứ chỉ lưu trên máy này."
+    const val DATA_SOURCES = "Nguồn dữ liệu và giấy phép"
+    val SOURCES = listOf(
+        "Bản đồ nền" to "© OpenStreetMap contributors (ODbL 1.0) · OpenMapTiles · OpenFreeMap",
+        "Tuyến xe buýt" to "Ước tính từ dữ liệu OpenStreetMap (ODbL), chưa phải lịch chính thức",
+        "Metro số 1" to "Lịch ước tính, chưa phải lịch chính thức",
+        "Địa điểm" to "OpenStreetMap (ODbL 1.0)",
+        "Tìm địa chỉ" to "Photon, dùng dữ liệu OpenStreetMap",
+        "Ảnh đường phố" to "Mapillary (CC BY-SA 4.0), ghi tên người chụp trên từng ảnh",
+    )
+    const val TAB_JOURNEY = "Hành trình"
+    const val TAB_PROFILE = "Hồ sơ"
     const val ORIGIN = "Điểm đi"
     const val DESTINATION = "Điểm đến"
     const val MY_LOCATION = "Vị trí của bạn"
@@ -18,6 +34,9 @@ object Strings {
     const val FIND_ROUTE = "Tìm tuyến"
     const val SEARCHING = "Đang tìm tuyến…"
     const val RETRY = "Thử lại"
+    const val NEED_ORIGIN = "Chưa có điểm đi. Dùng vị trí của bạn hoặc chọn điểm đi trên bản đồ."
+    const val EDIT_TRIP_TITLE = "Chuyến đi"
+    const val EDIT_TRIP = "Đổi điểm đi, điểm đến hoặc giờ"
     const val NEED_BOTH = "Chọn điểm đi và điểm đến để tìm tuyến"
     const val NO_ROUTE = "Không tìm thấy tuyến phù hợp."
     const val NETWORK_ERROR = "Không kết nối được máy chủ GoWander. Kiểm tra mạng rồi thử lại."

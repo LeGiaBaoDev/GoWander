@@ -214,7 +214,6 @@ fun MapViewSwitch(
     buttonPadding: PaddingValues = PaddingValues(0.dp),
     onChange: (MapView) -> Unit,
 ) {
-    var satelliteNote by remember(open) { mutableStateOf(false) }
     Box(modifier) {
         if (open) Box(
             Modifier.fillMaxSize().semantics { contentDescription = Strings.CLOSE_PANEL }
@@ -238,9 +237,8 @@ fun MapViewSwitch(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ViewTile(KitIcons.map, Strings.VIEW_2D, null, view == MapView.Flat, Modifier.weight(1f)) { onChange(MapView.Flat); onOpenChange(false) }
                     ViewTile(ExtraIcons.cube, Strings.VIEW_3D, null, view == MapView.Tilted, Modifier.weight(1f)) { onChange(MapView.Tilted); onOpenChange(false) }
-                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, Strings.SOON, view == MapView.Satellite, Modifier.weight(1f)) { satelliteNote = true }
+                    // Satellite comes back when a licensed provider is chosen (ADR-034: no "coming soon" controls).
                 }
-                if (satelliteNote) Note(Strings.SATELLITE_PENDING)
             }
         }
     }

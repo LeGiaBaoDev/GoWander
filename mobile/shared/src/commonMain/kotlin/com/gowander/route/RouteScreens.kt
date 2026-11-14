@@ -109,11 +109,7 @@ fun MapHome(
             insets = PaddingValues(top = 90.dp, bottom = if (nearby.isNotEmpty() && nearbyOpen) 320.dp else 150.dp),
         )
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.Top) { // Top: the language menu opens below "VI" without moving the search bar
-                SearchBar(Strings.WHERE_TO, Modifier.weight(1f), floating = true, onClick = onSearch)
-                Spacer(Modifier.width(8.dp))
-                LanguageButton()
-            }
+            SearchBar(Strings.WHERE_TO, Modifier.fillMaxWidth(), floating = true, onClick = onSearch) // language menu hidden until English exists (ADR-034)
             if (results?.assumedData == true) Banner(Strings.DEMO_LABEL)
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.End) {
@@ -246,10 +242,11 @@ fun PlanScreen(
     onMode: (TravelMode) -> Unit,
     onRecent: (Endpoint) -> Unit,
     onSwap: () -> Unit,
+    onBack: () -> Unit,
     onSearch: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Title(Strings.TAB_PLAN)
+        Header(Strings.EDIT_TRIP_TITLE, onBack = onBack) // opened over the results (UX-2 P1), so it needs its own Back
         // Layout of Google Maps / Naver Map / KakaoMap directions: endpoints card with swap on the right, mode tabs
         // right under it, then time. "My location" and "pick on map" sit on the row they change (no extra chip rows).
         Card(Modifier.fillMaxWidth(), gap = 0.dp) {
@@ -473,15 +470,25 @@ fun ResultsScreen(
     onChangeDestination: () -> Unit,
     placeInfo: String? = null,
     onPlaceInfo: () -> Unit = {},
+    onEditTrip: () -> Unit = {},
+    onUseMyLocation: () -> Unit = {},
+    onPickOrigin: () -> Unit = {},
 ) {
     val title = "${state.origin?.label ?: "?"} → ${state.destination?.label ?: "?"}"
     Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Header(title, onBack = onBack)
+        // shortcut: opens the trip form until the header edits in place (UX-2 P2).
+        ListRow(Strings.EDIT_TRIP, null, lead = { Badge(KitIcons.pen, Palette.Soft, Palette.Primary) }, onClick = onEditTrip)
         TravelModeTabs(state.mode, onMode) // switch mode on the results, as in Google/Naver/Kakao
         if (placeInfo != null) PlaceInfoRow(placeInfo, onPlaceInfo)
         Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (val p = state.phase) {
-                RoutePhase.Idle -> Note(Strings.NEED_BOTH)
+                // No origin yet (location not allowed or no fix): ask here instead of searching from a made-up point (T5).
+                RoutePhase.Idle -> if (state.origin == null) {
+                    Note(Strings.NEED_ORIGIN)
+                    Button(Strings.USE_MY_LOCATION, Modifier.fillMaxWidth(), onClick = onUseMyLocation)
+                    Button(Strings.ORIGIN_ON_MAP, Modifier.fillMaxWidth(), kind = ButtonKind.Secondary, onClick = onPickOrigin)
+                } else Note(Strings.NEED_BOTH)
                 RoutePhase.Loading -> LoadingView(Strings.SEARCHING)
                 is RoutePhase.Failed -> if (p.retryable) {
                     // M8 shape: banner + retry. Origin and destination stay as they were.

@@ -1,5 +1,7 @@
 package com.gowander.ui
 
+import com.gowander.nav.Tab
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -340,41 +342,43 @@ fun PhotoTile(icon: ImageVector = KitIcons.landmark, size: Dp = 56.dp, radius: D
         Icon(icon, (size / 3).coerceIn(14.dp, 28.dp), Palette.Primary)
     }
 
-enum class Tab { Map, Discover, Plan }
-
-/** Kit bottom navigation with the three tabs that exist (ADR-030): Map, raised round "Tìm tuyến", Discover. */
+/**
+ * Kit bottom navigation, UX-2 (ADR-034): Bản đồ · Khám phá · raised "Đi đâu?" · Hành trình · Hồ sơ.
+ * The centre is an action (opens the destination search), not a tab, so it has the button role and no selected state.
+ * Five equal slots: fits a 320 dp screen without cutting labels (iOS UI test).
+ */
 @Composable
-fun BottomNav(active: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
+fun BottomNav(active: Tab, modifier: Modifier = Modifier, onGo: () -> Unit, onSelect: (Tab) -> Unit) {
     Box(modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(top = 32.dp).background(Palette.Bg).border(1.dp, Palette.Line).padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             NavItem(Tab.Map, KitIcons.map, Strings.TAB_MAP, active, onSelect)
-            Spacer(Modifier.width(72.dp))
             NavItem(Tab.Discover, KitIcons.compass, Strings.TAB_DISCOVER, active, onSelect)
+            Spacer(Modifier.weight(1f))
+            NavItem(Tab.Journey, KitIcons.book, Strings.TAB_JOURNEY, active, onSelect)
+            NavItem(Tab.Profile, KitIcons.user, Strings.TAB_PROFILE, active, onSelect)
         }
         // Centre action: 64 dp primary circle with a 6 dp white ring, raised above the bar like the kit.
         // The whole column (circle + label) is one tap target: tapping the label must work too (found in E2E).
         Column(
-            Modifier.align(Alignment.TopCenter).semantics(mergeDescendants = true) { selected = active == Tab.Plan }
-                .clickable(role = Role.Tab) { onSelect(Tab.Plan) },
+            Modifier.align(Alignment.TopCenter).semantics(mergeDescendants = true) {}.clickable(role = Role.Button, onClick = onGo),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
                 Modifier.size(76.dp).clip(CircleShape).background(Palette.Bg).padding(6.dp).clip(CircleShape).background(Palette.Primary),
                 contentAlignment = Alignment.Center,
             ) { Icon(KitIcons.route, 28.dp, Palette.OnPrimary) }
-            Text(Strings.TAB_PLAN, Modifier.offset(y = (-2).dp), size = 12.sp, color = if (active == Tab.Plan) Palette.Primary else Palette.Muted, weight = FontWeight.SemiBold)
+            Text(Strings.TAB_GO, Modifier.offset(y = (-2).dp), size = 12.sp, color = Palette.Ink, weight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
 
 @Composable
-private fun NavItem(tab: Tab, icon: ImageVector, label: String, active: Tab, onSelect: (Tab) -> Unit) {
+private fun RowScope.NavItem(tab: Tab, icon: ImageVector, label: String, active: Tab, onSelect: (Tab) -> Unit) {
     val on = tab == active
     Column(
-        Modifier.sizeIn(minWidth = 72.dp, minHeight = 48.dp).semantics { selected = on }
+        Modifier.weight(1f).sizeIn(minHeight = 48.dp).semantics { selected = on }
             .clickable(role = Role.Tab) { onSelect(tab) }.padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -382,7 +386,7 @@ private fun NavItem(tab: Tab, icon: ImageVector, label: String, active: Tab, onS
         Box(Modifier.size(24.dp, 3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Palette.Primary else Color.Transparent))
         Spacer(Modifier.size(6.dp))
         Icon(icon, 24.dp, if (on) Palette.Primary else Palette.Muted)
-        Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium)
+        Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }
 

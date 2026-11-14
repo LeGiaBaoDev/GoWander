@@ -24,15 +24,14 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -61,26 +60,38 @@ import com.gowander.ui.Strings
 import com.gowander.ui.Text
 import com.gowander.ui.Title
 
-/** D1 Discover list and D2 place detail (kit). Directions sends the place to route planning (Flow B). */
-@OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
+/** D1 Discover list (kit). The place page is its own screen ([PlaceScreen]) so any tab can open it (UX-2). */
 @Composable
-fun DiscoverScreen(vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit = { vm.openPlace(it.id) }, onDirections: (PlaceDetail) -> Unit) {
+fun DiscoverScreen(vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit) {
     val s by vm.state.collectAsState()
-    // Declared after App's handlers, so it wins while a place is open: Back closes the detail first.
-    BackHandler(enabled = s.detail != DetailState.None, onBack = vm::closePlace)
+    PlaceList(s, vm, listState, onOpen)
+}
+
+/** D2 place page for [id]; Back and Directions are handled by the caller's back stack. */
+@Composable
+fun PlaceScreen(vm: DiscoverViewModel, id: String, onBack: () -> Unit, onDirections: (PlaceDetail) -> Unit) {
+    val s by vm.state.collectAsState()
+    // One detail slot in the ViewModel: (re)load when this screen shows a different place than the slot holds.
+    LaunchedEffect(id) {
+        val d = vm.state.value.detail
+        val holds = (d is DetailState.Loaded && d.place.id == id) || (d is DetailState.Loading && d.id == id)
+        if (!holds) vm.openPlace(id) // coming back to the page (Back from the route) does not download it again
+    }
     when (val d = s.detail) {
-        is DetailState.Loaded -> PlaceDetailView(d.place, onBack = vm::closePlace) { onDirections(d.place) }
-        is DetailState.Loading -> Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp)) {
-            Header(Strings.PLACE, onBack = vm::closePlace)
-            Text(Strings.LOADING, Modifier.padding(top = 24.dp))
-        }
-        is DetailState.Failed -> Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Header(Strings.PLACE, onBack = vm::closePlace)
+        is DetailState.Loaded -> if (d.place.id == id) PlaceDetailView(d.place, onBack = onBack) { onDirections(d.place) } else PlaceLoading(onBack)
+        is DetailState.Failed -> if (d.id != id) PlaceLoading(onBack) else Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Header(Strings.PLACE, onBack = onBack)
             Text(d.message, color = Palette.Accent, bold = true)
             Button(Strings.RETRY, Modifier.fillMaxWidth()) { vm.openPlace(d.id) }
         }
-        DetailState.None -> PlaceList(s, vm, listState, onOpen)
+        else -> PlaceLoading(onBack)
     }
+}
+
+@Composable
+private fun PlaceLoading(onBack: () -> Unit) = Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp)) {
+    Header(Strings.PLACE, onBack = onBack)
+    Text(Strings.LOADING, Modifier.padding(top = 24.dp))
 }
 
 @Composable

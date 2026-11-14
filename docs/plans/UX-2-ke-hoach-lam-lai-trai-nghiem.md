@@ -2,7 +2,7 @@
 
 > **Trạng thái:** **Đã duyệt hướng thiết kế** (chủ dự án, 14-11-2026: "tôi thấy oke"). Các câu hỏi ở §16 vẫn còn mở.
 > **Quyết định kiến trúc:** [ADR-034](../decisions/ADR-034-ux2-information-architecture.md). **Mốc:** `PIPELINE.md` UX-2 (§5c).
-> **Bản vẽ xem trước:** artifact riêng tư https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4, gồm 17 màn (danh sách ở §17). Muốn người khác xem thì chủ dự án chia sẻ qua menu Share.
+> **Bản vẽ xem trước (mẫu bắt buộc theo):** artifact riêng tư https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4#page-dcb81aee8d83, gồm 17 màn (danh sách ở §17). Muốn người khác xem thì chủ dự án chia sẻ qua menu Share.
 > **Thay thế:** cấu trúc điều hướng và màn Bản đồ hiện tại (NAV-1, commit 85bbfdd và 3756e4f).
 > **Lịch sử thảo luận:** `docs/changes/change-14-11-2026.md` mục 13–18.
 > **Đầu vào:**
