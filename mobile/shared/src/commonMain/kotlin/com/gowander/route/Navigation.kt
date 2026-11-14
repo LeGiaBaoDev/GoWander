@@ -54,7 +54,7 @@ fun navSteps(route: Route, destination: String): List<NavStep> = buildList {
     }
 }
 
-data class NavProgress(val nextStep: Int, val toNextM: Double, val remainingM: Double, val offRouteM: Double)
+data class NavProgress(val nextStep: Int, val toNextM: Double, val remainingM: Double, val offRouteM: Double, val alongM: Double = 0.0)
 
 /**
  * The route as one line with each instruction's position along it, so a GPS fix gives the next instruction
@@ -68,11 +68,15 @@ class NavTrack(private val line: List<Pair<Double, Double>>, stepPoints: List<Pa
         stepPoints.map { p -> project(p.first, p.second, minAlong = from).first.also { from = it } }
     }
 
-    fun progress(lat: Double, lon: Double): NavProgress {
-        val (along, off) = project(lat, lon, minAlong = 0.0)
+    /**
+     * [fromAlongM]: search the line only from here on (last position minus a margin), so a loop or a parallel street
+     * cannot snap the user back to an earlier part of the route, and long routes are not scanned from the start.
+     */
+    fun progress(lat: Double, lon: Double, fromAlongM: Double = 0.0): NavProgress {
+        val (along, off) = project(lat, lon, minAlong = fromAlongM.coerceIn(0.0, totalM))
         val next = stepAt.indexOfFirst { it > along + ARRIVAL_SLACK_M }.takeIf { it >= 0 } ?: stepAt.lastIndex.coerceAtLeast(0)
         val toNext = ((stepAt.getOrNull(next) ?: totalM) - along).coerceAtLeast(0.0)
-        return NavProgress(next, toNext, (totalM - along).coerceAtLeast(0.0), off)
+        return NavProgress(next, toNext, (totalM - along).coerceAtLeast(0.0), off, along)
     }
 
     /** (distance along the line, distance from it) of the closest point on the line at or after [minAlong]. */

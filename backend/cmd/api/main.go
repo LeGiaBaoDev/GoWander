@@ -104,6 +104,10 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
-	streetview.Handler{Finder: streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, 4*time.Second), Log: log}.Mount(mux)
+	streetview.Handler{
+		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, 4*time.Second), 24*time.Hour, 5000),
+		Log:    log,
+		Limit:  streetview.NewLimiter(30, time.Minute), // a route preview needs ~15; 30/min per IP protects the Mapillary quota
+	}.Mount(mux)
 	return mux
 }

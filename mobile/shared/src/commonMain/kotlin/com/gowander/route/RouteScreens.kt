@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +52,7 @@ import com.gowander.api.GeoResult
 import com.gowander.api.Leg
 import com.gowander.api.PlaceSummary
 import com.gowander.api.Route
+import com.gowander.onboarding.LoadingView
 import com.gowander.ui.Badge
 import com.gowander.ui.Banner
 import com.gowander.ui.Button
@@ -102,13 +105,10 @@ fun MapHome(
             insets = PaddingValues(top = 90.dp, bottom = if (nearby.isNotEmpty() && nearbyOpen) 320.dp else 150.dp),
         )
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) { // Top: the language menu opens below "VI" without moving the search bar
                 SearchBar(Strings.WHERE_TO, Modifier.weight(1f), floating = true, onClick = onSearch)
                 Spacer(Modifier.width(8.dp))
-                // Language switch of the kit; English comes later (ADR-022), so it only shows the current language.
-                Box(Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg), contentAlignment = Alignment.Center) {
-                    Text(Strings.LANGUAGE_VI, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
-                }
+                LanguageButton()
             }
             if (results?.assumedData == true) Banner(Strings.DEMO_LABEL)
         }
@@ -316,6 +316,36 @@ fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 private fun roundUpToQuarter(ms: Long) = ((ms + 899_999L) / 900_000L) * 900_000L
 
+/** "Bắt đầu" (primary) + "Xem trước" + "Đường đi" on one row; must stay one line each down to iPhone SE width. */
+@Composable
+fun RouteActions(onStart: () -> Unit, onPreview: () -> Unit, onSteps: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(Strings.START, Modifier.weight(1.3f), icon = KitIcons.locate, compact = true, onClick = onStart)
+        Button(Strings.PREVIEW, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onPreview)
+        Button(Strings.STEPS, Modifier.weight(1f), kind = ButtonKind.Soft, compact = true, onClick = onSteps)
+    }
+}
+
+/** The "VI" button of the kit: opens a small language menu; English is announced as coming instead of doing nothing. */
+@Composable
+fun LanguageButton(modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    var englishNote by remember { mutableStateOf(false) }
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg)
+                .semantics { contentDescription = Strings.LANGUAGE_MENU }
+                .clickable(role = Role.Button) { open = !open; englishNote = false },
+            contentAlignment = Alignment.Center,
+        ) { Text(Strings.LANGUAGE_VI, size = 14.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
+        if (open) Card(Modifier.width(240.dp), shadow = true, gap = 8.dp) {
+            Chip(Strings.VIETNAMESE, selected = true) { open = false }
+            Chip(Strings.ENGLISH) { englishNote = true }
+            if (englishNote) Note(Strings.ENGLISH_SOON)
+        }
+    }
+}
+
 // ---------- M4 pick on map ----------
 
 private val PICK_CARD_SPACE = 300.dp
@@ -409,7 +439,7 @@ fun ResultsScreen(state: RouteUiState, onBack: () -> Unit, onMode: (TravelMode) 
         Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (val p = state.phase) {
                 RoutePhase.Idle -> Note(Strings.NEED_BOTH)
-                RoutePhase.Loading -> Text(Strings.SEARCHING, Modifier.padding(vertical = 24.dp))
+                RoutePhase.Loading -> LoadingView(Strings.SEARCHING)
                 is RoutePhase.Failed -> if (p.retryable) {
                     // M8 shape: banner + retry. Origin and destination stay as they were.
                     Banner(if (p.message == Strings.NETWORK_ERROR) Strings.OFFLINE else p.message, if (p.message == Strings.NETWORK_ERROR) p.message else null, KitIcons.flag, Palette.AccentSoft)
@@ -497,7 +527,15 @@ fun DetailScreen(
             // this MVP needs); the arrow says which way it goes.
             Column(
                 Modifier.fillMaxWidth().semantics { contentDescription = if (expanded) Strings.COLLAPSE else Strings.EXPAND }
-                    .clickable(role = Role.Button) { expanded = !expanded },
+                    .clickable(role = Role.Button) { expanded = !expanded }
+                    // Drag up to open, down to close (like a bottom sheet); tapping still works for users who cannot drag.
+                    .pointerInput(Unit) {
+                        var dy = 0f
+                        detectVerticalDragGestures(onDragEnd = {
+                            if (dy < -40f) expanded = true else if (dy > 40f) expanded = false
+                            dy = 0f
+                        }) { _, d -> dy += d }
+                    },
             ) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.width(40.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line))
@@ -512,11 +550,7 @@ fun DetailScreen(
                 }
             }
             TravelModeTabs(state.mode, onMode) // switch vehicle right here, as on Google's route sheet
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(Strings.START, Modifier.weight(1.2f), icon = KitIcons.locate, onClick = onStart)
-                Button(Strings.PREVIEW, Modifier.weight(1f), kind = ButtonKind.Soft, onClick = onPreview)
-                Button(Strings.STEPS, Modifier.weight(1f), kind = ButtonKind.Soft, onClick = onSteps)
-            }
+            RouteActions(onStart, onPreview, onSteps)
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (undrawable > 0) Note(Strings.PARTIAL_DRAW)
                 route.legs.forEachIndexed { i, leg ->

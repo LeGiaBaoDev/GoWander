@@ -58,8 +58,10 @@ func Load(getenv func(string) string) (Config, error) {
 	if u, err := url.Parse(c.PhotonURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		errs = append(errs, errors.New("PHOTON_URL must be an absolute http(s) URL without credentials"))
 	}
-	if u, err := url.Parse(c.MapillaryURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-		errs = append(errs, errors.New("MAPILLARY_URL must be an absolute http(s) URL without credentials"))
+	// The token is sent to this URL: plain http only for a local stub (security review 14-11-2026).
+	if u, err := url.Parse(c.MapillaryURL); err != nil || u.Host == "" || u.User != nil ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {
+		errs = append(errs, errors.New("MAPILLARY_URL must be https (http only for 127.0.0.1/localhost) without credentials"))
 	}
 	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
 		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))

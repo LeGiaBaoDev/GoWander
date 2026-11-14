@@ -27,6 +27,8 @@ Không có gì được biến mất mà không có đường quay lại rõ rà
 | Xem trước (mở từ Đường đi) | — | Back về Đường đi; "Quay lại tuyến đường" về màn dẫn đường |
 | Thoát dẫn đường | Màn dẫn đường | Về Chi tiết tuyến, tuyến vẫn còn, bấm Bắt đầu lại được |
 | Chọn Vệ tinh (chưa có nhà cung cấp) | Không chuyển sang bản đồ trống | Hiện ghi chú "Sắp có" |
+| Nút "VI" | Mở menu Tiếng Việt / English | Chọn Tiếng Việt thì đóng; English báo "sắp có" |
+| Màn chào (lần đầu) | — | Chỉ hiện ở lần mở app đầu tiên; mở lại app thì vào thẳng bản đồ |
 
 Kiểm tra tự động: `mobile/tools/e2e_ux.py` (từng dòng ở trên là một kiểm tra); `UxComponentTest.mapViewPanel…`.
 
@@ -38,6 +40,10 @@ Kiểm tra tự động: `mobile/tools/e2e_ux.py` (từng dòng ở trên là m�
 - Bản đồ phải đóng khung đúng phần còn nhìn thấy (không bị thẻ che, không zoom ra quá xa). Lỗi đã gặp: bản đồ Chi tiết tuyến zoom ra tới Mỹ Tho vì khoảng đệm bị cộng hai lần.
 - Nhãn chỉ hiện khi có nghĩa: không hiện "Nhanh nhất" khi chỉ có một tuyến ô tô.
 - Các nút cùng loại đặt cùng chỗ trên mọi màn: "Loại bản đồ" luôn ở góc trên phải, ngay dưới phần trên cùng của màn.
+- Chữ trên nút luôn một dòng và không bị cắt, kể cả trên iPhone SE (375 pt). `UxComponentTest.routeActionsStayOnOneLineOnSmallIphones` so chiều rộng tự nhiên của chữ với chiều rộng được cấp. Bài học: đo chiều cao không phát hiện được chữ bị cắt khi `maxLines = 1`, và cờ `didOverflowWidth` của Compose báo sai trong trường hợp này.
+- Màu chữ/nền đạt WCAG AA ≥ 4,5:1 (`ContrastTest`, chạy cả Android và iOS).
+- **Thử cả hai nền tảng.** Màn iPhone hẹp hơn emulator Android: lỗi xuống hàng chỉ thấy trên iOS (chủ dự án phát hiện 14-11-2026).
+- Mỗi test UX mới phải được chứng minh **fail trên giao diện lỗi** trước khi tin nó đạt.
 - Ảnh chụp lưu ở `docs/evidence/ux/`, xem lại trước khi merge.
 
 ## 4. Cách chạy

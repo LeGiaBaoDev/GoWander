@@ -49,6 +49,7 @@ func TestLoadInvalid(t *testing.T) {
 		"ROUTING_DATA_STATUS":       only("ROUTING_DATA_STATUS", "MAYBE"),
 		"DATABASE_URL missing":      func(string) string { return "" },
 		"PHOTON_URL without scheme": only("PHOTON_URL", "127.0.0.1:2322"),
+		"MAPILLARY_URL plain http":  only("MAPILLARY_URL", "http://graph.mapillary.com"),
 		"DATABASE_URL not postgres": only("DATABASE_URL", "mysql://root:secret@db/gowander"),
 	} {
 		t.Run(name, func(t *testing.T) {

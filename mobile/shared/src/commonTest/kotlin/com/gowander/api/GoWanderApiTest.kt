@@ -39,6 +39,15 @@ class GoWanderApiTest {
     private val destination = LatLon(10.8480, 106.7730)
 
     @Test
+    fun imageBytesOnlyFetchesHttpsFromTheMapillaryCdn() = runTest {
+        val client = api(HttpStatusCode.OK, "jpeg-bytes")
+        for (bad in listOf("http://scontent.fbcdn.net/a.jpg", "https://evil.test/a.jpg", "https://fbcdn.net.evil.test/a.jpg", "not a url")) {
+            assertFailsWith<ApiError.Unexpected>(bad) { client.imageBytes(bad) }
+        }
+        assertEquals("jpeg-bytes", client.imageBytes("https://scontent-sin6-1.xx.fbcdn.net/m1/a.jpg").decodeToString())
+    }
+
+    @Test
     fun planRouteSendsCarMode() = runTest {
         api(HttpStatusCode.OK, Fixtures.ROUTE_OK).planRoute(PlanRequest(origin, destination, modes = listOf("CAR")))
         val sent = Json.parseToJsonElement((requests.single().body as OutgoingContent.ByteArrayContent).bytes().decodeToString()).jsonObject

@@ -191,8 +191,10 @@ paths:
                       pageUrl: { type: string, format: uri }
                   source:
                     type: object
+                    required: [provider, license, attribution]
                     properties: { provider: { type: string }, license: { type: string }, attribution: { type: string } }
         '400': { $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED (quá 30 lần/phút mỗi IP)', $ref: '#/components/responses/Error' }
         '404': { description: 'STREET_IMAGE_NOT_FOUND', $ref: '#/components/responses/Error' }
         '503': { description: 'STREET_IMAGERY_UNAVAILABLE (chưa cấu hình MAPILLARY_TOKEN hoặc Mapillary lỗi)', $ref: '#/components/responses/Error' }
   /health/live:

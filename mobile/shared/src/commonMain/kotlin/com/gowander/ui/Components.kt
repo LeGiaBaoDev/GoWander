@@ -126,7 +126,7 @@ enum class ButtonKind { Primary, Secondary, Soft, Accent }
 
 /** Kit button: radius 14, padding 15/18, label 15 SemiBold, optional leading icon; 48 dp minimum touch target. */
 @Composable
-fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, onClick: () -> Unit) {
+fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, onClick: () -> Unit) {
     val (bg, fg, border) = when (kind) {
         ButtonKind.Primary -> Triple(Palette.Primary, Palette.OnPrimary, null)
         ButtonKind.Secondary -> Triple(Palette.Bg, Palette.Ink, Palette.Line)
@@ -137,15 +137,17 @@ fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = Butt
     Row(
         modifier.sizeIn(minHeight = 48.dp).clip(shape).background(bg, shape)
             .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp, vertical = 15.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = if (compact) 10.dp else 18.dp, vertical = 15.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, 18.dp, fg)
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, if (compact) 16.dp else 18.dp, fg)
+            Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
         }
-        Text(label, size = 15.sp, color = fg, weight = FontWeight.SemiBold)
+        // One line always: a label broken over two lines looked broken on iPhone (owner, 14-11-2026); compact buttons
+        // use a smaller size so three fit side by side on a 375 pt screen (UxComponentTest checks it).
+        Text(label, size = if (compact) 14.sp else 15.sp, color = fg, weight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 

@@ -29,6 +29,13 @@ import com.gowander.api.createGoWanderApi
 import com.gowander.discover.DiscoverScreen
 import com.gowander.discover.DiscoverViewModel
 import com.gowander.route.DetailScreen
+import com.gowander.onboarding.FirstRunScreen
+import com.gowander.onboarding.LoadingView
+import com.gowander.onboarding.WelcomeScreen
+import androidx.compose.foundation.layout.safeDrawingPadding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToLong
 import com.gowander.route.NavigationScreen
 import com.gowander.route.PreviewScreen
 import com.gowander.route.StepsScreen
@@ -72,13 +79,30 @@ private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
 @Composable
 fun App() = KitTheme {
+    // Kit S0 + S1 on the first launch only; the flag survives app restarts (Prefs).
+    var onboarded by rememberSaveable { mutableStateOf(Prefs.getBool(ONBOARDED)) }
+    var firstRunStep by rememberSaveable { mutableStateOf(0) }
+    var askLocation by rememberSaveable { mutableStateOf(false) }
+    fun finishOnboarding(withLocation: Boolean) {
+        Prefs.setBool(ONBOARDED, true)
+        askLocation = withLocation
+        onboarded = true
+    }
+    if (!onboarded) {
+        if (firstRunStep == 0) WelcomeScreen { firstRunStep = 1 }
+        else FirstRunScreen(onAllowLocation = { finishOnboarding(true) }, onLater = { finishOnboarding(false) })
+        return@KitTheme
+    }
     val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
-    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent() }
+    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent(askLocation) }
 }
+
+private const val ONBOARDED = "onboarded"
+private const val PHOTO_CACHE_SIZE = 24
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun AppContent() {
+private fun AppContent(askLocationNow: Boolean) {
     val routeVm = viewModel { RouteViewModel(sharedApi) }
     val discoverVm = viewModel { DiscoverViewModel(sharedApi) }
     val route by routeVm.state.collectAsState()
@@ -137,6 +161,11 @@ private fun AppContent() {
     var previewFromSteps by rememberSaveable { mutableStateOf(false) }
     // Back goes to the screen the user came from: preview -> steps when opened from the list, otherwise the route.
     fun closeSub() { navSub = if (navSub == "preview" && previewFromSteps) "steps" else null }
+    // After process death the ViewModel restarts at Idle while these flags are restored: drop them instead of showing
+    // an empty navigation screen (review 14-11-2026). Re-route and mode switch go straight to Loading, never Idle.
+    LaunchedEffect(route.phase is com.gowander.route.RoutePhase.Idle) {
+        if (route.phase is com.gowander.route.RoutePhase.Idle) { navigating = false; navSub = null }
+    }
     BackHandler(enabled = navigating && navSub == null) { navigating = false }
     BackHandler(enabled = navSub != null) { closeSub() }
     fun startNavigation() {
@@ -144,17 +173,31 @@ private fun AppContent() {
         navigating = true
     }
     fun openPreview(i: Int, fromSteps: Boolean = false) { previewStart = i; previewFromSteps = fromSteps; navSub = "preview" }
-    val loadPhoto: suspend (Double, Double) -> StreetPhoto? = { lat, lon ->
-        try {
-            sharedApi.streetImage(LatLon(lat, lon))?.let { r ->
-                StreetPhoto(sharedApi.imageBytes(r.image.url).decodeToImageBitmap(), "${r.source.attribution} · ${r.image.capturedAt.take(7)}")
+    // One loader for the whole session: remembered (no new lambda per GPS fix), results cached per point so moving
+    // back and forth between steps does not download or decode again, decoding off the main thread.
+    val loadPhoto: suspend (Double, Double) -> StreetPhoto? = remember {
+        val cache = LinkedHashMap<String, StreetPhoto?>()
+        val loader: suspend (Double, Double) -> StreetPhoto? = loader@{ lat, lon ->
+            val key = "${(lat * 10_000).roundToLong()}:${(lon * 10_000).roundToLong()}" // ~11 m
+            if (key in cache) return@loader cache[key]
+            val photo = try {
+                sharedApi.streetImage(LatLon(lat, lon))?.let { r ->
+                    val bytes = sharedApi.imageBytes(r.image.url)
+                    StreetPhoto(withContext(Dispatchers.Default) { bytes.decodeToImageBitmap() }, "${r.source.attribution} · ${r.image.capturedAt.take(7)}", r.image.pageUrl)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("GoWander: street photo unavailable: ${e.message}") // the preview shows the 3D map instead
+                null
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null // no token, offline, or an undecodable image: the preview shows the 3D map instead
+            cache[key] = photo
+            if (cache.size > PHOTO_CACHE_SIZE) cache.remove(cache.keys.first())
+            photo
         }
+        loader
     }
+    LaunchedEffect(askLocationNow) { if (askLocationNow) useMyLocation() }
 
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -165,8 +208,9 @@ private fun AppContent() {
                     route, location, onExit = { navigating = false }, onSteps = { navSub = "steps" }, onPreview = { openPreview(it) },
                     onReroute = { location.lastLocation?.position?.let { routeVm.setOrigin(Endpoint(it.latitude, it.longitude, Strings.MY_LOCATION)); routeVm.search() } },
                 )
-                navigating -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(if (route.phase is com.gowander.route.RoutePhase.Failed) (route.phase as com.gowander.route.RoutePhase.Failed).message else Strings.SEARCHING)
+                navigating -> Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val failed = route.phase as? com.gowander.route.RoutePhase.Failed
+                    if (failed != null) Text(failed.message) else LoadingView(Strings.SEARCHING, cards = 1)
                     Button(Strings.EXIT, Modifier.fillMaxWidth(), kind = ButtonKind.Accent) { navigating = false }
                 }
                 route.detailOpen -> DetailScreen(

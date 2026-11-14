@@ -16,6 +16,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
+import io.ktor.http.URLProtocol
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
@@ -61,6 +63,7 @@ interface GoWanderApi {
 
 fun HttpClientConfig<*>.configureGoWander() {
     expectSuccess = false
+    followRedirects = false // neither the API nor the photo CDN should redirect; never follow one to another host
     install(ContentNegotiation) { json(apiJson) }
     install(HttpTimeout) {
         connectTimeoutMillis = 5_000
@@ -125,6 +128,11 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     }
 
     override suspend fun imageBytes(url: String): ByteArray {
+        // Only fetch photos from Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
+        val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
+        if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
+            throw ApiError.Unexpected("image host not allowed")
+        }
         val response = try {
             client.get(url)
         } catch (e: CancellationException) {
@@ -133,7 +141,14 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             throw ApiError.Network(e)
         }
         if (!response.status.isSuccess()) throw ApiError.Unexpected("image HTTP ${response.status.value}")
-        return response.bodyAsBytes()
+        val declared = response.headers["Content-Length"]?.toLongOrNull()
+        if (declared != null && declared > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large")
+        return response.bodyAsBytes().also { if (it.size > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large") }
+    }
+
+    private companion object {
+        val IMAGE_HOSTS = listOf("fbcdn.net", "mapillary.com")
+        const val MAX_IMAGE_BYTES = 2_000_000L
     }
 
     // Not named `build`: inside the request lambda that would call HttpRequestBuilder.build() instead.

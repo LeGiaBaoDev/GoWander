@@ -17,6 +17,14 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import com.gowander.route.MapView
 import com.gowander.route.MapViewSwitch
+import com.gowander.route.LanguageButton
+import com.gowander.route.RouteActions
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import kotlin.test.assertTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -48,6 +56,33 @@ class UxComponentTest {
         onNodeWithContentDescription("Dùng vị trí của tôi").assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp).performClick()
         onNodeWithContentDescription(Strings.BACK).assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp).performClick()
         assertEquals(2, clicks)
+    }
+
+    /** iPhone SE (375 pt) minus the sheet margins: the three route actions must each stay on one line. */
+    @Test
+    fun routeActionsStayOnOneLineOnSmallIphones() = runComposeUiTest {
+        setContent { Box(Modifier.width(319.dp)) { RouteActions({}, {}, {}) } }
+        for (label in listOf(Strings.START, Strings.PREVIEW, Strings.STEPS)) {
+            // Labels are maxLines = 1, so a label that does not fit is cut, not wrapped: check the text layout itself.
+            val layouts = mutableListOf<TextLayoutResult>()
+            onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+            val layout = layouts.single()
+            // didOverflowWidth misreports for maxLines = 1; compare the text's natural width with the width it got.
+            val natural = layout.multiParagraph.intrinsics.maxIntrinsicWidth
+            assertTrue(natural <= layout.size.width + 0.5f && !layout.didOverflowHeight, "$label is cut: needs ${natural}px, has ${layout.size.width}px")
+            onNodeWithText(label).assertHeightIsAtLeast(48.dp)
+        }
+    }
+
+    @Test
+    fun languageButtonOpensAMenuAndExplainsEnglish() = runComposeUiTest {
+        setContent { LanguageButton() }
+        onNodeWithContentDescription(Strings.LANGUAGE_MENU).assertHeightIsAtLeast(48.dp).performClick()
+        onNodeWithText(Strings.VIETNAMESE).assertIsSelected()
+        onNodeWithText(Strings.ENGLISH).performClick()
+        onNodeWithText(Strings.ENGLISH_SOON).assertExists()
+        onNodeWithText(Strings.VIETNAMESE).performClick() // choosing closes the menu
+        onNodeWithText(Strings.ENGLISH).assertDoesNotExist()
     }
 
     @Test

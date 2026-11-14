@@ -74,9 +74,29 @@ def audit(screen):
 def journey():
     adb("emu", "geo", "fix", "106.6980", "10.7726")
     adb("shell", "am", "force-stop", APP)
+    # Fresh first run: remove only the app's flags (debug build), keep the location permission.
+    adb("shell", "run-as", APP, "rm", "-f", "shared_prefs/gowander.xml")
     adb("shell", "monkey", "-p", APP, "-c", "android.intent.category.LAUNCHER", "1")
-    check(find("Bạn muốn đến đâu?", timeout=25) is not None, "Mở app: thấy ô tìm kiếm trên bản đồ")
+    check(find("Move Smart. Explore More.", timeout=25) is not None and find(desc="GoWander") is not None,
+          "Lần đầu mở app: màn chào có logo đầy đủ (biểu tượng + chữ GoWander) và khẩu hiệu")
+    audit("Màn chào (S0)")
+    tap("Bắt đầu")
+    check(find("Chọn ngôn ngữ") is not None and find("Cho phép GoWander biết vị trí của bạn?") is not None, "Bắt đầu: màn chọn ngôn ngữ và vị trí (S1)")
+    tap("English")
+    check(find("English sắp có; hiện app dùng tiếng Việt.") is not None, "Chọn English: báo 'sắp có' thay vì im lặng")
+    audit("Lần đầu (S1)")
+    tap("Để sau, tôi sẽ nhập điểm đi")
+    check(find("Bạn muốn đến đâu?", timeout=15) is not None, "Để sau: vào thẳng bản đồ")
+    adb("shell", "am", "force-stop", APP)
+    adb("shell", "monkey", "-p", APP, "-c", "android.intent.category.LAUNCHER", "1")
+    check(find("Bạn muốn đến đâu?", timeout=25) is not None and gone("Move Smart. Explore More."), "Mở lại app: không hiện màn chào lần nữa")
     audit("Bản đồ chính")
+    tap(desc="Ngôn ngữ: Tiếng Việt")
+    check(find("Tiếng Việt") is not None and find("English") is not None, "Bấm 'VI': mở menu ngôn ngữ")
+    tap("English")
+    check(find("English sắp có; hiện app dùng tiếng Việt.") is not None, "Chọn English: báo 'sắp có'")
+    tap("Tiếng Việt")
+    check(gone("English"), "Chọn Tiếng Việt: menu đóng")
 
     # Map view panel: opens, closes after a choice, closes on an outside tap.
     tap(desc="Loại bản đồ")

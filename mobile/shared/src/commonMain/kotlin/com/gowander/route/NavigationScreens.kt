@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -61,13 +63,14 @@ import org.maplibre.compose.location.LocationState
 import org.maplibre.spatialk.geojson.Position
 
 /** A street photo ready to show, with the credit line its licence requires (ADR-033). */
-data class StreetPhoto(val image: ImageBitmap, val credit: String)
+data class StreetPhoto(val image: ImageBitmap, val credit: String, val pageUrl: String? = null)
 
-private val NavBanner = Color(0xFF035E61) // darker than Primary so white text keeps contrast over the map
+internal val NavBanner = Color(0xFF035E61) // darker than Primary so white text keeps contrast over the map
 private const val OFF_ROUTE_M = 60.0
 private const val ARRIVED_M = 25.0
 private const val JOIN_M = 30.0
 private const val SWIPE_PX = 80f
+private const val BACKTRACK_M = 50.0
 
 fun distanceLabel(m: Double): String = if (m < 1000) "${((m / 10).roundToInt() * 10).coerceAtLeast(10)} m" else "${(m / 100).roundToInt() / 10.0} km"
 
@@ -92,13 +95,17 @@ fun NavigationScreen(
     val steps = remember(route) { navSteps(route, destination) }
     val track = remember(route, steps) { navTrack(route, steps) }
     val fix = location.lastLocation?.position
-    val progress = fix?.let { track.progress(it.latitude, it.longitude) }
+    // Matched once per GPS fix (not per recomposition), searching onward from the last match (review 14-11-2026).
+    var lastAlong by rememberSaveable(route) { mutableStateOf(0.0) }
+    val progress = remember(track, fix) {
+        fix?.let { track.progress(it.latitude, it.longitude, fromAlongM = lastAlong - BACKTRACK_M) }?.also { lastAlong = it.alongM }
+    }
     val next = steps.getOrNull(progress?.nextStep ?: 0)
     val remainingM = progress?.remainingM ?: track.totalM
     val remainingSec = if (track.totalM > 0) (route.durationSec * remainingM / track.totalM).roundToInt() else route.durationSec
     val arrived = progress != null && progress.remainingM < ARRIVED_M
     // The start is often off the street graph (inside a market, a car park): warn only after the user has joined the route.
-    var joined by remember(route) { mutableStateOf(false) }
+    var joined by rememberSaveable(route) { mutableStateOf(false) }
     if (progress != null && progress.offRouteM < JOIN_M) joined = true
     val offRoute = joined && progress != null && !arrived && progress.offRouteM > OFF_ROUTE_M
 
@@ -106,15 +113,18 @@ fun NavigationScreen(
         RouteMap(route, state.origin, state.destination, location, Modifier.fillMaxSize(), follow = true, viewSwitch = true, insets = PaddingValues(top = 140.dp, bottom = 220.dp))
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(NavBanner).padding(horizontal = 20.dp, vertical = 16.dp)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(NavBanner).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(next?.arrow ?: "↑", size = 40.sp, color = Color.White, weight = FontWeight.Bold)
+                Text(next?.arrow ?: "↑", Modifier.clearAndSetSemantics { }, size = 40.sp, color = Color.White, weight = FontWeight.Bold)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     if (progress != null && !arrived) Text(distanceLabel(progress.toNextM), size = 15.sp, color = Color.White.copy(alpha = 0.85f))
-                    Text(if (arrived) "${Strings.ARRIVED} $destination" else next?.text ?: Strings.WAITING_GPS, size = 22.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 3)
+                    // Only the instruction is a live region: announcing the distance on every GPS fix would flood TalkBack/VoiceOver.
+                    Text(
+                        if (arrived) "${Strings.ARRIVED} $destination" else next?.text ?: Strings.WAITING_GPS,
+                        Modifier.semantics { liveRegion = LiveRegionMode.Polite }, size = 22.sp, color = Color.White, weight = FontWeight.SemiBold, maxLines = 3,
+                    )
                 }
             }
             if (fix == null) Note(Strings.WAITING_GPS, Modifier.clip(RoundedCornerShape(10.dp)).background(Palette.Bg).padding(8.dp))
@@ -168,8 +178,9 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
     val route = p.routes.getOrNull(p.selected) ?: return
     val steps = remember(route) { navSteps(route, state.destination?.label ?: Strings.DESTINATION) }
     if (steps.isEmpty()) return
-    var i by rememberSaveable { mutableStateOf(start.coerceIn(0, steps.lastIndex)) }
-    val step = steps[i]
+    // Keyed on the route: a re-route or mode switch while the preview is open restarts it instead of indexing past the end.
+    var i by rememberSaveable(route) { mutableStateOf(start.coerceIn(0, steps.lastIndex)) }
+    val step = steps[i.coerceIn(0, steps.lastIndex)]
     val after = steps.getOrNull(i + 1)
     val bearing = after?.let { bearingDeg(step.lat, step.lon, it.lat, it.lon) } ?: 0.0
     var photo by remember(i) { mutableStateOf<StreetPhoto?>(null) }
@@ -179,21 +190,32 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
         photoTried = true
     }
     val point = Position(latitude = step.lat, longitude = step.lon)
+    // Stable camera targets: a new CameraUpdate per recomposition would restart the camera effect and fight the user.
+    val topCamera = remember(step, bearing) { CameraUpdate(center = point, zoom = 17.2, pitch = 60.0, bearing = bearing) }
+    val bottomCamera = remember(step) { CameraUpdate(center = point, zoom = 16.3, pitch = 0.0, bearing = 0.0) }
+    val uriHandler = LocalUriHandler.current
 
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
             val shot = photo
             if (shot != null) {
                 Image(shot.image, contentDescription = "${Strings.STREET_PHOTO}: ${step.text}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                Text(shot.credit, Modifier.align(Alignment.BottomStart).padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 8.dp, vertical = 4.dp), size = 11.sp, color = Color.White)
+                // CC BY-SA: credit the photographer and link to the photo page (tap opens Mapillary).
+                Text(
+                    shot.credit,
+                    Modifier.align(Alignment.BottomStart).padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.55f))
+                        .then(if (shot.pageUrl != null) Modifier.clickable(role = Role.Button) { uriHandler.openUri(shot.pageUrl) } else Modifier)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    size = 12.sp, color = Color.White,
+                )
             } else {
-                RouteMap(route, null, null, null, Modifier.fillMaxSize(), focus = CameraUpdate(center = point, zoom = 17.2, pitch = 60.0, bearing = bearing), highlight = step.lat to step.lon)
+                RouteMap(route, null, null, null, Modifier.fillMaxSize(), focus = topCamera, highlight = step.lat to step.lon)
                 if (photoTried) Note(Strings.NO_STREET_PHOTO, Modifier.align(Alignment.BottomStart).padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Palette.Bg).padding(horizontal = 8.dp, vertical = 4.dp))
             }
             Box(Modifier.safeDrawingPadding().padding(12.dp)) { Header("", floating = true, onBack = onBack) }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            RouteMap(route, state.origin, state.destination, null, Modifier.fillMaxSize(), focus = CameraUpdate(center = point, zoom = 16.3, pitch = 0.0, bearing = 0.0), highlight = step.lat to step.lon, insets = PaddingValues(bottom = 260.dp))
+            RouteMap(route, state.origin, state.destination, null, Modifier.fillMaxSize(), focus = bottomCamera, highlight = step.lat to step.lon, insets = PaddingValues(bottom = 260.dp))
             var drag by remember { mutableStateOf(0f) }
             Card(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding().padding(12.dp)

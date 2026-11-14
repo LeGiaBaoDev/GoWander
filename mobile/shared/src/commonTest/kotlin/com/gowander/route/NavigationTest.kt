@@ -74,6 +74,11 @@ class NavigationTest {
         assertEquals(2, past.nextStep)
         assertEquals(223.0, past.toNextM, 3.0)
 
+        // Windowed search: a point near the start is matched onward from the last position, never back to the start.
+        val onward = track.progress(0.0, 0.0001, fromAlongM = 400.0)
+        assertTrue(onward.alongM >= 400.0)
+        assertEquals(400.0, track.progress(0.0, 0.0036, fromAlongM = 400.0).alongM, 1.0)
+
         val end = track.progress(0.0, 0.006)
         assertEquals(2, end.nextStep)
         assertTrue(end.remainingM < 1.0)

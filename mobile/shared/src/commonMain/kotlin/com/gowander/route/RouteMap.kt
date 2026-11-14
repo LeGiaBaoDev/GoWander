@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.semantics
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import org.maplibre.compose.camera.CameraMoveReason
+import org.maplibre.compose.overlay.MapOverlay
+import org.maplibre.compose.overlay.include
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -152,6 +154,7 @@ fun RouteMap(
                     boundingBox = BoundingBox(west = frame.minOf { it.second }, south = frame.minOf { it.first }, east = frame.maxOf { it.second }, north = frame.maxOf { it.first }),
                     fit = CameraFit(fitPadding = framePadding),
                 )
+                if (view == MapView.Tilted) mapState.animateCamera(CameraUpdate(pitch = pitchFor(view, follow = false)))
             }
         } catch (e: CancellationException) {
             throw e
@@ -159,11 +162,14 @@ fun RouteMap(
             // Framing is cosmetic; the map stays usable at its current camera.
         }
     }
-    if (!follow && focus == null) LaunchedEffect(view, frame) {
+    // Pitch changes on its own when the user picks 2D/3D; after a new route the fit above runs first (review: no race).
+    if (!follow && focus == null) LaunchedEffect(view) {
         try { mapState.animateCamera(CameraUpdate(pitch = pitchFor(view, follow = false))) } catch (e: CancellationException) { throw e } catch (e: Exception) { /* cosmetic */ }
     }
     Box(modifier) {
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets)
+        // Logo + attribution only (required by the data licences). The default compass appeared unlabeled on top of the
+        // "Loại bản đồ" button when the map rotates in navigation (UX audit T2/T3, 14-11-2026); "Căn giữa lại" covers it.
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = { include(MapOverlay.AttributionOnly) })
         if (follow && !following) {
             Button(
                 Strings.RECENTER, Modifier.align(Alignment.BottomStart).padding(insets).padding(start = 16.dp, bottom = 12.dp).kitShadow(RoundedCornerShape(14.dp)),
@@ -223,7 +229,7 @@ fun MapViewSwitch(
 private fun ViewTile(icon: ImageVector, label: String, badge: String?, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(
-        modifier.clip(shape).semantics(mergeDescendants = true) { this.selected = selected }.clickable(role = Role.Button, onClick = onClick).padding(vertical = 4.dp),
+        modifier.clip(shape).semantics(mergeDescendants = true) { this.selected = selected }.clickable(role = Role.RadioButton, onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(

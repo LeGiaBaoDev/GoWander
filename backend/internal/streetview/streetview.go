@@ -84,12 +84,12 @@ func (c *Client) Nearest(ctx context.Context, lat, lon float64) (*Image, error) 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/images?"+v.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	req.Header.Set("Authorization", "OAuth "+c.token) // header, not URL: keeps the token out of logs
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	defer func() { _, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)); _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -102,8 +102,8 @@ func (c *Client) Nearest(ctx context.Context, lat, lon float64) (*Image, error) 
 	var best *Image
 	bestD := math.Inf(1)
 	for _, d := range a.Data {
-		if d.Thumb == "" || len(d.Geometry.Coordinates) != 2 {
-			continue
+		if !allowedImageURL(d.Thumb) || d.CapturedAt <= 0 || len(d.Geometry.Coordinates) != 2 {
+			continue // only HTTPS photos on Mapillary's CDN with a capture date are passed on to the app
 		}
 		ilon, ilat := d.Geometry.Coordinates[0], d.Geometry.Coordinates[1]
 		// Equirectangular distance is enough to rank points ~60 m apart.
@@ -122,15 +122,35 @@ func (c *Client) Nearest(ctx context.Context, lat, lon float64) (*Image, error) 
 	return best, nil
 }
 
-// Handler serves GET /api/v1/street-images/nearest?lat=&lon=.
+// allowedImageURL: the app downloads this URL, so only HTTPS on Mapillary's CDN hosts is accepted (security review).
+func allowedImageURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil {
+		return false
+	}
+	h := u.Hostname()
+	for _, d := range []string{"fbcdn.net", "mapillary.com"} {
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
+// Handler serves GET /api/v1/street-images/nearest?lat=&lon=. Limit (optional) caps requests per client IP.
 type Handler struct {
 	Finder Finder
 	Log    *slog.Logger
+	Limit  *Limiter
 }
 
 func (h Handler) Mount(r chi.Router) { r.Get("/api/v1/street-images/nearest", h.nearest) }
 
 func (h Handler) nearest(w http.ResponseWriter, r *http.Request) {
+	if h.Limit != nil && !h.Limit.Allow(r) {
+		httpx.WriteError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "Bạn xem ảnh quá nhanh, vui lòng thử lại sau ít phút.")
+		return
+	}
 	v := r.URL.Query()
 	lat, err1 := strconv.ParseFloat(v.Get("lat"), 64)
 	lon, err2 := strconv.ParseFloat(v.Get("lon"), 64)
@@ -145,7 +165,7 @@ func (h Handler) nearest(w http.ResponseWriter, r *http.Request) {
 		return
 	case err != nil:
 		if r.Context().Err() != nil {
-			w.WriteHeader(499)
+			w.WriteHeader(499) // client went away: nobody reads this, the status is only for the access log
 			return
 		}
 		h.Log.Warn("street imagery failed", "requestId", httpx.RequestID(r), "err", err)
@@ -156,6 +176,7 @@ func (h Handler) nearest(w http.ResponseWriter, r *http.Request) {
 	if img.Creator != "" {
 		attribution = "© " + img.Creator + ", " + attribution
 	}
+	w.Header().Set("Cache-Control", "public, max-age=3600") // photos at a point rarely change
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"image":  img,
 		"source": map[string]string{"provider": "Mapillary", "license": "CC-BY-SA-4.0", "attribution": attribution},
