@@ -110,6 +110,7 @@ private val sharedApi by lazy { createGoWanderApi() }
 private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 
 private const val ONBOARDED = "onboarded"
+private const val STORE_KEY = "store.v1" // plans + saved places (ADR-036)
 private const val PHOTO_CACHE_SIZE = 24
 private const val NEARBY_RADIUS_M = 1500 // screen 1: cards spread over the map around the user
 private const val NEARBY_LIMIT = 40
@@ -139,7 +140,7 @@ private fun AppContent() {
     val route by routeVm.state.collectAsState()
     var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(AppNav()) }
     val placesListState = rememberLazyListState()
-    val store = remember { AppStore() }
+    val store = remember { AppStore(Prefs.getString(STORE_KEY)) { Prefs.setString(STORE_KEY, it) } }
     val scope = rememberCoroutineScope()
     var noticeText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(noticeText) { if (noticeText != null) { delay(3500); noticeText = null } }

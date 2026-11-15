@@ -1,5 +1,6 @@
 package com.gowander.mock
 
+import kotlinx.serialization.Serializable
 import kotlin.math.abs
 
 /*
@@ -28,8 +29,8 @@ val MOCK_REVIEWS = listOf(
 // ---------- Suggested trips (Journey, region guide) ----------
 
 /** How to reach a stop from the previous one; [kind] picks the colour: walk, bus or metro. */
-data class Move(val label: String, val kind: MoveKind, val minutes: Int)
-enum class MoveKind { Walk, Bus, Metro }
+@Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int)
+@Serializable enum class MoveKind { Walk, Bus, Metro }
 
 data class Stop(val name: String, val note: String, val lat: Double, val lon: Double, val stayMin: Int, val move: Move? = null)
 
@@ -139,11 +140,11 @@ object MockPortfolio {
 // ---------- Plans (Hồ sơ › Kế hoạch, Tự lên kế hoạch) ----------
 
 /** One stop of a plan; [lat]/[lon] null for "your starting point" (no fixed place yet). */
-data class PlanItem(val title: String, val note: String, val stayMin: Int, val move: Move? = null, val lat: Double? = null, val lon: Double? = null)
+@Serializable data class PlanItem(val title: String, val note: String, val stayMin: Int, val move: Move? = null, val lat: Double? = null, val lon: Double? = null)
 
-enum class PlanStatus { Upcoming, Draft, Done }
+@Serializable enum class PlanStatus { Upcoming, Draft, Done }
 
-data class Plan(val id: String, val name: String, val date: String, val start: String, val mode: String, val items: List<PlanItem>, val status: PlanStatus, val routing: Boolean = true)
+@Serializable data class Plan(val id: String, val name: String, val date: String, val start: String, val mode: String, val items: List<PlanItem>, val status: PlanStatus, val routing: Boolean = true)
 
 val MOCK_PLANS = listOf(
     Plan(

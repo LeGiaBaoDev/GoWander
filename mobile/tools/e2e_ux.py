@@ -181,6 +181,14 @@ def journey():
     tap("Kế hoạch")
     check(find("SẮP TỚI", timeout=6) is not None and find("Một ngày ở TP.HCM") is not None, "Hồ sơ › Kế hoạch (mẫu màn 17)")
     audit("Hồ sơ Kế hoạch")
+    # P5 (ADR-036): plans and saved places are kept on the device. Close the app and open it again: the place saved
+    # earlier is still there (plans go through the same store; AppStoreTest covers them).
+    adb("shell", "am", "force-stop", APP)
+    adb("shell", "monkey", "-p", APP, "-c", "android.intent.category.LAUNCHER", "1")
+    find("Tìm quán, món ăn, địa điểm", timeout=25)
+    tap("Hồ sơ")
+    tap("Đã lưu")
+    check(find("^Chưa lưu địa điểm nào", timeout=3) is None, "Tắt app rồi mở lại: địa điểm đã lưu vẫn còn")
     tap("Portfolio")
     tap("Thiết kế")
     check(find("Mẫu trình bày", timeout=6) is not None, "Thiết kế portfolio (mẫu màn 12)")
