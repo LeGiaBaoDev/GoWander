@@ -192,7 +192,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
   | All photos (places, trips, regions, dishes, portfolio) | `ui/Pieces.kt` `MockPhoto` (tinted tile + icon, "Ảnh mẫu") | licensed photos with credit (DATA-1 §4) | MOCK |
   | Suggested trips (Journey, Discover card, region guide, Trip screen) | `MOCK_TRIPS` (real coordinates; "Bắt đầu chuyến" uses the real router) | editor-curated trips (CONTENT) | MOCK |
   | Regions, region guide text, seasons, dishes, sample shops, story card | `MOCK_REGIONS`, `MOCK_GUIDE_INTRO`, `MOCK_OTHER_REGION_INTRO`, `MOCK_DISHES`, `MOCK_STORY_*` | curated content with sources (DATA-1 §4, CONTENT) | MOCK |
-  | Map of Vietnam (screen 13) | hand-drawn outline from the canvas in `discover/Regions.kt` (not to scale) | real country boundary (CONTENT) | MOCK |
+  | Map of Vietnam (screen 13) | real map since 15-11-2026 (OpenFreeMap / OSM tiles, regions at real coordinates, Hoàng Sa and Trường Sa labelled by the app); the basemap still prints "South China Sea" and foreign names in English | Vietnamese basemap labels ("Biển Đông"), own style or provider | PARTLY REAL |
   | Portfolio: name, stats, about, featured trip, contributions, moments, section visibility | `MockPortfolio` | user account data (COM-1) | MOCK |
   | Plans: sample upcoming/draft/done plans and planner suggestions | `MOCK_PLANS`, `MOCK_PLAN_SUGGESTIONS`; user-made plans and saved places live in `home/AppStore.kt`, memory only | on-device storage (P5 storage ADR) | MOCK |
   | Buttons that only explain themselves: Chia sẻ, Viết đánh giá, Video 1:30, plan date / time / mode, portfolio Lưu | short notice via `LocalNotice` | COM-1 / P5 / CONTENT | MOCK (UI only) |

@@ -1,6 +1,5 @@
 package com.gowander.discover
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,7 +15,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -43,8 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -63,6 +58,10 @@ import com.gowander.mock.MOCK_STORY_META
 import com.gowander.mock.MOCK_STORY_TITLE
 import com.gowander.mock.MOCK_TRIPS
 import com.gowander.mock.Region
+import com.gowander.mock.CardSide
+import com.gowander.route.RouteMap
+import org.maplibre.compose.camera.CameraUpdate
+import org.maplibre.spatialk.geojson.Position
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import com.gowander.ui.ExtraIcons
@@ -80,42 +79,38 @@ import com.gowander.ui.Text
 import com.gowander.ui.kitShadow
 import kotlinx.coroutines.launch
 
-// Outline of Vietnam from the canvas (hand drawn, not to scale: plan §17), in canvas units with y starting at 140.
-private val VN_OUTLINE = listOf(
-    120 to 170, 170 to 150, 220 to 160, 250 to 185, 240 to 215, 215 to 235, 200 to 260, 210 to 290, 235 to 330, 260 to 370, 280 to 395,
-    300 to 430, 315 to 470, 325 to 510, 330 to 550, 318 to 590, 290 to 615, 250 to 630, 220 to 655, 200 to 690, 170 to 705, 165 to 680,
-    180 to 650, 175 to 625, 190 to 600, 215 to 585, 245 to 560, 265 to 520, 260 to 470, 245 to 430, 225 to 400, 205 to 370, 185 to 335,
-    160 to 300, 150 to 265, 130 to 240, 100 to 225, 90 to 200,
-)
-private val ISLANDS = listOf(340 to 340, 348 to 346, 334 to 350, 352 to 560, 360 to 570, 346 to 574, 358 to 582)
+// Whole country in view, islands included (plan §9.2).
+private val VIETNAM = CameraUpdate(center = Position(latitude = 15.9, longitude = 109.5), zoom = 4.05, pitch = 0.0, bearing = 0.0)
+private val HOANG_SA = Position(latitude = 16.5, longitude = 112.0)
+private val TRUONG_SA = Position(latitude = 10.0, longitude = 114.2)
 
 /**
- * UX-2 screen 13: hand-drawn map of Vietnam with one card per region (sample regions, mock register); TP.HCM is
- * highlighted because routing exists there. "Danh sách" shows the same regions as a list (map alternative).
+ * UX-2 screen 13: the real map (OpenStreetMap data) showing all of Vietnam, one card per region pinned to its real
+ * coordinates with a stem to the point; TP.HCM is highlighted because routing exists there. Hoàng Sa and Trường Sa are
+ * labelled. "Danh sách" shows the same regions as a list (map alternative). Which regions exist is still sample data.
  */
 @Composable
 fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
     var asList by rememberSaveable { mutableStateOf(false) }
-    BoxWithConstraints(modifier.fillMaxWidth().background(Palette.Sky)) {
-        val k = minOf(maxWidth.value / 393f, maxHeight.value / 574f)
+    Box(modifier.fillMaxWidth().background(Palette.Sky)) {
         if (asList) Column(Modifier.fillMaxSize().background(Palette.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
             MOCK_REGIONS.forEach { r -> ListRow(r.name, r.area, lead = { MockPhoto(r.id, Modifier.size(48.dp), KitIcons.landmark, radius = 10.dp) }, onClick = { onRegion(r.id) }) }
-        } else {
-            Canvas(Modifier.fillMaxSize().semantics { contentDescription = Strings.VIETNAM_MAP }) {
-                val s = k * density
-                val dx = (size.width - 393 * s) / 2
-                fun pt(p: Pair<Int, Int>) = Offset(dx + p.first * s, (p.second - 140) * s)
-                val path = Path().apply { VN_OUTLINE.forEachIndexed { i, p -> if (i == 0) moveTo(pt(p).x, pt(p).y) else lineTo(pt(p).x, pt(p).y) }; close() }
-                drawPath(path, Palette.Subtle)
-                drawPath(path, Color(0xFF7FB0B2), style = Stroke(2 * density))
-                ISLANDS.forEach { drawCircle(Color(0xFF7FB0B2), 2.2f * density, pt(it)) }
+        } else RouteMap(null, null, null, null, Modifier.fillMaxSize().semantics { contentDescription = Strings.VIETNAM_MAP }, focus = VIETNAM) {
+            listOf(HOANG_SA to Strings.ISLANDS_NORTH, TRUONG_SA to Strings.ISLANDS_SOUTH).forEach { (at, label) ->
+                Text(label, Modifier.placedAt(at).clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 4.dp, vertical = 1.dp), size = 10.sp, color = Palette.Body)
             }
-            Text(Strings.ISLANDS_NORTH, Modifier.offset((300 * k).dp + ((maxWidth.value - 393 * k) / 2).dp, (176 * k).dp), size = 9.sp, color = Palette.Body)
-            Text(Strings.ISLANDS_SOUTH, Modifier.offset((300 * k).dp + ((maxWidth.value - 393 * k) / 2).dp, (398 * k).dp), size = 9.sp, color = Palette.Body)
-            MOCK_REGIONS.forEach { r -> RegionCard(r, Modifier.offset((r.x * k).dp + ((maxWidth.value - 393 * k) / 2).dp, (r.y * k).dp).width((r.w * k).coerceAtLeast(120f).dp)) { onRegion(r.id) } }
+            MOCK_REGIONS.forEach { r ->
+                val at = Position(latitude = r.lat, longitude = r.lon)
+                val align = when (r.side) {
+                    CardSide.Left -> Alignment.CenterEnd; CardSide.Right -> Alignment.CenterStart
+                    CardSide.Above -> Alignment.BottomCenter; CardSide.Below -> Alignment.TopCenter
+                    CardSide.AboveRight -> Alignment.BottomStart; CardSide.BelowRight -> Alignment.TopStart
+                }
+                RegionPin(r, Modifier.placedAt(at, align)) { onRegion(r.id) }
+            }
         }
         Row(
-            Modifier.align(Alignment.TopEnd).padding(top = if (asList) 8.dp else (126 * k).dp, end = 16.dp).sizeIn(minHeight = 48.dp)
+            Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp).sizeIn(minHeight = 48.dp)
                 .kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg)
                 .clickable(role = Role.Button) { asList = !asList }.padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -127,13 +122,32 @@ fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
     }
 }
 
+/** Card + stem + dot; the dot sits on the region's point, the card on the side its [Region.side] says. */
+@Composable
+private fun RegionPin(r: Region, modifier: Modifier, onClick: () -> Unit) {
+    val dot: @Composable () -> Unit = {
+        Box(Modifier.size(12.dp).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(if (r.routing) Palette.Primary else Palette.Accent))
+    }
+    val stemH: @Composable () -> Unit = { Box(Modifier.size(12.dp, 2.dp).background(Palette.Primary)) }
+    val stemV: @Composable () -> Unit = { Box(Modifier.size(2.dp, 12.dp).background(Palette.Primary)) }
+    val card: @Composable () -> Unit = { RegionCard(r, Modifier, onClick) }
+    when (r.side) {
+        CardSide.Left -> Row(modifier, verticalAlignment = Alignment.CenterVertically) { card(); stemH(); dot() }
+        CardSide.Right -> Row(modifier, verticalAlignment = Alignment.CenterVertically) { dot(); stemH(); card() }
+        CardSide.Above -> Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { card(); stemV(); dot() }
+        CardSide.Below -> Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { dot(); stemV(); card() }
+        CardSide.AboveRight -> Column(modifier) { Box(Modifier.padding(start = 10.dp)) { card() }; Box(Modifier.padding(start = 5.dp)) { stemV() }; dot() }
+        CardSide.BelowRight -> Column(modifier) { dot(); Box(Modifier.padding(start = 5.dp)) { stemV() }; Box(Modifier.padding(start = 10.dp)) { card() } }
+    }
+}
+
 @Composable
 private fun RegionCard(r: Region, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier.kitShadow(shape).clip(shape).background(Palette.Bg).border(if (r.routing) 2.dp else 1.dp, if (r.routing) Palette.Primary else Palette.Line, shape)
             .semantics(mergeDescendants = true) { contentDescription = "${r.name}, ${r.area}, ${Strings.OPEN_GUIDE}" }
-            .clickable(role = Role.Button, onClick = onClick).padding(6.dp),
+            .clickable(role = Role.Button, onClick = onClick).padding(start = 6.dp, top = 6.dp, bottom = 6.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MockPhoto(r.id, Modifier.size(40.dp), KitIcons.landmark, radius = 10.dp, iconSize = 18.dp)

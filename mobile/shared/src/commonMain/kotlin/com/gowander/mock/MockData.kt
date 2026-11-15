@@ -64,16 +64,19 @@ fun mockTrip(id: String) = MOCK_TRIPS.firstOrNull { it.id == id } ?: MOCK_TRIPS.
 
 // ---------- Regions (Discover › Điểm đến Việt Nam) ----------
 
-/** [x], [y], [w]: the region's card on the drawn map, in canvas units (393 wide, 574 tall). */
-data class Region(val id: String, val name: String, val area: String, val x: Float, val y: Float, val w: Float, val routing: Boolean = false)
+/** Where the card sits relative to the region's point on the map, so neighbouring cards do not cover each other. */
+enum class CardSide { Left, Right, Above, Below, AboveRight, BelowRight }
+
+/** A destination region at its real coordinates; the list of regions and their guides are still sample content. */
+data class Region(val id: String, val name: String, val area: String, val lat: Double, val lon: Double, val side: CardSide, val routing: Boolean = false)
 
 val MOCK_REGIONS = listOf(
-    Region("ha-noi", "Hà Nội", "Miền Bắc", 12f, 48f, 152f),
-    Region("ha-long", "Hạ Long", "Quảng Ninh", 254f, 32f, 130f),
-    Region("mien-trung", "Huế · Đà Nẵng · Hội An", "Miền Trung", 70f, 230f, 214f),
-    Region("da-lat", "Đà Lạt", "Lâm Đồng", 140f, 378f, 138f),
-    Region("tp-hcm", "TP.HCM", "Có tìm tuyến", 244f, 440f, 140f, routing = true),
-    Region("phu-quoc", "Phú Quốc", "Kiên Giang", 12f, 476f, 140f),
+    Region("ha-noi", "Hà Nội", "Miền Bắc", 21.028, 105.854, CardSide.Above),
+    Region("ha-long", "Hạ Long", "Quảng Ninh", 20.951, 107.080, CardSide.Right),
+    Region("mien-trung", "Huế · Đà Nẵng · Hội An", "Miền Trung", 16.054, 108.202, CardSide.Above),
+    Region("da-lat", "Đà Lạt", "Lâm Đồng", 11.940, 108.438, CardSide.AboveRight),
+    Region("tp-hcm", "TP.HCM", "Có tìm tuyến", 10.776, 106.701, CardSide.BelowRight, routing = true),
+    Region("phu-quoc", "Phú Quốc", "Kiên Giang", 10.227, 103.964, CardSide.Below),
 )
 
 fun mockRegion(id: String) = MOCK_REGIONS.firstOrNull { it.id == id } ?: MOCK_REGIONS.first { it.routing }
