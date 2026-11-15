@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gowander.api.Route
+import com.gowander.resources.Res
 import kotlin.coroutines.cancellation.CancellationException
 import org.maplibre.compose.camera.CameraFit
 import org.maplibre.compose.camera.CameraPosition
@@ -80,8 +81,10 @@ import org.maplibre.compose.util.DpPadding
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 
-// ADR-025: OpenFreeMap, no API key.
-private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+// ADR-025: OpenFreeMap, no API key. The bundled style is OpenFreeMap "liberty" with every name label preferring
+// name:vi ("Biển Đông", "Trung Quốc"); the stock style prints English names. Owner, 15-11-2026.
+// shortcut: a frozen copy of the style, re-download and re-patch it if OpenFreeMap retires its sprite or font paths.
+private val STYLE_URL = Res.getUri("files/map_style.json")
 
 private val STREET_LEVEL = CameraConstraints { maxZoom = 21.0; maxPitch = 65.0 }
 

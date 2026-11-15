@@ -129,7 +129,6 @@ fun MapHome(
     onOpenPlace: (PlaceSummary) -> Unit,
     onSeeAll: () -> Unit,
 ) {
-    val results = state.phase as? RoutePhase.Results
     var filter by rememberSaveable { mutableStateOf(0) }
     val shown = remember(nearby, filter) { MAP_FILTERS[filter].second.let { slugs -> nearby.filter { slugs == null || it.category?.slug in slugs } } }
     // A card sits above its place (about 100 dp with the stem): skip places whose card would land under the search bar,
@@ -147,7 +146,8 @@ fun MapHome(
             spreadOut(free, minNorthM = CARD_SPACING_M, max = MAX_CARDS, minEastM = CARD_SPACING_EAST_M)
         }
         RouteMap(
-            results?.routes?.getOrNull(results.selected), state.origin, state.destination, location, Modifier.fillMaxSize(), viewSwitch = true,
+            // No route here (design screen 1): a found route belongs to the route screens. The origin only centres the camera.
+            null, state.origin, null, location, Modifier.fillMaxSize(), viewSwitch = true,
             insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
         ) {
             // Other places: small dots, spread out and decorative (too dense to tap safely); "Danh sách" lists them all.
@@ -161,7 +161,6 @@ fun MapHome(
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MAP_FILTERS.forEachIndexed { i, (label, _) -> Pill(label, selected = i == filter) { filter = i } }
             }
-            if (results?.assumedData == true) Banner(Strings.DEMO_LABEL)
         }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(

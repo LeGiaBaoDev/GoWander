@@ -2,7 +2,6 @@ package com.gowander.ui
 
 /** Every user-facing text of M06 in one place, so English can be added later (ADR-022, ADR-029 §4). */
 object Strings {
-    const val DEMO_LABEL = "DEMO - dữ liệu giả định, không phải lịch chạy chính thức"
     const val TAB_MAP = "Bản đồ"
     const val TAB_DISCOVER = "Khám phá"
     const val TAB_GO = "Đi đâu?"
