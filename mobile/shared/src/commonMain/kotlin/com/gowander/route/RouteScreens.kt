@@ -111,6 +111,9 @@ import com.gowander.ui.kitShadow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import org.maplibre.compose.camera.CameraUpdate
+import androidx.compose.runtime.rememberCoroutineScope
 import org.maplibre.compose.location.LocationState
 import org.maplibre.compose.map.MapState
 import kotlin.time.Clock
@@ -158,17 +161,36 @@ fun MapHome(
         if (inView?.first == filter) inView!!.second else (inView?.second ?: nearby).filter { slugs == null || it.category?.slug in slugs }
     }
     var photosShown by remember { mutableStateOf(false) } // street photos need their licence line on this screen (ADR-033)
+    // A dot the user tapped: the map centres on it and it gets a card (it stays even if the next server answer leaves it out).
+    var picked by remember { mutableStateOf<PlaceSummary?>(null) }
+    val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth
         val height = maxHeight
-        val cards = remember(shown, camera, width, height) {
-            val free = shown.filter { p ->
-                val at = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon)) ?: return@filter true
+        fun at(p: PlaceSummary) = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon))
+        // Cards and dots are sized in dp, so the room they need in metres depends on the zoom.
+        val (cards, dots) = remember(shown, picked, camera, width, height) {
+            val all = picked?.takeIf { pick -> shown.none { it.id == pick.id } }?.let { shown + it } ?: shown
+            val mPerDp = all.firstOrNull()?.let { mapRef.value?.metersPerDpAtLatitude(it.lat) } ?: M_PER_DP_HOME
+            fun cardFits(p: PlaceSummary): Boolean {
+                val xy = at(p) ?: return true
                 // A card is centred on its place: a place near a side edge would have its card cut off.
-                at.x > CARD_HALF_WIDTH + 8.dp && at.x < width - CARD_HALF_WIDTH - 8.dp &&
-                    at.y > CARD_TOP_CLEAR && at.y < height - CARD_BOTTOM_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
+                return xy.x > CARD_HALF_WIDTH + 8.dp && xy.x < width - CARD_HALF_WIDTH - 8.dp &&
+                    xy.y > CARD_TOP_CLEAR && xy.y < height - CARD_BOTTOM_CLEAR && !(xy.y < CARD_LAYERS_CLEAR && xy.x + CARD_HALF_WIDTH > width - 72.dp)
             }
-            spreadOut(free, minNorthM = CARD_SPACING_M, max = MAX_CARDS, minEastM = CARD_SPACING_EAST_M)
+            val cards = spreadOut(
+                all.filter(::cardFits), minNorthM = CARD_ROOM_HEIGHT.value * mPerDp, max = MAX_CARDS, minEastM = CARD_ROOM_WIDTH.value * mPerDp,
+                first = picked?.takeIf(::cardFits),
+            )
+            val cardSpots = cards.mapNotNull(::at)
+            // A dot can be tapped where nothing else is: clear of the bars, the buttons and every card (48 dp target).
+            val dots = spreadOut(all.filter { it !in cards }, minNorthM = DOT_ROOM.value * mPerDp, max = MAX_DOTS).map { p ->
+                val xy = at(p)
+                p to (xy != null && xy.x > 28.dp && xy.x < width - 28.dp && xy.y > DOT_TOP_CLEAR && xy.y < height - DOT_BOTTOM_CLEAR &&
+                    !(xy.y < CARD_LAYERS_CLEAR - CARD_PHOTO_HEIGHT && xy.x > width - 96.dp) &&
+                    cardSpots.none { c -> xy.x > c.x - CARD_HALF_WIDTH - 28.dp && xy.x < c.x + CARD_HALF_WIDTH + 28.dp && xy.y > c.y - CARD_ROOM_HEIGHT - 28.dp && xy.y < c.y + 40.dp })
+            }
+            cards to dots
         }
         RouteMap(
             // No route here (design screen 1): a found route belongs to the route screens. The origin only centres the camera.
@@ -176,9 +198,17 @@ fun MapHome(
             insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
             credit = if (photosShown) Strings.MAP_CREDIT + "\n" + Strings.STREET_PHOTO_CREDIT else Strings.MAP_CREDIT,
         ) {
-            // Other places: small dots, spread out and decorative (too dense to tap safely); "Danh sách" lists them all.
-            spreadOut(shown.filter { it !in cards }, minNorthM = DOT_SPACING_M, max = MAX_DOTS).forEach { p ->
-                Box(Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon)).size(12.dp).clearAndSetSemantics { }.kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(Palette.Primary))
+            // Other places: small dots. Tapping one centres the map on it and gives it a card; "Danh sách" lists them all.
+            dots.forEach { (p, tappable) ->
+                val spot = Position(latitude = p.lat, longitude = p.lon)
+                val dot: @Composable () -> Unit = { Box(Modifier.size(12.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(Palette.Primary)) }
+                if (tappable) Box(
+                    Modifier.placedAt(spot).size(48.dp).semantics { contentDescription = "${p.name}, ${Strings.SHOW_CARD}" }.clickable(role = Role.Button) {
+                        picked = p
+                        scope.launch { try { mapRef.value?.animateCamera(CameraUpdate(center = spot)) } catch (e: CancellationException) { throw e } catch (e: Exception) { /* the card still shows */ } }
+                    },
+                    contentAlignment = Alignment.Center,
+                ) { dot() } else Box(Modifier.placedAt(spot).clearAndSetSemantics { }) { dot() }
             }
             cards.forEach { p -> PlaceCard(p, Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon), Alignment.BottomCenter), loadPhoto, { photosShown = true }) { onOpenPlace(p) } }
         }
@@ -209,15 +239,18 @@ fun MapHome(
     }
 }
 
-private const val CARD_SPACING_M = 460.0 // ~card height with its photo + stem at the home zoom (15)
-private const val CARD_SPACING_EAST_M = 560.0 // ~card width
+private val CARD_ROOM_HEIGHT = 196.dp // a card with its photo, stem and dot
+private val CARD_ROOM_WIDTH = 232.dp
+private val DOT_ROOM = 52.dp // one 48 dp touch target per dot
+private val DOT_TOP_CLEAR = 220.dp // status bar + search + filters
+private val DOT_BOTTOM_CLEAR = 200.dp // "Danh sách", locate button, credit line, tab bar
+private const val M_PER_DP_HOME = 2.35 // metres per dp at the home zoom (15) in TP.HCM, until the map can say
 private const val MAX_CARDS = 4
 private val CARD_BOTTOM_CLEAR = 176.dp // a place lower than this would put its card on "Danh sách", the credit line or the tab bar
 private val CARD_PHOTO_HEIGHT = 84.dp
 private val CARD_TOP_CLEAR = 300.dp + CARD_PHOTO_HEIGHT // status bar + search + filters + card (with photo) and stem
 private val CARD_LAYERS_CLEAR = 360.dp + CARD_PHOTO_HEIGHT // ... plus the map-type button on the right
 private val CARD_HALF_WIDTH = 104.dp
-private const val DOT_SPACING_M = 120.0
 private const val MAX_DOTS = 12
 
 /** Floating card + stem + red dot; the dot sits on the place. One spoken label for the whole card. */

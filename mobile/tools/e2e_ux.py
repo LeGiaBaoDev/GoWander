@@ -112,6 +112,16 @@ def journey():
         adb("shell", "input", "keyevent", "4")
         check(find("Tìm quán, món ăn, địa điểm", timeout=6) is not None, "Back lần nữa: về bản đồ")
 
+    # P3: a dot is a place without a card; tapping it centres the map there and gives it a card.
+    dot = find(desc=r"~.*, hiện thẻ$", timeout=8)
+    if dot is not None:
+        name = dot.get("content-desc").rsplit(", hiện thẻ", 1)[0]
+        tap(desc=dot.get("content-desc"))
+        check(find(desc="~^" + re.escape(name) + r", .*số sao mẫu.*", timeout=8) is not None, "Bấm một chấm trên bản đồ: chấm thành thẻ của đúng quán đó")
+        audit("Bản đồ sau khi bấm chấm")
+    else:
+        check(False, "Bản đồ có chấm bấm được")
+
     # Map view panel: 2D / 3D / Vệ tinh (satellite only explains itself, owner 14-11-2026); closes after a choice and outside.
     tap(desc="Loại bản đồ")
     check(find("3D") is not None and find("Vệ tinh") is not None, "Bấm 'Loại bản đồ': có 2D / 3D / Vệ tinh")
@@ -154,23 +164,23 @@ def journey():
     check(find("TP. HỒ CHÍ MINH", timeout=6) is not None and find("01 Giới thiệu") is not None, "Cẩm nang TP.HCM (mẫu màn 14): bìa + mục lục")
     audit("Cẩm nang TP.HCM")
     tap("03 Ẩm thực")
-    tap("Cơm tấm ›")
-    check(find("Quán gợi ý gần bạn", timeout=6) is not None, "Bấm món (mẫu màn 15): mô tả + quán gợi ý")
+    tap("Cơm tấm sườn nướng ›")
+    check(find("Quán gợi ý", timeout=6) is not None, "Bấm món (mẫu màn 15): mô tả + quán gợi ý")
     audit("Món ăn")
     tap("+ Thêm vào kế hoạch")
-    check(find("Ăn: cơm tấm", timeout=6) is not None and find("Sắp xếp lại cho đỡ đi vòng") is not None, "Thêm vào kế hoạch: mở Tự lên kế hoạch (mẫu màn 16) có món vừa thêm")
+    check(find("Ăn: cơm tấm sườn nướng", timeout=6) is not None and find("Sắp xếp lại cho đỡ đi vòng") is not None, "Thêm vào kế hoạch: mở Tự lên kế hoạch (mẫu màn 16) có món vừa thêm")
     audit("Tự lên kế hoạch")
-    tap(desc="Xoá điểm: Ăn: cơm tấm")
-    check(gone("Ăn: cơm tấm"), "Xoá một điểm: điểm biến mất, giờ tính lại")
+    tap(desc="Xoá điểm: Ăn: cơm tấm sườn nướng")
+    check(gone("Ăn: cơm tấm sườn nướng"), "Xoá một điểm: điểm biến mất, giờ tính lại")
     tap("Lưu vào Hồ sơ")
-    check(find("Quán gợi ý gần bạn", timeout=6) is not None, "Lưu vào Hồ sơ: quay về màn trước")
+    check(find("Quán gợi ý", timeout=6) is not None, "Lưu vào Hồ sơ: quay về màn trước")
     adb("shell", "input", "keyevent", "4")
     adb("shell", "input", "keyevent", "4")
     tap("Gần bạn")
     tap("Hành trình")
-    check(find("Kiến trúc quanh ga Nhà Hát", timeout=6) is not None and find("Bạn có bao lâu?") is not None, "Hành trình (mẫu màn 9): chuyến gợi ý + chọn thời gian")
+    check(find("Dấu ấn Sài Gòn ở trung tâm", timeout=6) is not None and find("Nghệ thuật, chợ và nhịp sống ven sông") is not None, "Hành trình (mẫu màn 9): các chuyến do biên tập soạn")
     audit("Hành trình")
-    tap("Kiến trúc quanh ga Nhà Hát")
+    tap("Dấu ấn Sài Gòn ở trung tâm")
     check(find("Bắt đầu chuyến", timeout=6) is not None and find("Bưu điện Trung tâm Sài Gòn") is not None, "Kế hoạch chuyến (mẫu màn 10): các điểm đánh số")
     audit("Kế hoạch chuyến")
     adb("shell", "input", "keyevent", "4")

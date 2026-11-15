@@ -52,10 +52,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowander.mock.MOCK_PLAN_SUGGESTIONS
-import com.gowander.mock.MOCK_TRIPS
+import com.gowander.content.GUIDE_TRIPS
+import com.gowander.content.GUIDE_TRIPS_NOTE
 import com.gowander.mock.MoveKind
 import com.gowander.mock.Plan
-import com.gowander.mock.mockTrip
+import com.gowander.content.guideTrip
 import com.gowander.mock.planEnd
 import com.gowander.mock.planTimes
 import com.gowander.mock.reorderNearest
@@ -99,12 +100,15 @@ fun JourneyScreen(recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onTrip: (
             recent.forEach { e -> ListRow(e.label, Strings.ROUTE_AGAIN, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Primary) }, onClick = { onRoute(e) }) }
             return@Column
         }
-        Text(Strings.HOW_LONG, size = 14.sp, weight = FontWeight.SemiBold)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(30, 60, 90).forEach { m -> Pill("$m ${Strings.MINUTES_SHORT}", selected = budget == m) { budget = m } }
-            Pill(Strings.ANY_TIME, selected = budget == 0) { budget = 0 }
+        // "How long do you have?" only works with trips whose duration is known; the current ones have none yet.
+        if (GUIDE_TRIPS.any { it.minutes != null }) {
+            Text(Strings.HOW_LONG, size = 14.sp, weight = FontWeight.SemiBold)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(30, 60, 90).forEach { m -> Pill("$m ${Strings.MINUTES_SHORT}", selected = budget == m) { budget = m } }
+                Pill(Strings.ANY_TIME, selected = budget == 0) { budget = 0 }
+            }
         }
-        val trips = MOCK_TRIPS.filter { budget == 0 || it.minutes <= budget }
+        val trips = GUIDE_TRIPS.filter { budget == 0 || it.minutes == null || it.minutes <= budget }
         if (trips.isEmpty()) Note(Strings.NO_TRIP_FITS)
         trips.forEachIndexed { i, t ->
             if (i == 0 && t.editorsPick) Column(
@@ -130,7 +134,7 @@ fun JourneyScreen(recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onTrip: (
                 }
             }
         }
-        Note(Strings.TRIPS_SAMPLE_NOTE)
+        Note(GUIDE_TRIPS_NOTE)
     }
 }
 
@@ -154,7 +158,7 @@ private fun StopRow(n: Int, line: Color?, dotted: Boolean, content: @Composable 
 /** UX-2 screen 10: one suggested trip; "Bắt đầu chuyến" asks the real router for the way to the first stop. */
 @Composable
 fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (Endpoint) -> Unit) {
-    val t = mockTrip(id)
+    val t = guideTrip(id)
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth().height(230.dp)) {
@@ -165,6 +169,8 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(t.title, Modifier.semantics { heading() }, size = 22.sp, weight = FontWeight.Bold)
                 Text(t.summary, size = 13.sp, color = Palette.Muted)
+                Text(t.intro, size = 14.sp, color = Palette.Body)
+                Note(t.caution)
             }
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp)) {
                 t.stops.forEachIndexed { i, s ->

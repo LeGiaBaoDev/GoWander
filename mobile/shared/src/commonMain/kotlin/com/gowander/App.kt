@@ -52,7 +52,7 @@ import com.gowander.mock.MoveKind
 import com.gowander.mock.Plan
 import com.gowander.mock.PlanItem
 import com.gowander.mock.PlanStatus
-import com.gowander.mock.mockTrip
+import com.gowander.content.guideTrip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.rememberCoroutineScope
@@ -110,6 +110,7 @@ private val sharedApi by lazy { createGoWanderApi() }
 private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
 
 private const val ONBOARDED = "onboarded"
+private const val DEFAULT_STAY_MIN = 30 // a stop without a known visit time, as for a place added by hand
 private const val STORE_KEY = "store.v1" // plans + saved places (ADR-036)
 private const val PHOTO_CACHE_SIZE = 24
 private const val NEARBY_RADIUS_M = 1500 // screen 1: cards spread over the map around the user
@@ -368,8 +369,8 @@ private fun AppContent() {
                 is Screen.Trip -> TripScreen(
                     top.id, onBack = ::back,
                     onAddStop = {
-                        val t = mockTrip(top.id)
-                        val p = store.newPlan().copy(name = t.title, items = t.stops.map { PlanItem(it.name, it.note, it.stayMin, it.move, it.lat, it.lon) })
+                        val t = guideTrip(top.id)
+                        val p = store.newPlan().copy(name = t.title, items = t.stops.map { PlanItem(it.name, it.note, it.stayMin ?: DEFAULT_STAY_MIN, it.move, it.lat, it.lon) })
                         store.put(p)
                         nav = nav.push(Screen.PlanEdit(p.id)).push(Screen.FindPlace(p.id))
                     },

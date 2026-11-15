@@ -20,9 +20,8 @@ import androidx.compose.ui.semantics.selected
 import com.gowander.home.LocalNotice
 import com.gowander.mock.MOCK_RATING_SPLIT
 import com.gowander.mock.MOCK_REVIEWS
-import com.gowander.mock.MOCK_STORY_META
-import com.gowander.mock.MOCK_STORY_TITLE
-import com.gowander.mock.MOCK_TRIPS
+import com.gowander.content.GUIDE_STORIES
+import com.gowander.content.GUIDE_TRIPS
 import com.gowander.mock.mockRating
 import com.gowander.mock.mockReviewCount
 import com.gowander.route.Endpoint
@@ -178,8 +177,7 @@ private fun PlaceList(
             }
         }
         if (browsing) item {
-            // Sample editor's trip (mock register: suggested trips).
-            val trip = MOCK_TRIPS.first()
+            val trip = GUIDE_TRIPS.first()
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Palette.Soft).clickable(role = Role.Button) { onTrip(trip.id) }.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -229,14 +227,14 @@ private fun PlaceList(
             }
         }
         if (browsing) item {
-            // Sample story card (mock register: stories). Not clickable until stories exist.
+            // First story of the guide; the full text is read in the region guide.
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(Strings.STORIES, Modifier.semantics { heading() }, size = 17.sp, weight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp))) {
-                    MockPhoto(MOCK_STORY_TITLE, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
+                    MockPhoto(GUIDE_STORIES.first().id, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        Text(MOCK_STORY_TITLE, size = 15.sp, weight = FontWeight.Bold)
-                        Text(MOCK_STORY_META, size = 12.sp, color = Palette.Muted)
+                        Text(GUIDE_STORIES.first().title, size = 15.sp, weight = FontWeight.Bold)
+                        Text(Strings.readMinutes(GUIDE_STORIES.first().minutes), size = 12.sp, color = Palette.Muted)
                     }
                 }
             }

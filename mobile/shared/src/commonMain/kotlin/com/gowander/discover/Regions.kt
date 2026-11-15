@@ -49,14 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowander.home.LocalNotice
-import com.gowander.mock.Dish
-import com.gowander.mock.MOCK_DISHES
-import com.gowander.mock.MOCK_GUIDE_INTRO
 import com.gowander.mock.MOCK_OTHER_REGION_INTRO
 import com.gowander.mock.MOCK_REGIONS
-import com.gowander.mock.MOCK_STORY_META
-import com.gowander.mock.MOCK_STORY_TITLE
-import com.gowander.mock.MOCK_TRIPS
+import com.gowander.content.*
 import com.gowander.mock.Region
 import com.gowander.mock.CardSide
 import com.gowander.route.RouteMap
@@ -265,26 +260,43 @@ fun RegionGuideScreen(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
         Column(Modifier.anchor(0).padding(start = 20.dp, end = 20.dp, top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Note(GUIDE_DRAFT_NOTE, Modifier.clip(RoundedCornerShape(14.dp)).background(Palette.Subtle).padding(12.dp))
             SectionHead("01", "GIỚI THIỆU CHUNG")
-            Text(MOCK_GUIDE_INTRO, size = 14.sp, color = Palette.Body)
+            Text(GUIDE_TITLE, size = 18.sp, weight = FontWeight.ExtraBold)
+            Text(GUIDE_SUMMARY, size = 14.sp, color = Palette.Muted)
+            GUIDE_INTRO.forEach { Text(it, size = 14.sp, color = Palette.Body) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Season(Modifier.weight(1f), Palette.Warn, Palette.Amber, "MÙA KHÔ", "Tháng 12 – 4", "Nắng, ít mưa: hợp đi bộ")
-                Season(Modifier.weight(1f), Palette.Sky, Color(0xFF0B5F7A), "MÙA MƯA", "Tháng 5 – 11", "Mưa rào chiều, mang áo mưa")
+                Season(Modifier.weight(1f), Palette.Warn, Palette.Amber, "MÙA KHÔ", "Tháng 12 – 4", GUIDE_DRY_SEASON)
+                Season(Modifier.weight(1f), Palette.Sky, Color(0xFF0B5F7A), "MÙA MƯA", "Tháng 5 – 11", GUIDE_RAIN_SEASON)
             }
+            Text(GUIDE_ALL_YEAR, size = 13.sp, color = Palette.Body)
+            Text(Strings.TRAVEL_TIPS, Modifier.padding(top = 8.dp).semantics { heading() }, size = 18.sp, weight = FontWeight.ExtraBold)
+            GUIDE_TIPS.forEachIndexed { i, tip ->
+                Row {
+                    Text("${i + 1}", Modifier.width(24.dp), size = 14.sp, color = Palette.Primary, weight = FontWeight.ExtraBold)
+                    Column(Modifier.weight(1f)) {
+                        Text(tip.title, size = 14.sp, weight = FontWeight.Bold)
+                        Text(tip.text, size = 13.sp, color = Palette.Body)
+                    }
+                }
+            }
+            Text("${Strings.SOURCE}: $GUIDE_INTRO_SOURCE", size = 11.sp, color = Palette.Muted)
         }
         Column(Modifier.anchor(1).padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.padding(horizontal = 20.dp)) { SectionHead("02", "ĐIỂM NỔI BẬT") }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(Triple("Bưu điện Trung tâm", "Kiến trúc", 10.77984 to 106.69995), Triple("Chợ Bến Thành", "Chợ", 10.77254 to 106.69797), Triple("Nhà hát Thành phố", "Kiến trúc", 10.77667 to 106.70305)).forEach { (name, kind, ll) ->
+                GUIDE_HIGHLIGHTS.forEach { h ->
                     Column(
                         Modifier.width(220.dp).kitShadow(RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(Palette.Bg)
-                            .semantics(mergeDescendants = true) { contentDescription = "$name, $kind" }
-                            .clickable(role = Role.Button) { onHighlight(name, ll.first, ll.second) },
+                            .semantics(mergeDescendants = true) { contentDescription = "${h.name}, ${h.kind}" }
+                            .clickable(role = Role.Button) { onHighlight(h.name, h.lat, h.lon) },
                     ) {
-                        MockPhoto(name, Modifier.fillMaxWidth().height(150.dp), KitIcons.landmark, radius = 0.dp)
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                            Text(name, size = 15.sp, weight = FontWeight.Bold)
-                            Row { Text("$kind · ", size = 12.sp, color = Palette.Muted); Stars(com.gowander.mock.mockRating(name)) }
+                        MockPhoto(h.id, Modifier.fillMaxWidth().height(120.dp), KitIcons.landmark, radius = 0.dp)
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(h.kind.uppercase(), size = 11.sp, color = Palette.Primary, weight = FontWeight.Bold)
+                            Text(h.name, size = 15.sp, weight = FontWeight.Bold, maxLines = 2)
+                            Text(h.summary, size = 12.sp, color = Palette.Body, maxLines = 4)
+                            h.hours?.let { Text("${Strings.OPENING_HOURS}: $it", size = 11.sp, color = Palette.Muted) }
                         }
                     }
                 }
@@ -293,11 +305,13 @@ fun RegionGuideScreen(
         Column(Modifier.anchor(2).padding(top = 20.dp).fillMaxWidth().background(Palette.Ink).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHead("03", "ẨM THỰC", dark = true)
             Text(Strings.DISH_PICKS, Modifier.clip(RoundedCornerShape(12.dp)).background(Palette.Gold).padding(horizontal = 12.dp, vertical = 4.dp), size = 12.sp, weight = FontWeight.ExtraBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MOCK_DISHES.forEach { d ->
-                    Column(Modifier.weight(1f).clickable(role = Role.Button) { onDish(d.id) }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(14.dp)).background(Palette.Night), contentAlignment = Alignment.Center) { Icon(KitIcons.star, 24.dp, Palette.Line) }
-                        Text("${d.name} ›", size = 13.sp, color = Color.White, weight = FontWeight.Bold)
+            GUIDE_DISHES.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { d ->
+                        Column(Modifier.weight(1f).clickable(role = Role.Button) { onDish(d.id) }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(14.dp)).background(Palette.Night), contentAlignment = Alignment.Center) { Icon(KitIcons.star, 24.dp, Palette.Line) }
+                            Text("${d.name} ›", size = 13.sp, color = Color.White, weight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -305,13 +319,25 @@ fun RegionGuideScreen(
         }
         Column(Modifier.anchor(3).padding(start = 20.dp, end = 20.dp, top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHead("04", "CON NGƯỜI & VĂN HÓA")
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                MockPhoto(MOCK_STORY_TITLE, Modifier.size(84.dp), KitIcons.book)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(Strings.STORY_LABEL, size = 12.sp, color = Palette.Primary, weight = FontWeight.Bold)
-                    Text(MOCK_STORY_TITLE, size = 15.sp, weight = FontWeight.Bold)
-                    Text(MOCK_STORY_META, size = 12.sp, color = Palette.Muted)
+            // A story opens in place: tap the card to read it, tap again to fold it.
+            GUIDE_STORIES.forEach { story ->
+                var open by rememberSaveable(story.id) { mutableStateOf(false) }
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp)).clickable(role = Role.Button) { open = !open }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MockPhoto(story.id, Modifier.size(64.dp), KitIcons.book)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(Strings.STORY_LABEL, size = 12.sp, color = Palette.Primary, weight = FontWeight.Bold)
+                            Text(story.title, size = 15.sp, weight = FontWeight.Bold)
+                            Text(Strings.readMinutes(story.minutes), size = 12.sp, color = Palette.Muted)
+                        }
+                    }
+                    Text(story.summary, size = 13.sp, color = Palette.Body)
+                    if (open) {
+                        story.paragraphs.forEach { Text(it, size = 14.sp, color = Palette.Body) }
+                        Text("${Strings.TRY_THIS}: ${story.tryThis}", size = 13.sp, color = Palette.Ink, weight = FontWeight.SemiBold)
+                        Text("${Strings.SOURCE}: ${story.sources}", size = 11.sp, color = Palette.Muted)
+                    }
                 }
             }
             Text(Strings.COMMUNITY_PHOTOS, Modifier.padding(top = 16.dp).semantics { heading() }, size = 20.sp, weight = FontWeight.ExtraBold)
@@ -327,7 +353,8 @@ fun RegionGuideScreen(
         }
         Column(Modifier.anchor(4).padding(start = 20.dp, end = 20.dp, top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHead("05", "LÊN CHUYẾN Ở ĐÂY")
-            listOf(MOCK_TRIPS[0], MOCK_TRIPS[3]).forEach { t -> TripRow(t.id, t.title, t.summary) { onTrip(t.id) } }
+            GUIDE_TRIPS.forEach { t -> TripRow(t.id, t.title, t.summary) { onTrip(t.id) } }
+            Note(GUIDE_TRIPS_NOTE)
             Button(Strings.PLAN_YOURSELF, Modifier.fillMaxWidth(), icon = KitIcons.plus, pill = true, onClick = onPlan)
         }
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp).clip(RoundedCornerShape(22.dp)).background(Palette.Soft).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -372,7 +399,7 @@ fun TripRow(seed: String, title: String, summary: String, onClick: () -> Unit) {
 /** UX-2 screen 15: a dish of the region (sample text and shops), on the map or into a plan. */
 @Composable
 fun DishScreen(id: String, onBack: () -> Unit, onShowMap: () -> Unit, onAddToPlan: (Dish) -> Unit) {
-    val d = MOCK_DISHES.firstOrNull { it.id == id } ?: MOCK_DISHES.first()
+    val d = guideDish(id)
     Box(Modifier.fillMaxSize().background(Palette.Ink)) {
         Box(Modifier.fillMaxWidth().height(300.dp).background(Palette.Night), contentAlignment = Alignment.Center) {
             Text(Strings.SAMPLE_DISH_PHOTO, size = 13.sp, color = Palette.Line)
@@ -389,6 +416,7 @@ fun DishScreen(id: String, onBack: () -> Unit, onShowMap: () -> Unit, onAddToPla
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Box(Modifier.size(40.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line)) }
             Text(Strings.FOOD_HCMC, Modifier.clip(RoundedCornerShape(10.dp)).background(Palette.Warn).padding(horizontal = 10.dp, vertical = 4.dp), size = 12.sp, color = Palette.Amber, weight = FontWeight.ExtraBold)
             Text(d.name, Modifier.semantics { heading() }, size = 26.sp, weight = FontWeight.ExtraBold)
+            Text(d.summary, size = 15.sp, color = Palette.Ink, weight = FontWeight.SemiBold)
             Text(d.description, size = 14.sp, color = Palette.Body)
             Text(Strings.SHOPS_NEAR, Modifier.padding(top = 6.dp).semantics { heading() }, size = 16.sp, weight = FontWeight.Bold)
             d.shops.forEach { shop ->
@@ -397,11 +425,13 @@ fun DishScreen(id: String, onBack: () -> Unit, onShowMap: () -> Unit, onAddToPla
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(shop.name, size = 14.sp, weight = FontWeight.Bold)
-                        Row { Stars(shop.rating); Text(" · ${shop.detail}", size = 12.sp, color = Palette.Muted) }
+                        Text(shop.address, size = 12.sp, color = Palette.Muted)
                     }
                     IconButton(KitIcons.pin, "${Strings.SHOW_ON_MAP}: ${shop.name}", Modifier.border(1.dp, Palette.Line, CircleShape), onClick = onShowMap)
                 }
             }
+            Note(GUIDE_SHOP_NOTE)
+            Text("${Strings.SOURCE}: $GUIDE_FOOD_SOURCE", size = 11.sp, color = Palette.Muted)
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(Strings.SHOW_ON_MAP, Modifier.weight(1f), icon = KitIcons.map, compact = true, pill = true, onClick = onShowMap)
                 Button(Strings.ADD_TO_PLAN, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true) { onAddToPlan(d) }

@@ -28,5 +28,13 @@ class MapCardsTest {
     }
 
     @Test
+    fun theTappedPlaceAlwaysGetsACardAndTheOthersMakeRoom() {
+        val ps = listOf(place("a", 10.000, 10.0), place("b", 10.001, 120.0), place("c", 10.005, 560.0))
+        // b was tapped: it comes first; a is 111 m from it (too close), c is far enough
+        assertEquals(listOf("b", "c"), spreadOut(ps, minNorthM = 400.0, max = 4, first = ps[1]).map { it.id })
+        assertEquals(listOf("b"), spreadOut(ps, minNorthM = 400.0, max = 1, first = ps[1]).map { it.id })
+    }
+
+    @Test
     fun metersBetweenIsRoughlyRight() = assertTrue(metersBetween(10.0, 106.0, 10.001, 106.0) in 110.0..112.0)
 }

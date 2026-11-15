@@ -12,11 +12,13 @@ val MAP_FILTERS = listOf("Tất cả" to null, "Ăn uống" to setOf("food"), "C
 /**
  * Places that get a floating card: nearest first, each far enough from the cards already chosen that they do not cover
  * each other (cards are wider than tall: [minEastM] across, [minNorthM] up and down); at most [max]. The rest are dots.
+ * [first] is the place the user tapped: it always gets a card and the others make room for it.
  */
-fun spreadOut(places: List<PlaceSummary>, minNorthM: Double, max: Int, minEastM: Double = minNorthM): List<PlaceSummary> {
-    val chosen = mutableListOf<PlaceSummary>()
+fun spreadOut(places: List<PlaceSummary>, minNorthM: Double, max: Int, minEastM: Double = minNorthM, first: PlaceSummary? = null): List<PlaceSummary> {
+    val chosen = listOfNotNull(first).toMutableList()
     for (p in places.sortedBy { it.distanceM ?: Double.MAX_VALUE }) {
-        if (chosen.size == max) break
+        if (chosen.size >= max) break
+        if (p.id == first?.id) continue
         val clear = chosen.all {
             abs(it.lat - p.lat) * M_PER_DEG >= minNorthM || abs(it.lon - p.lon) * M_PER_DEG * cos(p.lat * PI / 180) >= minEastM
         }

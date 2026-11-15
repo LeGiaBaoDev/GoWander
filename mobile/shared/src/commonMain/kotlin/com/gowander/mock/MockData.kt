@@ -32,36 +32,6 @@ val MOCK_REVIEWS = listOf(
 @Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int)
 @Serializable enum class MoveKind { Walk, Bus, Metro }
 
-data class Stop(val name: String, val note: String, val lat: Double, val lon: Double, val stayMin: Int, val move: Move? = null)
-
-data class SuggestedTrip(val id: String, val title: String, val summary: String, val minutes: Int, val stops: List<Stop>, val editorsPick: Boolean = false)
-
-private val OPERA = Stop("Nhà hát Thành phố", "Tham quan khoảng 25 phút", 10.77667, 106.70305, 25)
-private val POST = Stop("Bưu điện Trung tâm Sài Gòn", "Tham quan khoảng 30 phút", 10.77984, 106.69995, 30, Move("Đi bộ 6 phút", MoveKind.Walk, 6))
-private val MARKET = Stop("Chợ Bến Thành", "Tham quan khoảng 20 phút", 10.77254, 106.69797, 20, Move("Metro 1 ga", MoveKind.Metro, 8))
-
-val MOCK_TRIPS = listOf(
-    SuggestedTrip("kien-truc", "Kiến trúc quanh ga Nhà Hát", "3 điểm · khoảng 90 phút · đi bộ ít · có metro", 90, listOf(OPERA, POST, MARKET), editorsPick = true),
-    SuggestedTrip(
-        "ben-thanh", "Một vòng quanh Bến Thành", "2 điểm · khoảng 60 phút · đi bộ vừa", 60,
-        listOf(MARKET.copy(move = null), Stop("Bảo tàng Mỹ thuật", "Tham quan khoảng 35 phút", 10.76962, 106.69928, 35, Move("Đi bộ 8 phút", MoveKind.Walk, 8))),
-    ),
-    SuggestedTrip(
-        "sai-gon-xua", "Sài Gòn xưa qua ảnh tư liệu", "4 điểm · khoảng 90 phút · kèm câu chuyện", 90,
-        listOf(
-            Stop("Dinh Độc Lập", "Tham quan khoảng 30 phút", 10.77703, 106.69531, 30),
-            Stop("Nhà thờ Đức Bà", "Tham quan khoảng 15 phút", 10.77980, 106.69902, 15, Move("Đi bộ 7 phút", MoveKind.Walk, 7)),
-            POST.copy(move = Move("Đi bộ 2 phút", MoveKind.Walk, 2)),
-            Stop("Bảo tàng TP. Hồ Chí Minh", "Tham quan khoảng 30 phút", 10.77607, 106.69998, 30, Move("Đi bộ 6 phút", MoveKind.Walk, 6)),
-        ),
-    ),
-    SuggestedTrip(
-        "an-ca-ngay", "Một ngày ăn sáng tới tối", "5 điểm · cả ngày · xe buýt + đi bộ", 600,
-        listOf(MARKET.copy(move = null), OPERA.copy(move = Move("Đi bộ 12 phút", MoveKind.Walk, 12)), POST.copy(move = Move("Đi bộ 6 phút", MoveKind.Walk, 6))),
-    ),
-)
-
-fun mockTrip(id: String) = MOCK_TRIPS.firstOrNull { it.id == id } ?: MOCK_TRIPS.first()
 
 // ---------- Regions (Discover › Điểm đến Việt Nam) ----------
 
@@ -83,33 +53,8 @@ val MOCK_REGIONS = listOf(
 
 fun mockRegion(id: String) = MOCK_REGIONS.firstOrNull { it.id == id } ?: MOCK_REGIONS.first { it.routing }
 
-data class Dish(val id: String, val name: String, val description: String, val shops: List<Shop>)
-data class Shop(val name: String, val rating: Double, val detail: String)
 
-val MOCK_DISHES = listOf(
-    Dish(
-        "com-tam", "Cơm tấm",
-        "[Mô tả mẫu, chờ biên tập viên viết và ghi nguồn.] Món cơm quen thuộc của người Sài Gòn, thường ăn kèm sườn nướng, bì, chả và nước mắm.",
-        listOf(Shop("[Quán mẫu 1]", 4.6, "400 m · mở tới 21:00"), Shop("[Quán mẫu 2]", 4.4, "1,2 km · đi buýt 8 phút")),
-    ),
-    Dish(
-        "banh-mi", "Bánh mì",
-        "[Mô tả mẫu.] Ổ bánh mì giòn kẹp pa-tê, chả, rau và đồ chua; ăn sáng hay ăn vội đều tiện.",
-        listOf(Shop("[Quán mẫu 3]", 4.5, "250 m · mở từ 6:00")),
-    ),
-    Dish(
-        "hu-tieu", "Hủ tiếu",
-        "[Mô tả mẫu.] Sợi hủ tiếu dai, nước dùng ngọt xương; có loại nước và loại khô.",
-        listOf(Shop("[Quán mẫu 4]", 4.3, "800 m · đi bộ 10 phút")),
-    ),
-)
-
-fun mockDish(id: String) = MOCK_DISHES.firstOrNull { it.id == id } ?: MOCK_DISHES.first()
-
-const val MOCK_GUIDE_INTRO = "[Đoạn giới thiệu mẫu, chờ biên tập viên viết và ghi nguồn.] Thành phố lớn nhất phía Nam, nơi phố cũ thời Pháp nằm cạnh nhà cao tầng, chợ và quán ăn đường phố."
 const val MOCK_OTHER_REGION_INTRO = "[Cẩm nang mẫu.] Nội dung vùng này chưa có. GoWander mới tìm tuyến và dẫn đường ở TP.HCM."
-const val MOCK_STORY_TITLE = "Sài Gòn năm 1896 qua ảnh tư liệu"
-const val MOCK_STORY_META = "Đọc 4 phút · có ghi nguồn · bài mẫu"
 
 // ---------- Profile portfolio ----------
 
