@@ -169,6 +169,35 @@ func TestStore(t *testing.T) {
 		}
 	})
 
+	t.Run("in bounds returns published places inside the box only, filtered by any of the categories", func(t *testing.T) {
+		box := MapQuery{South: 10.765, West: 106.695, North: 10.775, East: 106.705, Limit: 10}
+		ps, err := s.InBounds(ctx, box)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, p := range ps {
+			got[p.Name] = true
+		}
+		if len(ps) != 3 || !got["Chợ Bến Thành"] || !got["Bảo tàng Mỹ thuật"] || !got["Phở 100% bò"] {
+			t.Fatalf("got %s", names(ps))
+		}
+		box.Categories = []string{"museum", "food"} // the market is also linked to food
+		if ps, _ = s.InBounds(ctx, box); len(ps) != 3 {
+			t.Fatalf("categories: %s", names(ps))
+		}
+		box.Categories = []string{"museum", "hidden-cat"}
+		if ps, _ = s.InBounds(ctx, box); names(ps) != "Bảo tàng Mỹ thuật" {
+			t.Fatalf("category: %s", names(ps))
+		}
+		box.Categories, box.Limit = nil, 2
+		first, _ := s.InBounds(ctx, box)
+		again, _ := s.InBounds(ctx, box)
+		if len(first) != 2 || names(first) != names(again) {
+			t.Fatalf("limit / stable order: %s vs %s", names(first), names(again))
+		}
+	})
+
 	t.Run("detail has categories, ordered media, published foods only", func(t *testing.T) {
 		d, err := s.Place(ctx, "0190f0c2-0000-7000-8000-000000000001")
 		if err != nil {

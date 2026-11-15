@@ -98,6 +98,31 @@ paths:
                     items: { $ref: '#/components/schemas/PlaceSummary' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places/map:
+    get:
+      operationId: placesInBounds
+      summary: Địa điểm đã xuất bản trong khung bản đồ; khung dày thì trả một mẫu rải đều và ổn định
+      parameters:
+        - { name: south, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: west, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: north, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 }, description: Lớn hơn south }
+        - { name: east, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 }, description: Lớn hơn west }
+        - { name: categories, in: query, schema: { type: string }, description: 'Tối đa 10 slug cách nhau bằng dấu phẩy; địa điểm thuộc bất kỳ slug nào' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Địa điểm, không có distanceM
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [places]
+                properties:
+                  places:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlaceSummary' }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /api/v1/places/{id}:
     get:
       operationId: getPlace

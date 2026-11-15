@@ -179,7 +179,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 1. **P1 Navigation shell:** 5 tabs, centre action, per-tab back stack in `commonMain`, no first-run screen, permission on demand, hide unfinished features, minimal real Journey/Profile screens.
 2. **P2 Route flow:** shared destination search, editable From/To header, grouped trips, 2-button route detail, split 3D/2D step view and navigation; lower map has a 2D / 3D switch (satellite later). **DONE 14-11-2026** (Android E2E 63/63, iOS tests 65/65). **P2b:** voice guidance (platform TTS, `vi-VN`). **DONE 15-11-2026** (Android E2E 89/89, iOS tests 77/77; field test on real phones still required before pilot).
    **All 17 canvas screens drawn 15-11-2026** with mock data where real data is missing (register above); Android E2E 85/85, iOS tests 73/73. Phases P3–P5 below now replace mocks with real data and storage.
-3. **P3 Map places:** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
+3. **P3 Map places (first slice DONE 15-11-2026:** `GET /api/v1/places/map`, cards and dots follow the area on screen, filters run on the server; **open:** clusters, tappable dots, list of the area, reviews**):** spike (floating cards, fps on both platforms) → `GET /api/v1/places/map`, pins/clusters/cards/filters/list → shared place sheet (reviews area R1).
 4. **P4 Discover:** Nearby + nationwide region map + TP.HCM region portfolio; tap image → show on map.
 5. **P5 Journey + Profile:** suggested trips, manual planner, Plans/Saved tabs stored on device (ADR for local storage first).
 6. **P6 Usability test** with 3–5 people.
@@ -189,7 +189,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
   |---|---|---|---|
   | **Vệ tinh** choice (map-type panel, lower map of screen 6) | UI only: shows "Chưa có ảnh vệ tinh…" and keeps the map (owner, 14-11-2026: "có giao diện, bấm vào thì để vậy") | licensed satellite provider (ADR-033) | MOCK (UI only) |
   | Star ratings, review counts, rating split, reviews (screens 1, 2, 8, 14, 15) | `mock/MockData.kt`: `mockRating`, `mockReviewCount`, `MOCK_RATING_SPLIT`, `MOCK_REVIEWS` | real reviews (COM-1, accounts) | MOCK |
-  | All photos (places, trips, regions, dishes, portfolio) | `ui/Pieces.kt` `MockPhoto` (tinted tile + icon, "Ảnh mẫu") | licensed photos with credit (DATA-1 §4) | MOCK |
+  | All photos (places, trips, regions, dishes, portfolio) | `ui/Pieces.kt` `MockPhoto` (tinted tile + icon, "Ảnh mẫu"). | licensed photos with credit (DATA-1 §4), stored on Cloudflare R2 (ADR-035) | MOCK |
   | Suggested trips (Journey, Discover card, region guide, Trip screen) | `MOCK_TRIPS` (real coordinates; "Bắt đầu chuyến" uses the real router) | editor-curated trips (CONTENT) | MOCK |
   | Regions, region guide text, seasons, dishes, sample shops, story card | `MOCK_REGIONS`, `MOCK_GUIDE_INTRO`, `MOCK_OTHER_REGION_INTRO`, `MOCK_DISHES`, `MOCK_STORY_*` | curated content with sources (DATA-1 §4, CONTENT) | MOCK |
   | Map of Vietnam (screen 13) | real map since 15-11-2026 (OpenFreeMap / OSM tiles, regions at real coordinates, Hoàng Sa and Trường Sa labelled by the app); basemap labels prefer Vietnamese names ("Biển Đông") through the bundled style `composeResources/files/map_style.json` | none for the map itself; the bundled style is a frozen copy of OpenFreeMap "liberty", refresh it if their sprite or font paths change | REAL |

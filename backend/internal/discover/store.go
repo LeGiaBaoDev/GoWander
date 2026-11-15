@@ -53,6 +53,21 @@ SELECT ` + summaryColumns + `, ST_Distance(p.location, here.g)
  ORDER BY ST_Distance(p.location, here.g), p.id
  LIMIT $5`
 
+	// A dense viewport holds far more places than a screen can show: md5(id) picks an even, stable sample, so a place
+	// does not come and go while the map is panned. For points the bbox test is exact.
+	// shortcut: no index serves location::geometry, so this scans the table; add a GIST index on (location::geometry)
+	// when places grow past a few tens of thousands.
+	qInBounds = `
+SELECT ` + summaryColumns + `
+  FROM places p LEFT JOIN place_categories c ON c.id = p.primary_category_id
+ WHERE p.status = 'PUBLISHED'
+   AND p.location::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+   AND (coalesce(cardinality($5::text[]), 0) = 0 OR EXISTS (
+	SELECT 1 FROM place_category_links l JOIN place_categories lc ON lc.id = l.category_id
+	WHERE l.place_id = p.id AND lc.slug = ANY($5) AND lc.is_active))
+ ORDER BY md5(p.id::text), p.id
+ LIMIT $6`
+
 	qPlace = `
 SELECT ` + summaryColumns + `
   FROM places p LEFT JOIN place_categories c ON c.id = p.primary_category_id
@@ -123,6 +138,14 @@ func (s *PG) Nearby(ctx context.Context, q NearbyQuery) ([]PlaceSummary, error) 
 		p.DistanceM = &d
 		return finishSummary(p, err)
 	})
+}
+
+func (s *PG) InBounds(ctx context.Context, q MapQuery) ([]PlaceSummary, error) {
+	rows, err := s.Pool.Query(ctx, qInBounds, q.West, q.South, q.East, q.North, q.Categories, q.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanSummary)
 }
 
 func (s *PG) Place(ctx context.Context, id string) (PlaceDetail, error) {

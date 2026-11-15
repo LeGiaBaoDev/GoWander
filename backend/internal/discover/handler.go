@@ -26,6 +26,7 @@ func (h Handler) Mount(r chi.Router) {
 	r.Get("/api/v1/place-categories", h.categories)
 	r.Get("/api/v1/places", h.list)
 	r.Get("/api/v1/places/nearby", h.nearby)
+	r.Get("/api/v1/places/map", h.inBounds)
 	r.Get("/api/v1/places/{id}", h.place)
 }
 
@@ -89,6 +90,47 @@ func (h Handler) nearby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	places, err := h.Store.Nearby(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"places": nonNil(places)})
+}
+
+func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	var q MapQuery
+	var err error
+	for _, p := range []struct {
+		dst  *float64
+		name string
+		max  float64
+	}{{&q.South, "south", 90}, {&q.North, "north", 90}, {&q.West, "west", 180}, {&q.East, "east", 180}} {
+		if err == nil {
+			*p.dst, err = floatParam(v.Get(p.name), p.name, -p.max, p.max)
+		}
+	}
+	if err == nil && (q.South >= q.North || q.West >= q.East) {
+		err = badRequest("south phải nhỏ hơn north và west phải nhỏ hơn east.")
+	}
+	if s := v.Get("categories"); err == nil && s != "" {
+		if q.Categories = strings.Split(s, ","); len(q.Categories) > 10 {
+			err = badRequest("categories có tối đa 10 mục, cách nhau bằng dấu phẩy.")
+		}
+		for _, c := range q.Categories {
+			if err == nil {
+				err = textParam(c, "categories", 1, 100)
+			}
+		}
+	}
+	if err == nil {
+		q.Limit, err = intParam(v.Get("limit"), "limit", 50, 1, 100)
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	places, err := h.Store.InBounds(r.Context(), q)
 	if err != nil {
 		h.fail(w, r, err)
 		return

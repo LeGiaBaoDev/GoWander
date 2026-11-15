@@ -84,6 +84,13 @@ type NearbyQuery struct {
 	Limit    int
 }
 
+// MapQuery asks for the places inside a map viewport (UX-2 P3).
+type MapQuery struct {
+	South, West, North, East float64
+	Categories               []string // slugs; empty = all
+	Limit                    int
+}
+
 var ErrNotFound = errors.New("place not found")
 
 // Store reads published Discover data. Implementations return ErrNotFound for unknown or unpublished places.
@@ -91,6 +98,7 @@ type Store interface {
 	Categories(ctx context.Context) ([]Category, error)
 	ListPlaces(ctx context.Context, q ListQuery) (places []PlaceSummary, next *Cursor, err error)
 	Nearby(ctx context.Context, q NearbyQuery) ([]PlaceSummary, error)
+	InBounds(ctx context.Context, q MapQuery) ([]PlaceSummary, error)
 	Place(ctx context.Context, id string) (PlaceDetail, error)
 	Ready(ctx context.Context) error
 }

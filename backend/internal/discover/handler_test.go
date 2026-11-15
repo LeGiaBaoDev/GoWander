@@ -19,6 +19,7 @@ type fakeStore struct {
 	err     error
 	list    ListQuery
 	nearby  NearbyQuery
+	bounds  MapQuery
 	placeID string
 	next    *Cursor
 	places  []PlaceSummary
@@ -33,6 +34,10 @@ func (f *fakeStore) ListPlaces(_ context.Context, q ListQuery) ([]PlaceSummary, 
 }
 func (f *fakeStore) Nearby(_ context.Context, q NearbyQuery) ([]PlaceSummary, error) {
 	f.nearby = q
+	return f.places, f.err
+}
+func (f *fakeStore) InBounds(_ context.Context, q MapQuery) ([]PlaceSummary, error) {
+	f.bounds = q
 	return f.places, f.err
 }
 func (f *fakeStore) Place(_ context.Context, id string) (PlaceDetail, error) {
@@ -115,6 +120,29 @@ func TestNearby(t *testing.T) {
 	get(t, s, "/api/v1/places/nearby?lat=10&lon=106&radiusM=5000&category=food&limit=5")
 	if s.nearby.RadiusM != 5000 || s.nearby.Category != "food" || s.nearby.Limit != 5 {
 		t.Fatalf("%+v", s.nearby)
+	}
+}
+
+func TestInBounds(t *testing.T) {
+	s := &fakeStore{places: []PlaceSummary{{ID: placeID}}}
+	status, body := get(t, s, "/api/v1/places/map?south=10.76&west=106.69&north=10.78&east=106.71")
+	if status != 200 || len(body["places"].([]any)) != 1 || s.bounds.South != 10.76 || s.bounds.West != 106.69 || s.bounds.North != 10.78 ||
+		s.bounds.East != 106.71 || s.bounds.Categories != nil || s.bounds.Limit != 50 {
+		t.Fatalf("%d %+v", status, s.bounds)
+	}
+	get(t, s, "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,cafe&limit=100")
+	if strings.Join(s.bounds.Categories, "|") != "food|cafe" || s.bounds.Limit != 100 {
+		t.Fatalf("%+v", s.bounds)
+	}
+	for _, target := range []string{
+		"/api/v1/places/map?south=10&west=106&north=11", "/api/v1/places/map?south=11&west=106&north=10&east=107",
+		"/api/v1/places/map?south=10&west=107&north=11&east=106", "/api/v1/places/map?south=10&west=106&north=91&east=107",
+		"/api/v1/places/map?south=10&west=106&north=11&east=107&limit=101", "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,,cafe",
+		"/api/v1/places/map?south=10&west=106&north=11&east=107&categories=" + strings.Repeat("a,", 10) + "a",
+	} {
+		if status, _ := get(t, s, target); status != 400 {
+			t.Errorf("%s: got %d, want 400", target, status)
+		}
 	}
 }
 

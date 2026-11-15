@@ -100,8 +100,9 @@ def journey():
     check(find(desc="Ngôn ngữ: Tiếng Việt", timeout=2) is None, "Không còn nút 'VI' khi chưa có tiếng Anh (ADR-034)")
 
     # A suggested place opens its page; "Chỉ đường" goes to the routes; Back returns to the page (T3, T11).
-    if find("Chợ Bến Thành", timeout=4) is not None:
-        tap("Chợ Bến Thành")
+    # P3: the cards come from the area on screen, so any card will do (no fixed place name).
+    if find(desc=r"~.*số sao mẫu.*", timeout=20) is not None:
+        tap(desc=r"~.*số sao mẫu.*")
         check(find("Chỉ đường", timeout=10) is not None, "Bấm địa điểm gợi ý: mở trang địa điểm (có nút Chỉ đường)")
         audit("Trang địa điểm")
         tap("Chỉ đường")

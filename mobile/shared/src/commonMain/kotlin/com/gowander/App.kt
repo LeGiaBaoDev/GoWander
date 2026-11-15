@@ -114,7 +114,7 @@ private const val PHOTO_CACHE_SIZE = 24
 private const val NEARBY_RADIUS_M = 1500 // screen 1: cards spread over the map around the user
 private const val NEARBY_LIMIT = 40
 private val NAV_CLEAR_STRIP = 32.dp // BottomNav's transparent top, where the centre circle rises
-private const val SPREAD_DEG = 0.004
+private const val MAP_PLACES_LIMIT = 60 // P3: a screen shows 4 cards and 12 dots; more only costs data
 
 /** The back stacks survive rotation and process death as plain strings (UX-2, ADR-034). */
 private val NavSaver = Saver<AppNav, List<String>>(save = { it.save() }, restore = { AppNav.restore(it) })
@@ -165,13 +165,8 @@ private fun AppContent() {
     var nearby by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }
     val near = fix?.let { LatLon(it.latitude, it.longitude) } ?: PILOT_CENTRE
     LaunchedEffect(near.lat.toFloat(), near.lon.toFloat()) {
-        // Places cluster around the market: also ask ~450 m away in four directions so map cards spread over the screen.
-        nearby = coroutineScope {
-            val points = listOf(near) + listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1).map { (dy, dx) -> LatLon(near.lat + dy * SPREAD_DEG, near.lon + dx * SPREAD_DEG) }
-            points.mapIndexed { i, at -> async { try { sharedApi.nearby(at, radiusM = if (i == 0) NEARBY_RADIUS_M else 300, limit = if (i == 0) NEARBY_LIMIT else 6) } catch (e: ApiError) { emptyList() } } }
-                .flatMap { it.await() }.distinctBy { it.id }
-                .map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) }.sortedBy { it.distanceM }
-        }
+        nearby = (try { sharedApi.nearby(near, radiusM = NEARBY_RADIUS_M, limit = NEARBY_LIMIT) } catch (e: ApiError) { emptyList() })
+            .map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) }.sortedBy { it.distanceM }
     }
 
     // The place a route was opened for: the results offer "Thông tin về …" while the destination is still that place.
@@ -393,7 +388,11 @@ private fun AppContent() {
                 Screen.Settings -> SettingsScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
-                        route, location, nearby, onSearch = { nav = nav.push(Screen.FindPlace()) }, onLocate = ::useMyLocation,
+                        route, location, nearby,
+                        loadPlaces = { south, west, north, east, slugs ->
+                            try { sharedApi.placesInBounds(south, west, north, east, slugs, limit = MAP_PLACES_LIMIT).map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) } } catch (e: ApiError) { null }
+                        },
+                        onSearch = { nav = nav.push(Screen.FindPlace()) }, onLocate = ::useMyLocation,
                         onOpenPlace = { p -> nav = nav.openPlace(p.id) }, onSeeAll = { nav = nav.select(Tab.Discover) },
                     )
                     Tab.Discover -> DiscoverScreen(

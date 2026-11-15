@@ -21,6 +21,10 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/streetview"
 )
 
+// Mapillary answered a small bbox query in 3 to 9 s (measured 15-11-2026); 4 s failed almost every time. Answers are
+// cached for a day, so only the first request for a spot is slow. Stays under the server WriteTimeout (OTP timeout + 5 s).
+const streetImageTimeout = 12 * time.Second
+
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(log); err != nil {
@@ -105,7 +109,7 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	discover.Handler{Store: places, Log: log}.Mount(mux)
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
 	streetview.Handler{
-		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, 4*time.Second), 24*time.Hour, 5000),
+		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, streetImageTimeout), 24*time.Hour, 5000),
 		Log:    log,
 		Limit:  streetview.NewLimiter(30, time.Minute), // a route preview needs ~15; 30/min per IP protects the Mapillary quota
 	}.Mount(mux)

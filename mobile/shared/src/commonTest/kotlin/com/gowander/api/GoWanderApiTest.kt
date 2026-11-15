@@ -166,6 +166,12 @@ class GoWanderApiTest {
         assertEquals("/api/v1/places/nearby", requests.last().url.encodedPath)
         assertTrue(near.all { (it.distanceM ?: -1.0) >= 0 })
 
+        api(HttpStatusCode.OK, Fixtures.PLACES_NEARBY).placesInBounds(10.76, 106.69, 10.78, 106.71, setOf("food", "cafe"), limit = 60)
+        assertEquals("/api/v1/places/map", requests.last().url.encodedPath)
+        assertEquals(listOf("10.76", "106.69", "10.78", "106.71", "food,cafe"), listOf("south", "west", "north", "east", "categories").map { requests.last().url.parameters[it] })
+        api(HttpStatusCode.OK, Fixtures.PLACES_NEARBY).placesInBounds(10.76, 106.69, 10.78, 106.71, null, limit = 60)
+        assertNull(requests.last().url.parameters["categories"])
+
         val detail = api(HttpStatusCode.OK, Fixtures.PLACE_DETAIL).place("01a1d0db-2bcf-7fb7-b314-f42c1e9c7156")
         assertEquals("Bảo tàng Chiến dịch Hồ Chí Minh", detail.name)
         assertEquals("ODbL-1.0", detail.source.license)

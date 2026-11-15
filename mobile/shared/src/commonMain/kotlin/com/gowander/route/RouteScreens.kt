@@ -124,24 +124,43 @@ fun MapHome(
     state: RouteUiState,
     location: LocationState,
     nearby: List<PlaceSummary>,
+    // P3: places of the area on screen (south, west, north, east, category slugs); null = the load failed.
+    loadPlaces: suspend (Double, Double, Double, Double, Set<String>?) -> List<PlaceSummary>?,
     onSearch: () -> Unit,
     onLocate: () -> Unit,
     onOpenPlace: (PlaceSummary) -> Unit,
     onSeeAll: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(0) }
-    val shown = remember(nearby, filter) { MAP_FILTERS[filter].second.let { slugs -> nearby.filter { slugs == null || it.category?.slug in slugs } } }
     // A card sits above its place (about 100 dp with the stem): skip places whose card would land under the search bar,
     // the filters or the map-type button. The camera is not observable state, so poll it (as on the pick screen).
     val mapRef = remember { mutableStateOf<MapState?>(null) }
     var camera by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) { while (true) { delay(500); mapRef.value?.cameraPosition?.let { if (it != camera) camera = it } } }
+    // The server picks the places for what is on screen, with the filter. Until it answers (and if it fails) the map
+    // keeps what it had: the last answer, or [nearby] at the start, filtered here by primary category.
+    var inView by remember { mutableStateOf<Pair<Int, List<PlaceSummary>>?>(null) }
+    LaunchedEffect(camera, filter) {
+        var region = mapRef.value?.getVisibleRegion()
+        do { delay(400); region = mapRef.value?.getVisibleRegion() } while (region == null) // wait for the map to rest / attach
+        val corners = listOf(region.farLeft, region.farRight, region.nearLeft, region.nearRight)
+        val south = corners.minOf { it.latitude }.coerceIn(-90.0, 90.0)
+        val north = corners.maxOf { it.latitude }.coerceIn(-90.0, 90.0)
+        val west = corners.minOf { it.longitude }.coerceIn(-180.0, 180.0)
+        val east = corners.maxOf { it.longitude }.coerceIn(-180.0, 180.0)
+        if (south < north && west < east) loadPlaces(south, west, north, east, MAP_FILTERS[filter].second)?.let { inView = filter to it }
+    }
+    val shown = remember(nearby, inView, filter) {
+        val slugs = MAP_FILTERS[filter].second
+        if (inView?.first == filter) inView!!.second else (inView?.second ?: nearby).filter { slugs == null || it.category?.slug in slugs }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth
-        val cards = remember(shown, camera, width) {
+        val height = maxHeight
+        val cards = remember(shown, camera, width, height) {
             val free = shown.filter { p ->
                 val at = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon)) ?: return@filter true
-                at.y > CARD_TOP_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
+                at.y > CARD_TOP_CLEAR && at.y < height - CARD_BOTTOM_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
             }
             spreadOut(free, minNorthM = CARD_SPACING_M, max = MAX_CARDS, minEastM = CARD_SPACING_EAST_M)
         }
@@ -186,6 +205,7 @@ fun MapHome(
 private const val CARD_SPACING_M = 380.0 // ~card height + stem at the home zoom (15)
 private const val CARD_SPACING_EAST_M = 1100.0 // ~card width
 private const val MAX_CARDS = 4
+private val CARD_BOTTOM_CLEAR = 176.dp // a place lower than this would put its card on "Danh sách", the credit line or the tab bar
 private val CARD_TOP_CLEAR = 300.dp // status bar + search + filters + card and stem
 private val CARD_LAYERS_CLEAR = 360.dp // ... plus the map-type button on the right
 private val CARD_HALF_WIDTH = 134.dp

@@ -7,7 +7,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 
 /** Map filter chips of screen 1 and the category slugs each one shows (null: everything). */
-val MAP_FILTERS = listOf("Tất cả" to null, "Ăn uống" to setOf("food"), "Cà phê" to setOf("cafe"), "Di tích" to setOf("attraction", "museum", "landmark"), "Mua sắm" to setOf("market", "shop", "shopping"))
+val MAP_FILTERS = listOf("Tất cả" to null, "Ăn uống" to setOf("food"), "Cà phê" to setOf("cafe"), "Di tích" to setOf("attraction", "museum", "historic"), "Mua sắm" to setOf("market"))
 
 /**
  * Places that get a floating card: nearest first, each far enough from the cards already chosen that they do not cover
