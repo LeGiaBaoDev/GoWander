@@ -1,5 +1,18 @@
 package com.gowander.home
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.remember
+import com.gowander.content.openingHours
+import com.gowander.mock.Move
+import com.gowander.mock.PlanItem
+import com.gowander.mock.PlanStatus
+import com.gowander.mock.spot
+import com.gowander.mock.staleLegs
+import com.gowander.mock.nextStop
+import com.gowander.mock.walkTotalM
+import com.gowander.route.distanceLabel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -85,7 +98,10 @@ internal fun moveColor(k: MoveKind) = when (k) { MoveKind.Walk -> Palette.Bus; M
  * holds the real destinations searched in this session.
  */
 @Composable
-fun JourneyScreen(recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onTrip: (String) -> Unit) {
+fun JourneyScreen(
+    store: AppStore, recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStartPlan: (Plan) -> Unit,
+    onTrip: (String) -> Unit,
+) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var budget by rememberSaveable { mutableStateOf(90) }
     Column(
@@ -94,8 +110,10 @@ fun JourneyScreen(recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onTrip: (
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Title(Strings.TAB_JOURNEY)
-        Segmented(listOf(Strings.SUGGESTIONS, Strings.MY_MEMORY), tab) { tab = it }
-        if (tab == 1) {
+        Segmented(listOf(Strings.MINE, Strings.SUGGESTIONS), tab) { tab = it }
+        if (tab == 0) {
+            MyPlans(store, onPlan, onNewPlan, onStartPlan)
+            Text(Strings.RECENT_ROUTES, Modifier.padding(top = 8.dp).semantics { heading() }, size = 15.sp, color = Palette.Muted, weight = FontWeight.Bold)
             if (recent.isEmpty()) Note(Strings.RECENT_TRIPS_EMPTY)
             recent.forEach { e -> ListRow(e.label, Strings.ROUTE_AGAIN, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Primary) }, onClick = { onRoute(e) }) }
             return@Column
@@ -138,6 +156,50 @@ fun JourneyScreen(recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onTrip: (
     }
 }
 
+/**
+ * The user's plans (UX-2 screen 17, in the Journey tab since 15-11-2026): the ones being followed first, with the
+ * next stop and a button to go on; then upcoming, drafts and done.
+ */
+@Composable
+private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStart: (Plan) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val under = store.plans.filter { it.status != PlanStatus.Done && (it.going || it.next > 0) && it.nextStop() != null }
+        val groups = listOf(
+            Strings.GOING to under, Strings.UPCOMING to store.plans.filter { it.status == PlanStatus.Upcoming && it !in under },
+            Strings.DRAFTS to store.plans.filter { it.status == PlanStatus.Draft && it !in under }, Strings.DONE to store.plans.filter { it.status == PlanStatus.Done },
+        )
+        if (store.plans.isEmpty()) Note(Strings.NO_PLANS)
+        groups.forEach { (title, list) ->
+            if (list.isEmpty()) return@forEach
+            Text(title, Modifier.semantics { heading() }, size = 15.sp, color = Palette.Muted, weight = FontWeight.Bold)
+            list.forEach { p ->
+                val following = p in under
+                val meta = when {
+                    following -> "${Strings.NEXT_STOP}: ${p.items[p.nextStop()!!].title}"
+                    p.status == PlanStatus.Upcoming -> "${p.date} · ${p.items.size} ${Strings.STOPS} · ${p.start} – ${planEnd(p.start, p.items)}"
+                    p.status == PlanStatus.Draft -> "${p.items.size} ${Strings.STOPS}${if (!p.routing) " · ${Strings.GUIDE_ONLY}" else ""}"
+                    else -> p.date
+                }
+                if (following || p.status == PlanStatus.Upcoming) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Palette.Soft).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MockPhoto(p.id, Modifier.size(60.dp), KitIcons.landmark)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(p.name, size = 16.sp, weight = FontWeight.Bold)
+                            Text(meta, size = 12.sp, color = Palette.Body)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(Strings.OPEN_PLAN, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true) { onPlan(p.id) }
+                        Button(if (following) Strings.CONTINUE else Strings.START, Modifier.weight(1f), compact = true, pill = true) { onStart(p) }
+                    }
+                } else ListRow(p.name, meta, lead = { MockPhoto(p.id, Modifier.size(52.dp), KitIcons.landmark, radius = 12.dp) }, onClick = { onPlan(p.id) })
+            }
+        }
+        Button(Strings.NEW_PLAN, Modifier.fillMaxWidth(), kind = ButtonKind.Outline, icon = KitIcons.plus, pill = true, onClick = onNewPlan)
+    }
+}
+
 /** Numbered stop: circle with the number, then the line down to the next stop (dotted on foot, solid on a vehicle). */
 @Composable
 private fun StopRow(n: Int, line: Color?, dotted: Boolean, content: @Composable () -> Unit) {
@@ -155,9 +217,9 @@ private fun StopRow(n: Int, line: Color?, dotted: Boolean, content: @Composable 
     }
 }
 
-/** UX-2 screen 10: one suggested trip; "Bắt đầu chuyến" asks the real router for the way to the first stop. */
+/** UX-2 screen 10: one suggested trip; "Bắt đầu chuyến" turns it into a plan the user follows stop by stop. */
 @Composable
-fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (Endpoint) -> Unit) {
+fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: () -> Unit) {
     val t = guideTrip(id)
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -193,19 +255,39 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
         }
         Row(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(Strings.ADD_STOP, Modifier.weight(1f), kind = ButtonKind.Outline, icon = KitIcons.plus, compact = true, pill = true, onClick = onAddStop)
-            Button(Strings.START_TRIP, Modifier.weight(1f), compact = true, pill = true) { t.stops.first().let { onStart(Endpoint(it.lat, it.lon, it.name)) } }
+            Button(Strings.START_TRIP, Modifier.weight(1f), compact = true, pill = true, onClick = onStart)
         }
     }
 }
 
 /**
- * UX-2 screen 16: build a plan by hand. Times follow from the start time, each stay and the travel between stops
- * (estimates); stops can be removed, added (search or suggestions) and reordered to avoid going back and forth.
+ * UX-2 screen 16: build a plan by hand and follow it. Travel between two stops is asked from the real router
+ * ([measure]) whenever the stop before changes; times follow from the start time, each stay and that travel
+ * (estimates). A row opens to change the stay, write a note or get directions to that stop. "Đi tới điểm kế tiếp"
+ * follows the plan stop by stop and the progress is kept with the plan.
  */
 @Composable
-fun PlanBuilderScreen(plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, onAdd: () -> Unit, onSave: () -> Unit, onStart: (Endpoint) -> Unit) {
+fun PlanBuilderScreen(
+    plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, onAdd: () -> Unit, onSave: () -> Unit,
+    measure: suspend (PlanItem, PlanItem) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit,
+) {
     val notice = LocalNotice.current
     val times = planTimes(plan.start, plan.items)
+    val current by rememberUpdatedState(plan)
+    // Legs the router could not answer this time: not asked again until the screen is opened again.
+    val failed = remember { mutableStateListOf<String>() }
+    fun legKey(items: List<PlanItem>, i: Int) = "${items[i - 1].spot()}>${items[i].spot()}"
+    val pending = staleLegs(plan.items).filter { legKey(plan.items, it) !in failed }
+    val todo = pending.firstOrNull()?.let { legKey(plan.items, it) }
+    LaunchedEffect(plan.id, todo) {
+        val i = pending.firstOrNull() ?: return@LaunchedEffect
+        val key = todo!!
+        val move = measure(plan.items[i - 1], plan.items[i])
+        val now = current // the plan may have changed while the router was working
+        if (move == null) failed += key
+        else if (i < now.items.size && legKey(now.items, i) == key) onChange(now.copy(items = now.items.mapIndexed { j, it -> if (j == i) it.copy(move = move) else it }))
+    }
+    var open by rememberSaveable { mutableStateOf(-1) }
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Column(
             Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
@@ -229,18 +311,57 @@ fun PlanBuilderScreen(plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan.items.isEmpty()) Note(Strings.PLAN_EMPTY)
             plan.items.forEachIndexed { i, item ->
-                item.move?.let { if (i > 0) Text(it.label, Modifier.padding(start = 64.dp, top = 2.dp, bottom = 2.dp), size = 12.sp, color = moveColor(it.kind), weight = FontWeight.SemiBold) }
+                // The way here from the stop before: what the router measured, or why there is no time yet.
+                if (i > 0 && item.spot() != null && plan.items[i - 1].spot() != null) {
+                    val measured = item.move?.takeIf { it.from == plan.items[i - 1].spot() }
+                    Text(
+                        measured?.label ?: if (i in pending) Strings.LEG_PENDING else Strings.LEG_UNKNOWN,
+                        Modifier.padding(start = 64.dp, top = 2.dp, bottom = 2.dp), size = 12.sp,
+                        color = measured?.let { moveColor(it.kind) } ?: Palette.Muted, weight = FontWeight.SemiBold,
+                    )
+                }
+                val done = i < plan.next
                 val shape = RoundedCornerShape(14.dp)
-                Row(
-                    Modifier.fillMaxWidth().clip(shape).then(if (i == 0) Modifier.background(Palette.Subtle) else Modifier.border(1.dp, Palette.Line, shape)).padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(times[i], Modifier.width(48.dp), size = 13.sp, color = Palette.Primary, weight = FontWeight.Bold)
-                    Column(Modifier.weight(1f)) {
-                        Text(item.title, size = 14.sp, weight = FontWeight.Bold)
-                        Text(item.note, size = 12.sp, color = Palette.Muted)
+                Column(Modifier.fillMaxWidth().clip(shape).then(if (i == 0) Modifier.background(Palette.Subtle) else Modifier.border(1.dp, if (open == i) Palette.Primary else Palette.Line, shape))) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable(role = Role.Button) { open = if (open == i) -1 else i }.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(if (done) "✓" else times[i], Modifier.width(48.dp).semantics { if (done) contentDescription = Strings.STOP_DONE }, size = 13.sp, color = if (done) Palette.Muted else Palette.Primary, weight = FontWeight.Bold)
+                        Column(Modifier.weight(1f)) {
+                            Text(item.title, size = 14.sp, color = if (done) Palette.Muted else Palette.Ink, weight = FontWeight.Bold)
+                            val sub = listOfNotNull(item.note.takeIf { it.isNotBlank() }, "${Strings.STAY} ${item.stayMin} ${Strings.MINUTES_SHORT}".takeIf { item.stayMin > 0 }).joinToString(" · ")
+                            if (sub.isNotEmpty()) Text(sub, size = 12.sp, color = Palette.Muted)
+                            if (item.memo.isNotBlank() && open != i) Text(item.memo, size = 12.sp, color = Palette.Body, maxLines = 2)
+                            // Known opening hours (guide content): say so when the plan arrives outside them.
+                            openingHours(item.title)?.let { (opens, closes) ->
+                                val warn = when { times[i] < opens -> Strings.opensAt(times[i], opens); times[i] >= closes -> Strings.closedAt(times[i], closes); else -> null }
+                                if (warn != null && !done) Text(warn, size = 12.sp, color = Palette.Accent, weight = FontWeight.SemiBold)
+                            }
+                        }
+                        if (i > 0) IconButton(ExtraIcons.close, "${Strings.REMOVE_STOP}: ${item.title}", tint = Palette.Muted) {
+                            open = -1
+                            // Removing a stop before the next one keeps the progress pointing at the same stop.
+                            onChange(plan.copy(items = plan.items.filterIndexed { j, _ -> j != i }, next = if (i < plan.next) plan.next - 1 else plan.next))
+                        }
                     }
-                    if (i > 0) IconButton(ExtraIcons.close, "${Strings.REMOVE_STOP}: ${item.title}", tint = Palette.Muted) { onChange(plan.copy(items = plan.items.filterIndexed { j, _ -> j != i })) }
+                    if (open == i) Column(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        fun put(changed: PlanItem) = onChange(plan.copy(items = plan.items.mapIndexed { j, it -> if (j == i) changed else it }))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Pill("− 15", modifier = Modifier.semantics { contentDescription = Strings.STAY_LESS }) { put(item.copy(stayMin = (item.stayMin - 15).coerceAtLeast(0))) }
+                            Text("${Strings.STAY} ${item.stayMin} ${Strings.MINUTES_SHORT}", size = 13.sp, weight = FontWeight.SemiBold)
+                            Pill("+ 15", modifier = Modifier.semantics { contentDescription = Strings.STAY_MORE }) { put(item.copy(stayMin = (item.stayMin + 15).coerceAtMost(480))) }
+                        }
+                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.Subtle).padding(horizontal = 10.dp)) {
+                            if (item.memo.isEmpty()) Text(Strings.MEMO_HINT, Modifier.padding(vertical = 14.dp), size = 13.sp, color = Palette.Muted)
+                            BasicTextField(
+                                item.memo, { put(item.copy(memo = it.take(200))) },
+                                Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).padding(vertical = 14.dp).semantics { contentDescription = "${Strings.MEMO}: ${item.title}" },
+                                textStyle = TextStyle(fontSize = 13.sp, color = Palette.Ink),
+                            )
+                        }
+                        if (item.spot() != null && plan.routing) Button(Strings.ROUTE_HERE, kind = ButtonKind.Outline, compact = true, pill = true) { onRoute(Endpoint(item.lat!!, item.lon!!, item.title)) }
+                    }
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -253,22 +374,44 @@ fun PlanBuilderScreen(plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, 
                             .clickable(role = Role.Button) { onChange(plan.copy(items = plan.items + s)) }.padding(10.dp),
                     ) {
                         Text(s.title, size = 13.sp, weight = FontWeight.Bold)
-                        Text("+ ${s.move?.label?.lowercase() ?: ""}", size = 11.sp, color = Palette.Muted)
+                        Text("+ ${s.note}", size = 11.sp, color = Palette.Muted)
                     }
                 }
             }
-            Button(Strings.REORDER, kind = ButtonKind.Soft, compact = true, pill = true) { onChange(plan.copy(items = reorderNearest(plan.items))) }
+            Button(Strings.REORDER, kind = ButtonKind.Soft, compact = true, pill = true) { open = -1; onChange(plan.copy(items = reorderNearest(plan.items), next = 0, going = false)) }
         }
         Column(
             Modifier.fillMaxWidth().border(1.dp, Palette.Line).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Note("${plan.items.size} ${Strings.STOPS} · ${Strings.UNTIL} ${planEnd(plan.start, plan.items)} · ${Strings.TIMES_ESTIMATED}")
+            val nextIdx = plan.nextStop()
+            val walk = walkTotalM(plan.items)
+            Note(listOfNotNull(
+                "${plan.items.size} ${Strings.STOPS}", "${Strings.UNTIL} ${planEnd(plan.start, plan.items)}",
+                "${Strings.PLAN_WALK} ${distanceLabel(walk.toDouble())}".takeIf { walk > 0 }, Strings.TIMES_ESTIMATED,
+            ).joinToString(" · "))
+            if (plan.items.any { it.spot() != null }) Text(
+                nextIdx?.let { "${Strings.NEXT_STOP}: ${plan.items[it].title}" } ?: Strings.PLAN_DONE,
+                size = 14.sp, weight = FontWeight.SemiBold, maxLines = 2,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(Strings.SAVE_TO_PROFILE, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true, onClick = onSave)
-                val first = plan.items.firstOrNull { it.lat != null && it.lon != null }
-                Button(Strings.START, Modifier.weight(1f), compact = true, pill = true) {
-                    if (first != null && plan.routing) onStart(Endpoint(first.lat!!, first.lon!!, first.title)) else notice(Strings.NO_ROUTING_HERE)
+                when {
+                    // On the way: the user says when they are there (never guessed from GPS), or asks for the way again.
+                    plan.going && nextIdx != null -> {
+                        Button(Strings.ARRIVED_HERE, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true) {
+                            val after = plan.copy(next = nextIdx + 1, going = false)
+                            onChange(if (after.nextStop() == null) after.copy(status = PlanStatus.Done) else after)
+                        }
+                        Button(Strings.ROUTE_AGAIN_SHORT, Modifier.weight(1f), compact = true, pill = true) { onGo(plan) }
+                    }
+                    nextIdx == null && plan.items.any { it.spot() != null } -> {
+                        Button(Strings.SAVE_TO_PROFILE, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true, onClick = onSave)
+                        Button(Strings.PLAN_RESTART, Modifier.weight(1f), compact = true, pill = true) { onChange(plan.copy(next = 0, going = false, status = PlanStatus.Upcoming)) }
+                    }
+                    else -> {
+                        Button(Strings.SAVE_TO_PROFILE, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true, onClick = onSave)
+                        Button(Strings.GO_NEXT, Modifier.weight(1f), compact = true, pill = true) { onGo(plan) }
+                    }
                 }
             }
         }

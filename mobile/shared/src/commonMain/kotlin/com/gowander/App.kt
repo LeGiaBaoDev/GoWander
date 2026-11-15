@@ -1,5 +1,9 @@
 package com.gowander
 
+import com.gowander.mock.nextStop
+import com.gowander.mock.spot
+import com.gowander.mock.moveOf
+import com.gowander.api.PlanRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -225,9 +229,18 @@ private fun AppContent() {
     BackHandler(enabled = !nav.canPop && nav.tab != Tab.Map) { nav = nav.select(Tab.Map) }
     BackHandler(enabled = nav.canPop) { back() }
 
+    // Follow a plan: mark it as under way and ask the real router for the way to its next stop.
     fun startPlan(p: Plan) {
-        val first = p.items.firstOrNull { it.lat != null && it.lon != null }
-        if (first == null || !p.routing) noticeText = Strings.NO_ROUTING_HERE else chooseDestination(Endpoint(first.lat!!, first.lon!!, first.title), null)
+        val stop = p.nextStop()?.let { p.items[it] }
+        if (stop == null || !p.routing) { noticeText = Strings.NO_ROUTING_HERE; return }
+        store.put(p.copy(going = true, status = if (p.status == PlanStatus.Draft) PlanStatus.Upcoming else p.status))
+        chooseDestination(Endpoint(stop.lat!!, stop.lon!!, stop.title), null)
+    }
+
+    // A suggested trip becomes one plan (the same one each time), so its progress and the user's changes are kept.
+    fun planOfTrip(tripId: String): Plan {
+        val t = guideTrip(tripId)
+        return store.plan("trip-${t.id}") ?: store.newPlan().copy(id = "trip-${t.id}", name = t.title, items = t.stops.map { PlanItem(it.name, it.note, it.stayMin ?: DEFAULT_STAY_MIN, it.move, it.lat, it.lon) }).also(store::put)
     }
 
     // Guide highlights are names: open the real place page when the API knows it, else go straight to its routes.
@@ -240,7 +253,7 @@ private fun AppContent() {
 
     fun addToPlan(planId: String, item: PlanItem) {
         val plan = store.plan(planId) ?: return
-        store.put(plan.copy(items = plan.items + item.copy(move = item.move ?: Move("${Strings.WALK} 10 ${Strings.MINUTES_SHORT}", MoveKind.Walk, 10))))
+        store.put(plan.copy(items = plan.items + item)) // the planner measures the way to it
     }
 
     fun startNavigation() {
@@ -368,13 +381,8 @@ private fun AppContent() {
                 }
                 is Screen.Trip -> TripScreen(
                     top.id, onBack = ::back,
-                    onAddStop = {
-                        val t = guideTrip(top.id)
-                        val p = store.newPlan().copy(name = t.title, items = t.stops.map { PlanItem(it.name, it.note, it.stayMin ?: DEFAULT_STAY_MIN, it.move, it.lat, it.lon) })
-                        store.put(p)
-                        nav = nav.push(Screen.PlanEdit(p.id)).push(Screen.FindPlace(p.id))
-                    },
-                ) { e -> chooseDestination(e, null) }
+                    onAddStop = { planOfTrip(top.id).let { nav = nav.push(Screen.PlanEdit(it.id)).push(Screen.FindPlace(it.id)) } },
+                ) { nav = nav.push(Screen.PlanEdit(planOfTrip(top.id).id)) }
                 is Screen.PlanEdit -> {
                     val plan = store.plan(top.id)
                     if (plan == null) LaunchedEffect(Unit) { nav = nav.pop() } else PlanBuilderScreen(
@@ -384,7 +392,12 @@ private fun AppContent() {
                             noticeText = Strings.SAVED_TO_PROFILE
                             nav = nav.pop()
                         },
-                        onStart = { e -> chooseDestination(e, null) },
+                        measure = { a, b ->
+                            try {
+                                sharedApi.planRoute(PlanRequest(LatLon(a.lat!!, a.lon!!), LatLon(b.lat!!, b.lon!!), maxResults = 1)).routes.minByOrNull { it.durationSec }?.let { moveOf(it, a.spot()!!) }
+                            } catch (e: ApiError) { null }
+                        },
+                        onGo = ::startPlan, onRoute = { e -> chooseDestination(e, null) },
                     )
                 }
                 Screen.PortfolioEdit -> PortfolioEditScreen(onBack = ::back)
@@ -402,12 +415,15 @@ private fun AppContent() {
                         discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, nearby = nearby,
                         onRegion = { nav = nav.push(Screen.Region(it)) }, onTrip = { nav = nav.push(Screen.Trip(it)) }, onShowMap = { nav = nav.select(Tab.Map) },
                     )
-                    Tab.Journey -> JourneyScreen(route.recentDestinations, onRoute = { e -> chooseDestination(e, null) }) { nav = nav.push(Screen.Trip(it)) }
-                    Tab.Profile -> ProfileScreen(
-                        store, onDesign = { nav = nav.push(Screen.PortfolioEdit) }, onSettings = { nav = nav.push(Screen.Settings) },
+                    Tab.Journey -> JourneyScreen(
+                        store, route.recentDestinations, onRoute = { e -> chooseDestination(e, null) },
                         onPlan = { nav = nav.push(Screen.PlanEdit(it)) },
                         onNewPlan = { val p = store.newPlan(); store.put(p); nav = nav.push(Screen.PlanEdit(p.id)) },
-                        onStartPlan = ::startPlan, onPlace = { nav = nav.openPlace(it) }, onTrip = { nav = nav.push(Screen.Trip(it)) },
+                        onStartPlan = ::startPlan,
+                    ) { nav = nav.push(Screen.Trip(it)) }
+                    Tab.Profile -> ProfileScreen(
+                        store, onDesign = { nav = nav.push(Screen.PortfolioEdit) }, onSettings = { nav = nav.push(Screen.Settings) },
+                        onPlace = { nav = nav.openPlace(it) }, onTrip = { nav = nav.push(Screen.Trip(it)) },
                     )
                 }
             }

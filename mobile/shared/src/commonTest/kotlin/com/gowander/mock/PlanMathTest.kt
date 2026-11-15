@@ -15,6 +15,38 @@ class PlanMathTest {
     }
 
     @Test
+    fun legsAreMeasuredAgainOnlyWhenTheStopBeforeChanged() {
+        val a = PlanItem("A", "", 30, null, 10.0, 106.0)
+        val b = PlanItem("B", "", 30, Move("Đi bộ 5 phút", MoveKind.Walk, 5, 300, a.spot()), 10.01, 106.0)
+        val c = PlanItem("C", "", 30, null, 10.02, 106.0)
+        val start = PlanItem("Nhà", "", 0) // no position: the leg to A cannot be measured
+        assertEquals(listOf(3), staleLegs(listOf(start, a, b, c)))
+        assertEquals(listOf(1, 2), staleLegs(listOf(a, c, b))) // reordered: both legs are stale now
+        assertEquals(300, walkTotalM(listOf(start, a, b, c)))
+    }
+
+    @Test
+    fun aRouteBecomesOneLineOfThePlan() {
+        fun leg(mode: String, transit: Boolean, line: String? = null) = com.gowander.api.Leg(
+            mode, transit, com.gowander.api.RoutePlace("x", 0.0, 0.0), com.gowander.api.RoutePlace("y", 0.0, 0.0), "", "", 0, 0.0, false,
+            line = line?.let { com.gowander.api.Line("id", it) }, polyline = "",
+        )
+        fun route(sec: Int, walk: Double, vararg legs: com.gowander.api.Leg) = com.gowander.api.Route("", "", sec, walk, 0, legs.toList())
+        assertEquals(Move("Đi bộ 7 phút", MoveKind.Walk, 7, 480, "k"), moveOf(route(361, 480.4, leg("WALK", false)), "k"))
+        assertEquals(Move("Buýt 18 · 12 phút", MoveKind.Bus, 12, 200, "k"), moveOf(route(720, 200.0, leg("WALK", false), leg("BUS", true, "18")), "k"))
+        assertEquals("Metro · 9 phút", moveOf(route(540, 100.0, leg("SUBWAY", true)), "k").label)
+    }
+
+    @Test
+    fun followingAPlanSkipsStopsWithoutAPosition() {
+        val items = listOf(PlanItem("Nhà", "", 0), PlanItem("A", "", 30, null, 10.0, 106.0), PlanItem("B", "", 30, null, 10.01, 106.0))
+        val plan = Plan("p", "P", "", "08:00", "", items, PlanStatus.Upcoming)
+        assertEquals(1, plan.nextStop())
+        assertEquals(2, plan.copy(next = 2).nextStop())
+        assertEquals(null, plan.copy(next = 3).nextStop())
+    }
+
+    @Test
     fun badStartFallsBackToEight() = assertEquals(listOf("08:00"), planTimes("??", listOf(PlanItem("A", "", 0))))
 
     @Test

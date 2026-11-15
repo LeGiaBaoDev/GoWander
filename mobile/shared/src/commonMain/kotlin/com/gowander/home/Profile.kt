@@ -73,11 +73,11 @@ import com.gowander.route.categoryIcon
 private val VIOLET_THEMES = listOf(Palette.Primary, Palette.Bus, Palette.Metro, Palette.Accent, Color(0xFFB7791F), Palette.Violet)
 
 /**
- * UX-2 screens 11 and 17 + "Đã lưu": the Profile tab. Portfolio and its numbers are sample data (accounts are COM-1);
- * plans and saved places are the user's own (this session only, see [AppStore]).
+ * UX-2 screen 11 + "Đã lưu": the Profile tab. Portfolio and its numbers are sample data (accounts are COM-1); saved
+ * places are the user's own ([AppStore]). Plans live in the Journey tab (owner, 15-11-2026).
  */
 @Composable
-fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStartPlan: (Plan) -> Unit, onPlace: (String) -> Unit, onTrip: (String) -> Unit) {
+fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit, onPlace: (String) -> Unit, onTrip: (String) -> Unit) {
     val notice = LocalNotice.current
     var tab by rememberSaveable { mutableStateOf(0) }
     Column(
@@ -96,10 +96,9 @@ fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit,
             }
             IconButton(KitIcons.gear, Strings.SETTINGS, tint = Palette.Ink, onClick = onSettings)
         }
-        Segmented(listOf(Strings.PORTFOLIO, Strings.PLANS, Strings.SAVED), tab, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Palette.VioletDark) { tab = it }
+        Segmented(listOf(Strings.PORTFOLIO, Strings.SAVED), tab, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Palette.VioletDark) { tab = it }
         when (tab) {
             0 -> Portfolio(onTrip, onDesign)
-            1 -> Plans(store, onPlan, onNewPlan, onStartPlan)
             else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (store.saved.isEmpty()) Note(Strings.SAVED_EMPTY)
                 store.saved.forEach { p -> ListRow(p.name, p.category, lead = { MockPhoto(p.id, Modifier.size(48.dp), categoryIcon(null), radius = 12.dp) }, onClick = { onPlace(p.id) }) }
@@ -214,39 +213,6 @@ private fun Portfolio(onTrip: (String) -> Unit, onDesign: () -> Unit) {
 }
 
 /** Screen 17: upcoming plan with Sửa / Bắt đầu, drafts, done, and a new plan. */
-@Composable
-private fun Plans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStart: (Plan) -> Unit) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        val groups = listOf(PlanStatus.Upcoming to Strings.UPCOMING, PlanStatus.Draft to Strings.DRAFTS, PlanStatus.Done to Strings.DONE)
-        groups.forEach { (status, title) ->
-            val list = store.plans.filter { it.status == status }
-            if (list.isEmpty()) return@forEach
-            Text(title, Modifier.semantics { heading() }, size = 15.sp, color = Palette.Muted, weight = FontWeight.Bold)
-            list.forEach { p ->
-                val meta = when (status) {
-                    PlanStatus.Upcoming -> "${p.date} · ${p.items.size} ${Strings.STOPS} · ${p.start} – ${planEnd(p.start, p.items)}"
-                    PlanStatus.Draft -> "${p.items.size} ${Strings.STOPS}${if (!p.routing) " · ${Strings.GUIDE_ONLY}" else ""}"
-                    PlanStatus.Done -> "${p.date} · ${Strings.IN_PORTFOLIO}"
-                }
-                if (status == PlanStatus.Upcoming) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Palette.VioletSoft).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        MockPhoto(p.id, Modifier.size(60.dp), KitIcons.landmark)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(p.name, size = 16.sp, weight = FontWeight.Bold)
-                            Text(meta, size = 12.sp, color = Palette.Body)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(Strings.EDIT, Modifier.weight(1f), kind = ButtonKind.VioletOutline, compact = true, pill = true) { onPlan(p.id) }
-                        Button(Strings.START, Modifier.weight(1f), kind = ButtonKind.Violet, compact = true, pill = true) { onStart(p) }
-                    }
-                } else ListRow(p.name, meta, lead = { MockPhoto(p.id, Modifier.size(52.dp), KitIcons.landmark, radius = 12.dp) }, onClick = { onPlan(p.id) })
-            }
-        }
-        Button(Strings.NEW_PLAN, Modifier.fillMaxWidth(), kind = ButtonKind.VioletOutline, icon = KitIcons.plus, pill = true, onClick = onNewPlan)
-    }
-}
 
 /** UX-2 screen 12: layout, theme colour and per-section visibility (sample; saving needs accounts, COM-1). */
 @Composable

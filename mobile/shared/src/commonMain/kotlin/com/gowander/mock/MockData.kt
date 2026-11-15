@@ -29,7 +29,8 @@ val MOCK_REVIEWS = listOf(
 // ---------- Suggested trips (Journey, region guide) ----------
 
 /** How to reach a stop from the previous one; [kind] picks the colour: walk, bus or metro. */
-@Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int)
+/** Travel to a stop. [from] is the position ("lat,lon") of the stop it was measured from by the router; a leg whose previous stop is another one is stale. */
+@Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int, val walkM: Int = 0, val from: String? = null)
 @Serializable enum class MoveKind { Walk, Bus, Metro }
 
 
@@ -85,29 +86,33 @@ object MockPortfolio {
 // ---------- Plans (Hồ sơ › Kế hoạch, Tự lên kế hoạch) ----------
 
 /** One stop of a plan; [lat]/[lon] null for "your starting point" (no fixed place yet). */
-@Serializable data class PlanItem(val title: String, val note: String, val stayMin: Int, val move: Move? = null, val lat: Double? = null, val lon: Double? = null)
+/** [memo] is the user's own note for the stop (ticket price, a time to remember…). */
+@Serializable data class PlanItem(val title: String, val note: String, val stayMin: Int, val move: Move? = null, val lat: Double? = null, val lon: Double? = null, val memo: String = "")
 
 @Serializable enum class PlanStatus { Upcoming, Draft, Done }
 
-@Serializable data class Plan(val id: String, val name: String, val date: String, val start: String, val mode: String, val items: List<PlanItem>, val status: PlanStatus, val routing: Boolean = true)
+@Serializable data class Plan(val id: String, val name: String, val date: String, val start: String, val mode: String, val items: List<PlanItem>, val status: PlanStatus, val routing: Boolean = true,
+    /** Progress when the plan is being followed: stops before [next] are done; [going] = the user is on the way to the next one. */
+    val next: Int = 0, val going: Boolean = false,
+)
 
 val MOCK_PLANS = listOf(
     Plan(
         "mot-ngay", "Một ngày ở TP.HCM", "Thứ Bảy 21-11", "08:00", "Buýt + đi bộ",
         listOf(
             PlanItem("[Điểm xuất phát của bạn]", "Khách sạn / nhà", 0),
-            PlanItem("Ăn sáng: bánh mì", "[Quán mẫu] · ở 30 phút", 30, Move("Buýt 18 · 12 phút", MoveKind.Bus, 12), 10.77310, 106.69840),
-            PlanItem("Bưu điện Trung tâm", "Kiến trúc · ở 45 phút", 45, Move("Đi bộ 6 phút", MoveKind.Walk, 6), 10.77984, 106.69995),
-            PlanItem("Chợ Bến Thành", "Chợ · ở 40 phút", 40, Move("Metro 1 ga · 8 phút", MoveKind.Metro, 8), 10.77254, 106.69797),
+            PlanItem("Ăn sáng: bánh mì", "[Quán mẫu]", 30, null, 10.77310, 106.69840),
+            PlanItem("Bưu điện Trung tâm", "Kiến trúc", 45, null, 10.77984, 106.69995),
+            PlanItem("Chợ Bến Thành", "Chợ", 40, null, 10.77254, 106.69797),
         ),
         PlanStatus.Upcoming,
     ),
     Plan("hoi-an", "Hội An 2 ngày", "Chưa chọn ngày", "08:00", "Đi bộ", List(5) { PlanItem("[Điểm mẫu ${it + 1}]", "Hội An", 60) }, PlanStatus.Draft, routing = false),
-    Plan("chieu-kien-truc", "Một buổi chiều kiến trúc", "11-11-2026", "15:00", "Metro + đi bộ", listOf(PlanItem("Nhà hát Thành phố", "Kiến trúc", 30, null, 10.77667, 106.70305), PlanItem("Bưu điện Trung tâm", "Kiến trúc", 30, Move("Đi bộ 6 phút", MoveKind.Walk, 6), 10.77984, 106.69995)), PlanStatus.Done),
+    Plan("chieu-kien-truc", "Một buổi chiều kiến trúc", "11-11-2026", "15:00", "Metro + đi bộ", listOf(PlanItem("Nhà hát Thành phố", "Kiến trúc", 30, null, 10.77667, 106.70305), PlanItem("Bưu điện Trung tâm", "Kiến trúc", 30, null, 10.77984, 106.69995)), PlanStatus.Done),
 )
 
 /** Places offered under "Gợi ý thêm" in the planner (sample). */
 val MOCK_PLAN_SUGGESTIONS = listOf(
-    PlanItem("Nhà hát Thành phố", "Kiến trúc · ở 25 phút", 25, Move("Đi bộ 4 phút", MoveKind.Walk, 4), 10.77667, 106.70305),
-    PlanItem("Ăn trưa: cơm tấm", "[Quán mẫu] · ở 40 phút", 40, Move("Buýt · 8 phút", MoveKind.Bus, 8), 10.76890, 106.69420),
+    PlanItem("Nhà hát Thành phố", "Kiến trúc", 25, null, 10.77667, 106.70305),
+    PlanItem("Ăn trưa: cơm tấm", "[Quán mẫu]", 40, null, 10.76890, 106.69420),
 )

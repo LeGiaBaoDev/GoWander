@@ -64,6 +64,12 @@ private val BACH_DANG = Highlight("hcm-bach-dang-waterfront", "Khu vực Bến B
 
 val GUIDE_HIGHLIGHTS = listOf(BEN_THANH, PALACE, POST_OFFICE, OPERA, FINE_ARTS, WAR_MUSEUM, NGUYEN_HUE, BACH_DANG)
 
+private val HOURS = Regex("""(\d\d:\d\d)–(\d\d:\d\d)""")
+
+/** Opening and closing time ("HH:MM") of a place whose hours the guide has from its official site, by its name. */
+fun openingHours(name: String): Pair<String, String>? =
+    GUIDE_HIGHLIGHTS.firstOrNull { it.name == name }?.hours?.let { HOURS.find(it) }?.let { it.groupValues[1] to it.groupValues[2] }
+
 val GUIDE_DISHES = listOf(
     Dish(
         "hcm-food-com-tam", "Cơm tấm sườn nướng", "Cơm tấm ăn cùng sườn nướng, đồ chua và nước mắm pha là một hương vị quen thuộc của Sài Gòn.",

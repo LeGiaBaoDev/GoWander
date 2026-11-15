@@ -1,7 +1,9 @@
 package com.gowander.mock
 
+import com.gowander.api.Route
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 
 private fun minutesOf(hhmm: String): Int {
     val h = hhmm.substringBefore(':').toIntOrNull() ?: 8
@@ -23,6 +25,32 @@ fun planTimes(start: String, items: List<PlanItem>): List<String> {
 /** When the plan ends: the last stop's time plus its stay. */
 fun planEnd(start: String, items: List<PlanItem>): String =
     if (items.isEmpty()) start else clockOf(minutesOf(planTimes(start, items).last()) + items.last().stayMin)
+
+/** Where a stop is, as the key a measured leg remembers; null when the stop has no coordinates. */
+fun PlanItem.spot(): String? = if (lat != null && lon != null) "$lat,$lon" else null
+
+/** Stops whose travel time from the stop before must be measured (again): both have a position and the leg was not measured from that stop. */
+fun staleLegs(items: List<PlanItem>): List<Int> =
+    items.indices.filter { i -> i > 0 && items[i].spot() != null && items[i - 1].spot() != null && items[i].move?.from != items[i - 1].spot() }
+
+/** One line of the plan for a route the router found from [from]: how, how long, how much walking. */
+fun moveOf(route: Route, from: String): Move {
+    val min = (route.durationSec + 59) / 60
+    val ride = route.legs.firstOrNull { it.transit }
+    val kind = when { ride == null -> MoveKind.Walk; ride.mode == "BUS" -> MoveKind.Bus; else -> MoveKind.Metro }
+    val label = when (kind) {
+        MoveKind.Walk -> "Đi bộ $min phút"
+        MoveKind.Bus -> listOfNotNull("Buýt", ride?.line?.shortName).joinToString(" ") + " · $min phút"
+        MoveKind.Metro -> "Metro · $min phút"
+    }
+    return Move(label, kind, min, route.walkDistanceM.roundToInt(), from)
+}
+
+/** Walking in metres over the legs the router measured. */
+fun walkTotalM(items: List<PlanItem>): Int = items.sumOf { it.move?.takeIf { m -> m.from != null }?.walkM ?: 0 }
+
+/** The stop to go to next when following the plan: the first one from [Plan.next] on that has a position; null when all are done. */
+fun Plan.nextStop(): Int? = (next.coerceAtLeast(0) until items.size).firstOrNull { items[it].spot() != null }
 
 /**
  * "Sắp xếp lại cho đỡ đi vòng": keep the first stop, then always go to the nearest remaining stop (greedy).
