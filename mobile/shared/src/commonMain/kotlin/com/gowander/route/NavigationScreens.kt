@@ -337,7 +337,7 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
             Text(
                 if (shot != null && !playing) Strings.STREET_PHOTO else Strings.STREET_VIEW_3D,
                 Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 72.dp, top = 24.dp)
-                    .clip(RoundedCornerShape(12.dp)).background(Palette.Ink.copy(alpha = 0.78f)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    .clip(RoundedCornerShape(12.dp)).background(Palette.Deep.copy(alpha = 0.78f)).padding(horizontal = 10.dp, vertical = 4.dp),
                 size = 12.sp, color = Color.White, weight = FontWeight.SemiBold,
             )
         }
@@ -405,7 +405,7 @@ private fun RoadArrow(modifier: Modifier) {
 @Composable
 private fun NudgeButton(glyph: String, label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Color.White.copy(alpha = 0.95f))
+        Modifier.size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg.copy(alpha = 0.95f))
             .semantics { contentDescription = label }.clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Text(glyph, size = 20.sp, weight = FontWeight.Bold, color = if (enabled) Palette.Ink else Palette.Line) }

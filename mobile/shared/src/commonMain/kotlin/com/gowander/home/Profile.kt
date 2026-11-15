@@ -1,5 +1,6 @@
 package com.gowander.home
 
+import com.gowander.ui.Theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,7 +71,7 @@ import com.gowander.ui.kitShadow
 import com.gowander.route.categoryIcon
 
 /** Profile theme of the canvas (screens 11, 12, 17): violet, so the user's own space looks different from the city. */
-private val VIOLET_THEMES = listOf(Palette.Primary, Palette.Bus, Palette.Metro, Palette.Accent, Color(0xFFB7791F), Palette.Violet)
+private val VIOLET_THEMES get() = listOf(Palette.Primary, Palette.Bus, Palette.Metro, Palette.Accent, Color(0xFFB7791F), Palette.Violet)
 
 /**
  * UX-2 screen 11 + "Đã lưu": the Profile tab. Portfolio and its numbers are sample data (accounts are COM-1); saved
@@ -143,7 +144,7 @@ private fun Portfolio(onTrip: (String) -> Unit, onDesign: () -> Unit) {
             Polaroid("cover2", Modifier.align(Alignment.TopEnd).offset(x = (-8).dp, y = 92.dp), 7f, 96)
             Polaroid("cover3", Modifier.align(Alignment.TopEnd).offset(x = (-70).dp, y = 176.dp), -3f, 96)
         }
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Palette.VioletDark).padding(vertical = 16.dp, horizontal = 8.dp)) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Palette.VioletFill).padding(vertical = 16.dp, horizontal = 8.dp)) {
             MockPortfolio.STATS.forEach { (n, label) ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(n, size = 24.sp, color = Color.White, weight = FontWeight.ExtraBold)
@@ -283,6 +284,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Text(Strings.GUEST, bold = true)
             Text(Strings.GUEST_NOTE, color = Palette.Muted)
         }
+        SectionTitle(Strings.APPEARANCE)
+        Segmented(listOf(Strings.LIGHT, Strings.DARK), if (Theme.dark) 1 else 0) { Theme.set(it == 1) }
         SectionTitle(Strings.DATA_SOURCES)
         Strings.SOURCES.forEach { (what, source) -> ListRow(what, source, lead = { Badge(KitIcons.globe, Palette.Subtle, Palette.Primary) }) }
     }

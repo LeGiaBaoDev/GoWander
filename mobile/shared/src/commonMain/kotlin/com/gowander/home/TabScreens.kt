@@ -205,7 +205,7 @@ private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> 
 private fun StopRow(n: Int, line: Color?, dotted: Boolean, content: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Column(Modifier.width(28.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(28.dp).clip(CircleShape).background(Palette.Primary), contentAlignment = Alignment.Center) { Text("$n", size = 13.sp, color = Color.White, weight = FontWeight.Bold) }
+            Box(Modifier.size(28.dp).clip(CircleShape).background(Palette.Primary), contentAlignment = Alignment.Center) { Text("$n", size = 13.sp, color = Palette.OnPrimary, weight = FontWeight.Bold) }
             if (line != null) Canvas(Modifier.weight(1f).width(4.dp).padding(vertical = 4.dp)) {
                 val x = size.width / 2
                 if (dotted) drawLine(Palette.Muted, Offset(x, 0f), Offset(x, size.height), 3.dp.toPx(), StrokeCap.Round, PathEffect.dashPathEffect(floatArrayOf(0.1f, 7.dp.toPx())))
@@ -226,7 +226,7 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
             Box(Modifier.fillMaxWidth().height(230.dp)) {
                 MockPhoto(t.id, Modifier.fillMaxSize(), KitIcons.landmark, radius = 0.dp, iconSize = 40.dp)
                 Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header("", floating = true, onBack = onBack) }
-                Text(Strings.SAMPLE_PHOTO_CREDIT, Modifier.align(Alignment.BottomEnd).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Ink.copy(alpha = 0.6f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
+                Text(Strings.SAMPLE_PHOTO_CREDIT, Modifier.align(Alignment.BottomEnd).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Deep.copy(alpha = 0.6f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
             }
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(t.title, Modifier.semantics { heading() }, size = 22.sp, weight = FontWeight.Bold)

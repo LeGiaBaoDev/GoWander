@@ -439,7 +439,7 @@ private fun AppContent() {
     noticeText?.let { msg ->
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 16.dp, end = 16.dp, bottom = 96.dp), contentAlignment = Alignment.BottomCenter) {
             Text(
-                msg, Modifier.clip(RoundedCornerShape(14.dp)).background(Palette.Ink).clickable { noticeText = null }.padding(horizontal = 16.dp, vertical = 12.dp)
+                msg, Modifier.clip(RoundedCornerShape(14.dp)).background(Palette.Deep).clickable { noticeText = null }.padding(horizontal = 16.dp, vertical = 12.dp)
                     .semantics { liveRegion = LiveRegionMode.Polite },
                 color = Palette.OnPrimary, size = 14.sp,
             )

@@ -1,5 +1,6 @@
 package com.gowander.route
 
+import com.gowander.ui.Theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
@@ -86,8 +87,11 @@ import org.maplibre.spatialk.geojson.Position
 // name:vi ("Biển Đông", "Trung Quốc"); the stock style prints English names. Owner, 15-11-2026.
 // shortcut: a frozen copy of the style, re-download and re-patch it if OpenFreeMap retires its sprite or font paths.
 private val STYLE_URL = Res.getUri("files/map_style.json")
+private val STYLE_DARK_URL = Res.getUri("files/map_style_dark.json") // OpenFreeMap "fiord", patched the same way
 
-private val MASK_COLOR = Color(158, 189, 255) // the water colour of map_style.json, so the coast stays seamless
+// Light: the water colour of the bundled style, so the coast is seamless. Dark: darker than the style's water, whose
+// colour is too close to the land for the country to stand out.
+private val MASK_COLOR get() = if (Theme.dark) Color(0x1B, 0x25, 0x34) else Color(158, 189, 255)
 
 private val STREET_LEVEL = CameraConstraints { maxZoom = 21.0; maxPitch = 65.0 }
 
@@ -126,7 +130,7 @@ fun RouteMap(
     followZoom: Double = 17.5, // UX-2 split navigation: street view on top follows closer than the 2D map below
     followPitch: Double? = null, // null: from the user's 2D / 3D choice
     credit: String = Strings.MAP_CREDIT, // the licence line; a screen that also shows street photos adds their credit
-    style: BaseStyle = BaseStyle.Uri(STYLE_URL), // the country map passes the same style without its text labels
+    style: BaseStyle? = null, // the country map passes the same style without its text labels; null = the bundled style of the current look
     maskJson: String? = null, // GeoJSON polygon painted over the basemap in the sea colour: hides what is outside one country
     markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
@@ -140,7 +144,7 @@ fun RouteMap(
     val highlightJson = remember(highlight) { pointGeoJson(highlight?.let { Endpoint(it.first, it.second, "") }) }
 
     val mapState = rememberMapState(
-        baseStyle = style,
+        baseStyle = style ?: BaseStyle.Uri(if (Theme.dark) STYLE_DARK_URL else STYLE_URL),
         initialCameraPosition = CameraPosition(center = Position(latitude = 10.785, longitude = 106.715), zoom = 12.0),
     ) {
         if (maskJson != null) FillLayer(id = "mask", source = rememberGeoJsonSource(GeoJsonData.JsonString(maskJson)), color = const(MASK_COLOR))

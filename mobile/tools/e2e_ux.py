@@ -228,6 +228,12 @@ def journey():
     adb("shell", "input", "keyevent", "4")
     tap(desc="Cài đặt")
     check(find("Nguồn dữ liệu và giấy phép", timeout=6) is not None and find("Bạn đang dùng chế độ khách") is not None, "Hồ sơ › Cài đặt: chế độ khách + nguồn dữ liệu và giấy phép")
+    # Light / dark look (owner, 15-11-2026): the switch is in Settings and is kept after a restart of the screen.
+    tap("Tối")
+    time.sleep(1.0)
+    check('name="theme.dark" value="true"' in adb("shell", "run-as", APP, "cat", "shared_prefs/gowander.xml"), "Cài đặt › Giao diện: chọn Tối, lựa chọn được lưu trên máy")
+    audit("Cài đặt nền tối")
+    tap("Sáng")
     adb("shell", "input", "keyevent", "4")
     tap("Bản đồ")
 

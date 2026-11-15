@@ -1,5 +1,9 @@
 package com.gowander.ui
 
+import com.gowander.Prefs
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import com.gowander.nav.Tab
 
 import androidx.compose.foundation.Image
@@ -55,33 +59,54 @@ import com.gowander.resources.bevietnampro_regular
 import com.gowander.resources.bevietnampro_semibold
 import org.jetbrains.compose.resources.Font
 
-/** "ui" theme of GoWander-Design-Kit-v4 (ADR-030). */
+/** Light or dark look (owner, 15-11-2026), kept on the device. Every [Palette] colour reads it, so a change redraws the app. */
+object Theme {
+    private const val KEY = "theme.dark"
+    var dark by mutableStateOf(Prefs.getBool(KEY))
+        private set
+
+    fun set(value: Boolean) {
+        dark = value
+        Prefs.setBool(KEY, value)
+    }
+}
+
+/**
+ * "ui" theme of GoWander-Design-Kit-v4 (ADR-030), with a dark counterpart for each colour. Colours that carry text
+ * flip so that text stays readable (ContrastTest checks both looks).
+ */
 object Palette {
-    val Bg = Color(0xFFFFFFFF)
-    val Subtle = Color(0xFFF6FAFA)
-    val Line = Color(0xFFE5F2F1)
-    val Ink = Color(0xFF123C48)
-    val Muted = Color(0xFF52717A)
-    val Primary = Color(0xFF047A7D)
-    val OnPrimary = Color(0xFFFFFFFF)
-    val Soft = Color(0xFFDDF7F0)
-    val Warn = Color(0xFFFFF4D6)
-    val Accent = Color(0xFFC8234F)
-    val AccentSoft = Color(0xFFFDE7EC)
-    val Metro = Color(0xFF0079B8)
-    val Bus = Color(0xFF08805F)
-    val Surface = Bg
-    val Pin = Accent
+    private fun pick(light: Long, dark: Long) = Color(if (Theme.dark) dark else light)
+    // Dark look: slate-navy surfaces in the family of the dark map style, lighter lines so cards stand off the page.
+    val Bg get() = pick(0xFFFFFFFF, 0xFF121A26)
+    val Subtle get() = pick(0xFFF6FAFA, 0xFF1B2534)
+    val Raised get() = pick(0xFFFFFFFF, 0xFF2C394C) // the chosen item inside a Subtle track: lighter than the track in both looks
+    val Line get() = pick(0xFFE5F2F1, 0xFF344257)
+    val Ink get() = pick(0xFF123C48, 0xFFE8EEF5)
+    val Muted get() = pick(0xFF52717A, 0xFFA6B3C4)
+    val Primary get() = pick(0xFF047A7D, 0xFF45BDB9)
+    val OnPrimary get() = pick(0xFFFFFFFF, 0xFF0C1620)
+    val Soft get() = pick(0xFFDDF7F0, 0xFF15343B)
+    val Warn get() = pick(0xFFFFF4D6, 0xFF3B3420)
+    val Accent get() = pick(0xFFC8234F, 0xFFFF7A99)
+    val AccentSoft get() = pick(0xFFFDE7EC, 0xFF3E2331)
+    val Metro get() = pick(0xFF0079B8, 0xFF6BBEF2)
+    val Bus get() = pick(0xFF08805F, 0xFF5AD3A6)
+    val Surface get() = Bg
+    val Pin get() = Accent
     // UX-2 canvas colours (screens 1-17): star rating, guide sections, profile theme.
-    val Amber = Color(0xFF7A4E0E)
-    val Sky = Color(0xFFDCEFF3)
-    val Body = Color(0xFF3D4F57)
-    val Night = Color(0xFF2A5563)
+    val Amber get() = pick(0xFF7A4E0E, 0xFFF2B95C)
+    val Sky get() = pick(0xFFDCEFF3, 0xFF1F3147)
+    val Body get() = pick(0xFF3D4F57, 0xFFC6D0DC)
+    val Violet get() = pick(0xFF6B4FBB, 0xFFA18BE6)
+    val VioletDark get() = pick(0xFF5A3FA8, 0xFFBBA8F5) // violet as text and icons
+    val VioletSoft get() = pick(0xFFF1ECFB, 0xFF2C2947)
+    val Green get() = pick(0xFFD6F0DF, 0xFF1F3A30)
+    // Backgrounds that carry white text in both looks.
+    val Deep get() = pick(0xFF123C48, 0xFF1A2B3F)
+    val Night get() = pick(0xFF2A5563, 0xFF26384F)
+    val VioletFill = Color(0xFF5A3FA8)
     val Gold = Color(0xFFFFD167)
-    val Violet = Color(0xFF6B4FBB)
-    val VioletDark = Color(0xFF5A3FA8)
-    val VioletSoft = Color(0xFFF1ECFB)
-    val Green = Color(0xFFD6F0DF)
 }
 
 private val LocalKitFont = staticCompositionLocalOf<FontFamily> { FontFamily.Default }
@@ -146,7 +171,7 @@ fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = Butt
         ButtonKind.Soft -> Triple(Palette.Soft, Palette.Primary, null)
         ButtonKind.Accent -> Triple(Palette.Accent, Palette.OnPrimary, null)
         ButtonKind.Outline -> Triple(Palette.Bg, Palette.Primary, Palette.Primary)
-        ButtonKind.Violet -> Triple(Palette.VioletDark, Palette.OnPrimary, null) // profile screens (canvas 11, 12, 17)
+        ButtonKind.Violet -> Triple(Palette.VioletFill, Color.White, null) // profile screens (canvas 11, 12, 17)
         ButtonKind.VioletOutline -> Triple(Palette.Bg, Palette.Ink, Palette.Violet)
     }
     // pill: the round-ended buttons of the UX-2 route screens (design screens 5-7).
@@ -200,7 +225,7 @@ fun ModeTabs(items: List<Pair<ImageVector, String>>, selected: Int, modifier: Mo
             val on = i == selected
             Column(
                 Modifier.weight(1f).sizeIn(minHeight = 56.dp).clip(RoundedCornerShape(12.dp))
-                    .background(if (on) Palette.Bg else Palette.Subtle)
+                    .background(if (on) Palette.Raised else Palette.Subtle)
                     .semantics { this.selected = on }
                     .clickable(role = Role.Tab) { onSelect(i) }.padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,

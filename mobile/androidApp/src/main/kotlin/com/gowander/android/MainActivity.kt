@@ -3,15 +3,26 @@ package com.gowander.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.SideEffect
+import com.gowander.ui.Theme
 import com.gowander.App
 import com.gowander.Prefs
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         Prefs.init(this)
-        setContent { App() }
+        setContent {
+            // Status and navigation bar icons follow the app's light / dark look, not the phone's.
+            val dark = Theme.dark
+            SideEffect {
+                val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
+            App()
+        }
     }
 }

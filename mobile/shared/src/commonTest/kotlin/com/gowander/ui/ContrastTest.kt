@@ -19,22 +19,40 @@ class ContrastTest {
     }
 
     // (what, text colour to background, minimum ratio)
-    private val pairs = listOf(
+    private fun pairs() = listOf(
         Triple("body text", Palette.Ink to Palette.Bg, 4.5),
         Triple("notes / secondary text", Palette.Muted to Palette.Bg, 4.5),
         Triple("notes on subtle cards", Palette.Muted to Palette.Subtle, 4.5),
         Triple("links / selected labels", Palette.Primary to Palette.Bg, 4.5),
         Triple("selected tile label on soft", Palette.Primary to Palette.Soft, 4.5),
+        Triple("selected tab label", Palette.Primary to Palette.Raised, 4.5),
+        Triple("selected profile tab label", Palette.VioletDark to Palette.Raised, 4.5),
         Triple("primary button label", Palette.OnPrimary to Palette.Primary, 4.5),
         Triple("Thoát (accent button)", Palette.OnPrimary to Palette.Accent, 4.5),
         Triple("navigation banner", Color.White to NavBanner, 4.5),
         Triple("text on warning banner", Palette.Ink to Palette.Warn, 4.5),
+        Triple("body text on cards", Palette.Body to Palette.Bg, 4.5),
+        Triple("star rating", Palette.Amber to Palette.Bg, 4.5),
+        Triple("bus / walk leg label", Palette.Bus to Palette.Bg, 4.5),
+        Triple("metro leg label", Palette.Metro to Palette.Bg, 4.5),
+        Triple("warning text", Palette.Accent to Palette.Bg, 4.5),
+        Triple("profile heading", Palette.VioletDark to Palette.Bg, 4.5),
+        Triple("profile name on soft violet", Palette.VioletDark to Palette.VioletSoft, 4.5),
+        Triple("violet button label and profile numbers", Color.White to Palette.VioletFill, 4.5),
+        Triple("white on placeholder tiles", Color.White to Palette.Night, 4.5),
+        Triple("white on always-dark sections", Color.White to Palette.Deep, 4.5),
+        Triple("label on gold chip", Palette.Deep to Palette.Gold, 4.5),
     )
 
     @Test
-    fun everyTextPairMeetsWcagAa() {
-        val failures = pairs.map { (what, colors, min) -> Triple(what, ratio(colors.first, colors.second), min) }.filter { it.second < it.third }
-        assertTrue(failures.isEmpty(), failures.joinToString { "${it.first}: ${(it.second * 100).toInt() / 100.0}:1 < ${it.third}:1" })
+    fun everyTextPairMeetsWcagAa() = try {
+        for (dark in listOf(false, true)) {
+            Theme.set(dark)
+            val failures = pairs().map { (what, colors, min) -> Triple(what, ratio(colors.first, colors.second), min) }.filter { it.second < it.third }
+            assertTrue(failures.isEmpty(), (if (dark) "dark: " else "light: ") + failures.joinToString { "${it.first}: ${(it.second * 100).toInt() / 100.0}:1 < ${it.third}:1" })
+        }
+    } finally {
+        Theme.set(false)
     }
 
     @Test

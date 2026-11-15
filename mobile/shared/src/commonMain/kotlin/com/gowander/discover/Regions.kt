@@ -1,5 +1,6 @@
 package com.gowander.discover
 
+import com.gowander.ui.Theme
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -114,8 +115,9 @@ fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
     var credits by remember { mutableStateOf(false) }
     // Only this country's land is drawn (owner, 15-11-2026); other countries get their own mask file in a later phase.
     // The basemap loses its text labels here: the mask would cut them at the coast, and the cards name the regions.
-    val countryMap by produceState<Pair<BaseStyle, String>?>(null) {
-        val style = Json.parseToJsonElement(Res.readBytes("files/map_style.json").decodeToString()).jsonObject
+    val dark = Theme.dark
+    val countryMap by produceState<Pair<BaseStyle, String>?>(null, dark) {
+        val style = Json.parseToJsonElement(Res.readBytes(if (dark) "files/map_style_dark.json" else "files/map_style.json").decodeToString()).jsonObject
         val layers = JsonArray(style.getValue("layers").jsonArray.filter { it.jsonObject["type"]?.jsonPrimitive?.content != "symbol" })
         value = BaseStyle.Json(JsonObject(style + ("layers" to layers)).toString()) to Res.readBytes("files/vn_mask.json").decodeToString()
     }
@@ -237,7 +239,7 @@ fun RegionGuideScreen(
                     Button(Strings.VIDEO, kind = ButtonKind.Accent, icon = ExtraIcons.play, compact = true, pill = true) { notice(Strings.VIDEO_LATER) }
                 }
             }
-            Text(Strings.SAMPLE_PHOTO_CREDIT, Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(top = 64.dp, end = 8.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Ink.copy(alpha = 0.6f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
+            Text(Strings.SAMPLE_PHOTO_CREDIT, Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(top = 64.dp, end = 8.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Deep.copy(alpha = 0.6f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
         }
         if (!r.routing) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -252,8 +254,8 @@ fun RegionGuideScreen(
                 Box(Modifier.sizeIn(minHeight = 48.dp).clickable(role = Role.Button) { scope.launch { scroll.animateScrollTo(at[i] ?: 0) } }, contentAlignment = Alignment.Center) {
                     Text(
                         label,
-                        Modifier.clip(RoundedCornerShape(17.dp)).background(if (i == 0) Palette.Ink else Palette.Bg).border(1.dp, if (i == 0) Palette.Ink else Palette.Line, RoundedCornerShape(17.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
-                        size = 12.sp, color = if (i == 0) Color.White else Palette.Ink, weight = FontWeight.Bold,
+                        Modifier.clip(RoundedCornerShape(17.dp)).background(if (i == 0) Palette.Primary else Palette.Bg).border(1.dp, if (i == 0) Palette.Primary else Palette.Line, RoundedCornerShape(17.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                        size = 12.sp, color = if (i == 0) Palette.OnPrimary else Palette.Ink, weight = FontWeight.Bold,
                     )
                 }
             }
@@ -267,7 +269,7 @@ fun RegionGuideScreen(
             GUIDE_INTRO.forEach { Text(it, size = 14.sp, color = Palette.Body) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Season(Modifier.weight(1f), Palette.Warn, Palette.Amber, "MÙA KHÔ", "Tháng 12 – 4", GUIDE_DRY_SEASON)
-                Season(Modifier.weight(1f), Palette.Sky, Color(0xFF0B5F7A), "MÙA MƯA", "Tháng 5 – 11", GUIDE_RAIN_SEASON)
+                Season(Modifier.weight(1f), Palette.Sky, Palette.Metro, "MÙA MƯA", "Tháng 5 – 11", GUIDE_RAIN_SEASON)
             }
             Text(GUIDE_ALL_YEAR, size = 13.sp, color = Palette.Body)
             Text(Strings.TRAVEL_TIPS, Modifier.padding(top = 8.dp).semantics { heading() }, size = 18.sp, weight = FontWeight.ExtraBold)
@@ -302,9 +304,9 @@ fun RegionGuideScreen(
                 }
             }
         }
-        Column(Modifier.anchor(2).padding(top = 20.dp).fillMaxWidth().background(Palette.Ink).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.anchor(2).padding(top = 20.dp).fillMaxWidth().background(Palette.Deep).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHead("03", "ẨM THỰC", dark = true)
-            Text(Strings.DISH_PICKS, Modifier.clip(RoundedCornerShape(12.dp)).background(Palette.Gold).padding(horizontal = 12.dp, vertical = 4.dp), size = 12.sp, weight = FontWeight.ExtraBold)
+            Text(Strings.DISH_PICKS, Modifier.clip(RoundedCornerShape(12.dp)).background(Palette.Gold).padding(horizontal = 12.dp, vertical = 4.dp), size = 12.sp, color = Palette.Deep, weight = FontWeight.ExtraBold)
             GUIDE_DISHES.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { d ->
@@ -345,7 +347,7 @@ fun RegionGuideScreen(
                 repeat(2) { i ->
                     Box(Modifier.weight(1f).height(140.dp)) {
                         MockPhoto("community$i", Modifier.fillMaxSize(), KitIcons.camera)
-                        Text(Strings.SAMPLE_USER_PHOTO, Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Ink.copy(alpha = 0.75f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
+                        Text(Strings.SAMPLE_USER_PHOTO, Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Palette.Deep.copy(alpha = 0.75f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Color.White)
                     }
                 }
             }
@@ -400,7 +402,7 @@ fun TripRow(seed: String, title: String, summary: String, onClick: () -> Unit) {
 @Composable
 fun DishScreen(id: String, onBack: () -> Unit, onShowMap: () -> Unit, onAddToPlan: (Dish) -> Unit) {
     val d = guideDish(id)
-    Box(Modifier.fillMaxSize().background(Palette.Ink)) {
+    Box(Modifier.fillMaxSize().background(Palette.Deep)) {
         Box(Modifier.fillMaxWidth().height(300.dp).background(Palette.Night), contentAlignment = Alignment.Center) {
             Text(Strings.SAMPLE_DISH_PHOTO, size = 13.sp, color = Palette.Line)
         }

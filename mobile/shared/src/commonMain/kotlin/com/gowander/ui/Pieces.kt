@@ -39,7 +39,7 @@ fun Segmented(items: List<String>, selected: Int, modifier: Modifier = Modifier,
         items.forEachIndexed { i, label ->
             val on = i == selected
             Box(
-                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp)).background(if (on) Palette.Bg else Palette.Subtle)
+                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp)).background(if (on) Palette.Raised else Palette.Subtle)
                     .semantics { this.selected = on }.clickable(role = Role.Tab) { onSelect(i) },
                 contentAlignment = Alignment.Center,
             ) { Text(label, size = 14.sp, color = if (on) color else Palette.Muted, weight = if (on) FontWeight.Bold else FontWeight.Medium, maxLines = 1) }
@@ -61,7 +61,7 @@ fun Pill(label: String, selected: Boolean = false, modifier: Modifier = Modifier
     }
 }
 
-private val PHOTO_TINTS = listOf(Palette.Soft, Palette.Warn, Palette.Sky, Palette.Green, Palette.AccentSoft, Palette.VioletSoft)
+private val PHOTO_TINTS get() = listOf(Palette.Soft, Palette.Warn, Palette.Sky, Palette.Green, Palette.AccentSoft, Palette.VioletSoft)
 
 /**
  * Stand-in for a photo the data does not have yet (PIPELINE §5c mock register: photos): a tinted tile with an icon,
