@@ -60,6 +60,17 @@ def check(ok, what):
     print(("PASS " if ok else "FAIL ") + what)
 
 
+def scroll_to(text=None, desc=None, tries=4):
+    """Swipe the list up until the element is on screen (long screens: the plan map sits above the stops)."""
+    for _ in range(tries):
+        n = find(text, desc, timeout=2.0)
+        if n is not None and ux_audit.bounds(n)[3] < 1950:  # above the fixed bottom card
+            return n
+        adb("shell", "input", "swipe", "540", "1700", "540", "1100", "500")
+        time.sleep(0.8)
+    return find(text, desc, timeout=2.0)
+
+
 def gone(text=None, desc=None):
     return find(text, desc, timeout=2.0) is None
 
@@ -122,6 +133,21 @@ def journey():
     else:
         check(False, "Bản đồ có chấm bấm được")
 
+    # P3: zoomed far out the map shows how many places each area holds; tapping a bubble zooms in to single places.
+    # adb cannot pinch: the "-" key zooms MapLibre once the map has keyboard focus (a centre press moves it there).
+    adb("shell", "input", "keyevent", "--longpress", "KEYCODE_DPAD_CENTER")
+    time.sleep(1.5)
+    for _ in range(3):
+        adb("shell", "input", "keyevent", "KEYCODE_MINUS")
+        time.sleep(1.5)
+    bubble = find(desc=r"~\d+ địa điểm, phóng to", timeout=15)
+    check(bubble is not None and find(desc=r"~.*số sao mẫu.*", timeout=2) is None, "Zoom xa: bản đồ gom thành bong bóng có số địa điểm, không còn thẻ quán")
+    if bubble is not None:
+        audit("Bản đồ zoom xa")
+        tap(desc=bubble.get("content-desc"))
+        tap(desc=r"~\d+ địa điểm, phóng to") if find(desc=r"~\d+ địa điểm, phóng to", timeout=6) is not None else None
+        check(find(desc=r"~.*(số sao mẫu|hiện thẻ).*", timeout=15) is not None, "Bấm bong bóng: phóng to, hiện lại quán")
+
     # Map view panel: 2D / 3D / Vệ tinh (satellite only explains itself, owner 14-11-2026); closes after a choice and outside.
     tap(desc="Loại bản đồ")
     check(find("3D") is not None and find("Vệ tinh") is not None, "Bấm 'Loại bản đồ': có 2D / 3D / Vệ tinh")
@@ -168,7 +194,8 @@ def journey():
     check(find("Quán gợi ý", timeout=6) is not None, "Bấm món (mẫu màn 15): mô tả + quán gợi ý")
     audit("Món ăn")
     tap("+ Thêm vào kế hoạch")
-    check(find("Ăn: cơm tấm sườn nướng", timeout=6) is not None and find("Sắp xếp lại cho đỡ đi vòng") is not None, "Thêm vào kế hoạch: mở Tự lên kế hoạch (mẫu màn 16) có món vừa thêm")
+    time.sleep(1.5)
+    check(find(desc="Bản đồ kế hoạch", timeout=6) is not None and scroll_to("Ăn: cơm tấm sườn nướng") is not None, "Thêm vào kế hoạch: mở Tự lên kế hoạch (mẫu màn 16) có món vừa thêm")
     audit("Tự lên kế hoạch")
     tap(desc="Xoá điểm: Ăn: cơm tấm sườn nướng")
     check(gone("Ăn: cơm tấm sườn nướng"), "Xoá một điểm: điểm biến mất, giờ tính lại")
@@ -192,8 +219,26 @@ def journey():
     check(find("Điểm kế tiếp: Chợ Bến Thành", timeout=8) is not None and find("Đi tới điểm kế tiếp") is not None, "Bắt đầu chuyến: mở kế hoạch, điểm kế tiếp là điểm đầu")
     check(find(r"~(Đi bộ|Buýt|Metro).* \d+ phút", timeout=40) is not None and find(r"~.*đi bộ \d.*giờ là ước tính", timeout=40) is not None,
           "Kế hoạch: thời gian từng chặng do bộ tìm tuyến tính, có tổng quãng đi bộ")
+    # The plan on a map: numbered stops and the way between them; "Sắp xếp lại" only proposes a new order.
+    check(find(desc="Bản đồ kế hoạch", timeout=4) is not None and find(desc="Điểm 1: Chợ Bến Thành") is not None, "Kế hoạch có bản đồ: các điểm đánh số và đường đi")
+    # Full-screen map of the plan, like the Map tab: numbered stops with names, the way between them, 2D / 3D.
+    tap("Xem trên bản đồ")
+    check(find(desc="Loại bản đồ", timeout=8) is not None and find("Dinh Độc Lập") is not None and find("~Đi tới điểm kế tiếp: .*") is not None,
+          "Xem trên bản đồ: bản đồ toàn màn hình có tên các điểm, 2D/3D và nút đi tiếp")
+    audit("Bản đồ kế hoạch toàn màn hình")
+    adb("shell", "input", "keyevent", "4")
+    tap("Sắp xếp lại cho đỡ đi vòng")
+    if find("Giữ như cũ", timeout=4) is not None:
+        check(find("Dùng thứ tự này") is not None and find("~Thứ tự gợi ý: ngắn hơn.*") is not None, "Sắp xếp lại: chỉ đề xuất, có Dùng thứ tự này / Giữ như cũ")
+        audit("Kế hoạch đang xem thứ tự gợi ý")
+        tap("Giữ như cũ")
+        check(gone("Giữ như cũ") and find(desc="Điểm 1: Chợ Bến Thành") is not None, "Giữ như cũ: thứ tự không đổi")
+    else:
+        # the notice is a short toast: what matters is that nothing changed without the user saying so
+        check(gone("Dùng thứ tự này") and find(desc="Điểm 1: Chợ Bến Thành") is not None, "Sắp xếp lại: thứ tự đã gọn thì không đổi gì")
+    scroll_to("Dinh Độc Lập")
     tap("Dinh Độc Lập")
-    check(find("Chỉ đường tới đây", timeout=4) is not None and find(desc="~Ghi chú của bạn: Dinh Độc Lập") is not None, "Bấm một điểm: mở chỉnh thời gian ở lại, ghi chú, chỉ đường tới đây")
+    check(scroll_to("Chỉ đường tới đây") is not None and find(desc="~Ghi chú của bạn: Dinh Độc Lập") is not None, "Bấm một điểm: mở chỉnh thời gian ở lại, ghi chú, chỉ đường tới đây")
     tap(desc="Ở lại thêm 15 phút")
     check(find("~.*ở 45 phút$", timeout=4) is not None, "Ở lại thêm 15 phút: 30 thành 45, giờ các điểm sau tính lại")
     audit("Kế hoạch đang mở một điểm")

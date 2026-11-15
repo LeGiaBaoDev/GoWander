@@ -79,7 +79,7 @@ def audit(root, density, status_bar_px):
         label = name_of(n)
         if (w + 1 < px_min or h + 1 < px_min) and not clipped(n):
             problems.append(("T1", label or "?", f"{w * 160 / density:.0f}x{h * 160 / density:.0f} dp"))
-        if not label:
+        if not label and not clipped(n):  # a row half scrolled out loses its text in the dump
             problems.append(("T2", f"[{x1},{y1}]", "no text or content description"))
         if y1 < status_bar_px:
             problems.append(("T4", label or "?", f"top {y1}px < status bar {status_bar_px}px"))

@@ -68,6 +68,20 @@ SELECT ` + summaryColumns + `
  ORDER BY md5(p.id::text), p.id
  LIMIT $6`
 
+	// One row per grid cell that holds places: cell column and row (1-based from the south-west), count, mean position.
+	// A place exactly on the north or east edge falls in an extra row or column; Clusters folds it back.
+	qClusters = `
+SELECT width_bucket(ST_X(g), $1, $3, $6), width_bucket(ST_Y(g), $2, $4, $7), count(*), avg(ST_X(g)), avg(ST_Y(g))
+  FROM (SELECT p.location::geometry AS g
+          FROM places p
+         WHERE p.status = 'PUBLISHED'
+           AND p.location::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+           AND (coalesce(cardinality($5::text[]), 0) = 0 OR EXISTS (
+	SELECT 1 FROM place_category_links l JOIN place_categories lc ON lc.id = l.category_id
+	WHERE l.place_id = p.id AND lc.slug = ANY($5) AND lc.is_active))) t
+ GROUP BY 1, 2
+ ORDER BY 2, 1`
+
 	qPlace = `
 SELECT ` + summaryColumns + `
   FROM places p LEFT JOIN place_categories c ON c.id = p.primary_category_id
@@ -146,6 +160,55 @@ func (s *PG) InBounds(ctx context.Context, q MapQuery) ([]PlaceSummary, error) {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, scanSummary)
+}
+
+func (s *PG) Clusters(ctx context.Context, q ClusterQuery) ([]Cluster, error) {
+	rows, err := s.Pool.Query(ctx, qClusters, q.West, q.South, q.East, q.North, q.Categories, q.Cols, q.Rows)
+	if err != nil {
+		return nil, err
+	}
+	type cell struct {
+		col, row, count int
+		lon, lat        float64
+	}
+	cells, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (cell, error) {
+		var c cell
+		return c, r.Scan(&c.col, &c.row, &c.count, &c.lon, &c.lat)
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Edge places (bucket cols+1 / rows+1) join the last cell; then each cluster is drawn inside the middle half of its cell.
+	merged := map[[2]int]cell{}
+	var order [][2]int
+	for _, c := range cells {
+		k := [2]int{min(max(c.col, 1), q.Cols), min(max(c.row, 1), q.Rows)}
+		m, seen := merged[k]
+		if !seen {
+			order = append(order, k)
+		}
+		n := float64(m.count + c.count)
+		m.lon = (m.lon*float64(m.count) + c.lon*float64(c.count)) / n
+		m.lat = (m.lat*float64(m.count) + c.lat*float64(c.count)) / n
+		m.count += c.count
+		merged[k] = m
+	}
+	out := make([]Cluster, 0, len(order))
+	for _, k := range order {
+		m := merged[k]
+		out = append(out, Cluster{
+			Lon:   middleHalf(m.lon, q.West, (q.East-q.West)/float64(q.Cols), k[0]),
+			Lat:   middleHalf(m.lat, q.South, (q.North-q.South)/float64(q.Rows), k[1]),
+			Count: m.count,
+		})
+	}
+	return out, nil
+}
+
+// middleHalf moves v into the middle half of cell n (1-based) of the given size starting at origin.
+func middleHalf(v, origin, size float64, n int) float64 {
+	lo := origin + size*(float64(n-1)+0.25)
+	return min(max(v, lo), lo+size/2)
 }
 
 func (s *PG) Place(ctx context.Context, id string) (PlaceDetail, error) {

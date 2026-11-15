@@ -1,5 +1,6 @@
 package com.gowander
 
+import com.gowander.home.PlanMapScreen
 import com.gowander.mock.nextStop
 import com.gowander.mock.spot
 import com.gowander.mock.moveOf
@@ -397,14 +398,19 @@ private fun AppContent() {
                                 sharedApi.planRoute(PlanRequest(LatLon(a.lat!!, a.lon!!), LatLon(b.lat!!, b.lon!!), maxResults = 1)).routes.minByOrNull { it.durationSec }?.let { moveOf(it, a.spot()!!) }
                             } catch (e: ApiError) { null }
                         },
-                        onGo = ::startPlan, onRoute = { e -> chooseDestination(e, null) },
+                        onGo = ::startPlan, onRoute = { e -> chooseDestination(e, null) }, onMap = { nav = nav.push(Screen.PlanMap(plan.id)) },
                     )
+                }
+                is Screen.PlanMap -> {
+                    val plan = store.plan(top.id)
+                    if (plan == null) LaunchedEffect(Unit) { nav = nav.pop() } else PlanMapScreen(plan, onBack = ::back, onChange = store::put, onGo = ::startPlan)
                 }
                 Screen.PortfolioEdit -> PortfolioEditScreen(onBack = ::back)
                 Screen.Settings -> SettingsScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
                         route, location, nearby, loadPhoto = loadPhoto,
+                        loadClusters = { south, west, north, east, slugs -> try { sharedApi.placeClusters(south, west, north, east, slugs) } catch (e: ApiError) { null } },
                         loadPlaces = { south, west, north, east, slugs ->
                             try { sharedApi.placesInBounds(south, west, north, east, slugs, limit = MAP_PLACES_LIMIT).map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) } } catch (e: ApiError) { null }
                         },

@@ -36,6 +36,23 @@ fun legsGeoJson(route: Route?, transit: Boolean): String {
     }.toString()
 }
 
+/** Lines (each a list of lat, lon) as one GeoJSON FeatureCollection; lines with fewer than 2 points are left out. */
+fun linesGeoJson(lines: List<List<Pair<Double, Double>>>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        lines.filter { it.size >= 2 }.forEach { points ->
+            add(buildJsonObject {
+                put("type", "Feature")
+                putJsonObject("properties") {}
+                putJsonObject("geometry") {
+                    put("type", "LineString")
+                    put("coordinates", JsonArray(points.map { (lat, lon) -> buildJsonArray { add(JsonPrimitive(lon)); add(JsonPrimitive(lat)) } }))
+                }
+            })
+        }
+    }
+}.toString()
+
 fun pointGeoJson(e: Endpoint?): String =
     if (e == null) EMPTY_FEATURES else """{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[${e.lon},${e.lat}]}}"""
 

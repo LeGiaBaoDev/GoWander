@@ -35,7 +35,7 @@ Cấu hình sai thì API dừng ngay khi khởi động và ghi lý do. Log dạ
 - `GET /health/live`: luôn 200 khi process còn chạy.
 - `GET /health/ready`: 200 khi OTP **và** database trả lời trong 1 giây, ngược lại 503 (log ghi dependency nào lỗi).
 - `POST /api/v1/routes/plan`: tìm tuyến.
-- `GET /api/v1/place-categories`, `GET /api/v1/places` (lọc `category`, tìm `q` không dấu, phân trang `cursor`), `GET /api/v1/places/nearby` (`lat`, `lon`, `radiusM` ≤ 5000), `GET /api/v1/places/map` (`south`, `west`, `north`, `east`, `categories` cách nhau bằng dấu phẩy, `limit` ≤ 100; khung dày trả mẫu rải đều), `GET /api/v1/places/{id}`: Discover, chỉ địa điểm `PUBLISHED`. Mỗi địa điểm có `source` (nguồn, giấy phép, ghi công) phải hiển thị cho người dùng.
+- `GET /api/v1/place-categories`, `GET /api/v1/places` (lọc `category`, tìm `q` không dấu, phân trang `cursor`), `GET /api/v1/places/nearby` (`lat`, `lon`, `radiusM` ≤ 5000), `GET /api/v1/places/map` (`south`, `west`, `north`, `east`, `categories` cách nhau bằng dấu phẩy, `limit` ≤ 100; khung dày trả mẫu rải đều), `GET /api/v1/places/map/clusters` (cùng khung, thêm `cols`, `rows` ≤ 12; trả số địa điểm theo ô lưới), `GET /api/v1/places/{id}`: Discover, chỉ địa điểm `PUBLISHED`. Mỗi địa điểm có `source` (nguồn, giấy phép, ghi công) phải hiển thị cho người dùng.
 
 ```bash
 curl -s -X POST localhost:8090/api/v1/routes/plan -d '{

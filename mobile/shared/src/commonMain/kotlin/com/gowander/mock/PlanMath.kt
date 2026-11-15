@@ -1,6 +1,7 @@
 package com.gowander.mock
 
 import com.gowander.api.Route
+import com.gowander.home.metersBetween
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -43,8 +44,12 @@ fun moveOf(route: Route, from: String): Move {
         MoveKind.Bus -> listOfNotNull("Buýt", ride?.line?.shortName).joinToString(" ") + " · $min phút"
         MoveKind.Metro -> "Metro · $min phút"
     }
-    return Move(label, kind, min, route.walkDistanceM.roundToInt(), from)
+    return Move(label, kind, min, route.walkDistanceM.roundToInt(), from, route.legs.map { it.polyline }) // paths: drawn on the plan map
 }
+
+/** Straight-line length of the plan in metres, stop to stop (only to compare two orders of the same stops). */
+fun straightTotalM(items: List<PlanItem>): Double =
+    items.filter { it.spot() != null }.zipWithNext { a, b -> metersBetween(a.lat!!, a.lon!!, b.lat!!, b.lon!!) }.sum()
 
 /** Walking in metres over the legs the router measured. */
 fun walkTotalM(items: List<PlanItem>): Int = items.sumOf { it.move?.takeIf { m -> m.from != null }?.walkM ?: 0 }

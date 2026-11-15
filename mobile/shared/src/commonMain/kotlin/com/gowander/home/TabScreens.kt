@@ -1,5 +1,14 @@
 package com.gowander.home
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
+import com.gowander.mock.straightTotalM
+import com.gowander.route.RouteMap
+import com.gowander.route.decodePolyline
+import com.gowander.route.linesGeoJson
+import com.gowander.ui.kitShadow
+import org.maplibre.compose.util.DpPadding
+import org.maplibre.spatialk.geojson.Position
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -200,6 +209,106 @@ private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> 
     }
 }
 
+/**
+ * "Sắp xếp lại cho đỡ đi vòng" as a proposal: the new order is drawn on the map, the user keeps it or not (the shortest
+ * way is not always what they want). Shared by the plan screen and its full-screen map.
+ */
+@Composable
+internal fun ReorderPanel(plan: Plan, proposal: List<PlanItem>?, onProposal: (List<PlanItem>?) -> Unit, onChange: (Plan) -> Unit) {
+    val notice = LocalNotice.current
+    if (proposal == null) Button(Strings.REORDER, kind = ButtonKind.Soft, compact = true, pill = true) {
+        val better = reorderNearest(plan.items)
+        if (better == plan.items || straightTotalM(better) >= straightTotalM(plan.items) - 50) notice(Strings.ORDER_ALREADY_SHORT) else onProposal(better)
+    } else Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Soft).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val saved = straightTotalM(plan.items) - straightTotalM(proposal)
+        Text("${Strings.PROPOSED_ORDER}: ${Strings.shorterBy(distanceLabel(saved))}", size = 13.sp, weight = FontWeight.SemiBold)
+        Text(proposal.filter { it.spot() != null }.joinToString(" → ") { it.title }, size = 13.sp, color = Palette.Body)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(Strings.KEEP_ORDER, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true) { onProposal(null) }
+            Button(Strings.USE_ORDER, Modifier.weight(1f), compact = true, pill = true) {
+                onProposal(null)
+                onChange(plan.copy(items = proposal, next = 0, going = false))
+            }
+        }
+    }
+}
+
+/**
+ * The plan on a map: numbered stops and the way between them. Legs the router measured are drawn as the real route
+ * (solid); the others, or a [proposal] the user has not accepted yet, as straight dashed lines. [full]: the
+ * full-screen map, with the stop names next to the numbers and the 2D / 3D button.
+ */
+@Composable
+private fun PlanMap(items: List<PlanItem>, proposal: List<PlanItem>?, modifier: Modifier, full: Boolean = false, insets: PaddingValues = PaddingValues(0.dp)) {
+    val shown = proposal ?: items
+    val (solid, dashed) = remember(shown, proposal) {
+        val solid = mutableListOf<List<Pair<Double, Double>>>()
+        val dashed = mutableListOf<List<Pair<Double, Double>>>()
+        val stops = shown.filter { it.spot() != null }
+        stops.zipWithNext { a, b ->
+            val measured = b.move?.takeIf { proposal == null && it.from == a.spot() && it.paths.isNotEmpty() }
+            if (measured != null) solid += measured.paths.map { decodePolyline(it) }
+            else dashed += listOf(a.lat!! to a.lon!!, b.lat!! to b.lon!!)
+        }
+        linesGeoJson(solid) to linesGeoJson(dashed)
+    }
+    val fit = remember(shown) { shown.mapNotNull { s -> s.lat?.let { it to s.lon!! } } }
+    RouteMap(
+        null, null, null, null, modifier.semantics { contentDescription = Strings.PLAN_MAP },
+        lines = solid, sketch = dashed, fit = fit, viewSwitch = full, insets = insets,
+        framePadding = if (full) DpPadding(left = 60.dp, top = 80.dp, right = 60.dp, bottom = 40.dp) else DpPadding(left = 36.dp, top = 36.dp, right = 36.dp, bottom = 36.dp),
+    ) {
+        shown.forEachIndexed { i, s ->
+            if (s.spot() == null) return@forEachIndexed
+            val n = i + 1
+            val color = if (proposal != null) Palette.Accent else Palette.Primary
+            // Not a button: two stops close together would overlap their 48 dp targets; the list opens a stop.
+            Row(
+                Modifier.placedAt(Position(latitude = s.lat!!, longitude = s.lon!!), if (full) Alignment.CenterStart else Alignment.Center)
+                    .semantics(mergeDescendants = true) { contentDescription = Strings.stopNumber(n, s.title) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(if (full) 30.dp else 26.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
+                    Text("$n", size = if (full) 13.sp else 12.sp, color = Palette.OnPrimary, weight = FontWeight.Bold)
+                }
+                if (full) Text(
+                    s.title, Modifier.padding(start = 4.dp).widthIn(max = 150.dp).kitShadow(RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Palette.Bg.copy(alpha = 0.95f)).padding(horizontal = 6.dp, vertical = 3.dp),
+                    size = 12.sp, weight = FontWeight.SemiBold, maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The plan on a full-screen map, like the Map tab (owner, 15-11-2026: users judge the route themselves; the shortest
+ * order is not always what they want). The card at the bottom has the summary, the reorder proposal and "Đi tới điểm
+ * kế tiếp".
+ */
+@Composable
+fun PlanMapScreen(plan: Plan, onBack: () -> Unit, onChange: (Plan) -> Unit, onGo: (Plan) -> Unit) {
+    var proposal by remember(plan.id) { mutableStateOf<List<PlanItem>?>(null) }
+    Box(Modifier.fillMaxSize().background(Palette.Bg)) {
+        PlanMap(plan.items, proposal, Modifier.fillMaxSize(), full = true, insets = PaddingValues(top = 72.dp, bottom = 230.dp))
+        Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header(plan.name, floating = true, onBack = onBack) }
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Palette.Bg)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val walk = walkTotalM(plan.items)
+            Note(listOfNotNull(
+                "${plan.items.size} ${Strings.STOPS}", "${Strings.UNTIL} ${planEnd(plan.start, plan.items)}",
+                "${Strings.PLAN_WALK} ${distanceLabel(walk.toDouble())}".takeIf { walk > 0 }, Strings.TIMES_ESTIMATED,
+            ).joinToString(" · "))
+            Text(Strings.PLAN_MAP_NOTE, size = 11.sp, color = Palette.Muted)
+            ReorderPanel(plan, proposal, { proposal = it }, onChange)
+            val next = plan.nextStop()
+            if (proposal == null && next != null && plan.routing) Button("${Strings.GO_NEXT}: ${plan.items[next].title}", Modifier.fillMaxWidth(), compact = true, pill = true) { onGo(plan) }
+        }
+    }
+}
+
 /** Numbered stop: circle with the number, then the line down to the next stop (dotted on foot, solid on a vehicle). */
 @Composable
 private fun StopRow(n: Int, line: Color?, dotted: Boolean, content: @Composable () -> Unit) {
@@ -269,7 +378,7 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
 @Composable
 fun PlanBuilderScreen(
     plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, onAdd: () -> Unit, onSave: () -> Unit,
-    measure: suspend (PlanItem, PlanItem) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit,
+    measure: suspend (PlanItem, PlanItem) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit, onMap: () -> Unit,
 ) {
     val notice = LocalNotice.current
     val times = planTimes(plan.start, plan.items)
@@ -288,6 +397,9 @@ fun PlanBuilderScreen(
         else if (i < now.items.size && legKey(now.items, i) == key) onChange(now.copy(items = now.items.mapIndexed { j, it -> if (j == i) it.copy(move = move) else it }))
     }
     var open by rememberSaveable { mutableStateOf(-1) }
+    // "Sắp xếp lại" only proposes: the new order is drawn on the map and the user decides (the shortest way is not
+    // always what they want).
+    var proposal by remember(plan.id) { mutableStateOf<List<PlanItem>?>(null) }
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Column(
             Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
@@ -310,6 +422,13 @@ fun PlanBuilderScreen(
         Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan.items.isEmpty()) Note(Strings.PLAN_EMPTY)
+            if (plan.items.count { it.spot() != null } >= 2) {
+                PlanMap(plan.items, proposal, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)))
+                Text(Strings.PLAN_MAP_NOTE, size = 11.sp, color = Palette.Muted)
+                Button(Strings.VIEW_ON_MAP, Modifier.fillMaxWidth(), kind = ButtonKind.Outline, icon = KitIcons.map, compact = true, pill = true, onClick = onMap)
+                ReorderPanel(plan, proposal, { proposal = it; open = -1 }, onChange)
+                Spacer(Modifier.height(8.dp))
+            }
             plan.items.forEachIndexed { i, item ->
                 // The way here from the stop before: what the router measured, or why there is no time yet.
                 if (i > 0 && item.spot() != null && plan.items[i - 1].spot() != null) {
@@ -378,7 +497,6 @@ fun PlanBuilderScreen(
                     }
                 }
             }
-            Button(Strings.REORDER, kind = ButtonKind.Soft, compact = true, pill = true) { open = -1; onChange(plan.copy(items = reorderNearest(plan.items), next = 0, going = false)) }
         }
         Column(
             Modifier.fillMaxWidth().border(1.dp, Palette.Line).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),

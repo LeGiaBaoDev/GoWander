@@ -20,6 +20,7 @@ sealed interface Screen {
     data class Dish(val id: String) : Screen
     data class Trip(val id: String) : Screen
     data class PlanEdit(val id: String) : Screen
+    data class PlanMap(val id: String) : Screen
     data object PortfolioEdit : Screen
     data object Settings : Screen
 }
@@ -96,6 +97,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             is Screen.Dish -> "dish:${s.id}"
             is Screen.Trip -> "trip:${s.id}"
             is Screen.PlanEdit -> "plan:${s.id}"
+            is Screen.PlanMap -> "plan_map:${s.id}"
             Screen.PortfolioEdit -> "portfolio_edit"
             Screen.Settings -> "settings"
         }
@@ -115,6 +117,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v.startsWith("dish:") -> Screen.Dish(v.removePrefix("dish:"))
             v.startsWith("trip:") -> Screen.Trip(v.removePrefix("trip:"))
             v.startsWith("plan:") -> Screen.PlanEdit(v.removePrefix("plan:"))
+            v.startsWith("plan_map:") -> Screen.PlanMap(v.removePrefix("plan_map:"))
             v == "portfolio_edit" -> Screen.PortfolioEdit
             v == "settings" -> Screen.Settings
             else -> throw IllegalArgumentException(v)

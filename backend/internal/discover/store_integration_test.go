@@ -198,6 +198,33 @@ func TestStore(t *testing.T) {
 		}
 	})
 
+	t.Run("clusters count published places per grid cell and keep the filter", func(t *testing.T) {
+		// 2 x 2 grid over the market area: market (+ draft and hidden, not counted) and the museum fall in different rows.
+		q := ClusterQuery{MapQuery: MapQuery{South: 10.765, West: 106.695, North: 10.775, East: 106.705}, Cols: 2, Rows: 2}
+		cs, err := s.Clusters(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total := 0
+		for _, c := range cs {
+			total += c.Count
+			if c.Lat < q.South || c.Lat > q.North || c.Lon < q.West || c.Lon > q.East {
+				t.Fatalf("cluster outside the box: %+v", c)
+			}
+		}
+		if total != 3 || len(cs) < 2 {
+			t.Fatalf("total %d in %d clusters: %+v", total, len(cs), cs)
+		}
+		q.Categories = []string{"museum"}
+		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 1 {
+			t.Fatalf("category: %+v", cs)
+		}
+		q.Categories, q.Cols, q.Rows = nil, 1, 1
+		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 3 {
+			t.Fatalf("one cell: %+v", cs)
+		}
+	})
+
 	t.Run("detail has categories, ordered media, published foods only", func(t *testing.T) {
 		d, err := s.Place(ctx, "0190f0c2-0000-7000-8000-000000000001")
 		if err != nil {

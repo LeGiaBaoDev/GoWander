@@ -54,6 +54,8 @@ interface GoWanderApi {
     suspend fun nearby(at: LatLon, radiusM: Int, limit: Int): List<PlaceSummary>
     /** Places inside a map viewport (UX-2 P3); a dense viewport returns an even, stable sample. No distanceM. */
     suspend fun placesInBounds(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?, limit: Int): List<PlaceSummary>
+    /** How many places each cell of a grid over the viewport holds: for a map zoomed too far out to show single places. */
+    suspend fun placeClusters(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?): List<PlaceCluster>
     suspend fun place(id: String): PlaceDetail
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
@@ -105,6 +107,15 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             parameter("categories", categories?.joinToString(","))
             parameter("limit", limit)
         }.places
+
+    override suspend fun placeClusters(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?): List<PlaceCluster> =
+        call<ClustersResponse>("/api/v1/places/map/clusters") {
+            parameter("south", south)
+            parameter("west", west)
+            parameter("north", north)
+            parameter("east", east)
+            parameter("categories", categories?.joinToString(","))
+        }.clusters
 
     override suspend fun nearby(at: LatLon, radiusM: Int, limit: Int): List<PlaceSummary> =
         call<PlacePage>("/api/v1/places/nearby") {

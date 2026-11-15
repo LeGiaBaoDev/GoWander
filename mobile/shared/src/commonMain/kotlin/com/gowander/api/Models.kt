@@ -154,3 +154,10 @@ internal data class ErrorEnvelope(val error: ErrorBody)
 
 @Serializable
 internal data class ErrorBody(val code: String, val message: String, val requestId: String = "")
+
+/** Places of one grid cell of a zoomed-out map (UX-2 P3); [lat]/[lon] is where to draw the bubble. */
+@Serializable
+data class PlaceCluster(val lat: Double, val lon: Double, val count: Int)
+
+@Serializable
+data class ClustersResponse(val clusters: List<PlaceCluster>)

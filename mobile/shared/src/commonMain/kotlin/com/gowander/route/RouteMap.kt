@@ -131,6 +131,9 @@ fun RouteMap(
     followPitch: Double? = null, // null: from the user's 2D / 3D choice
     credit: String = Strings.MAP_CREDIT, // the licence line; a screen that also shows street photos adds their credit
     style: BaseStyle? = null, // the country map passes the same style without its text labels; null = the bundled style of the current look
+    lines: String? = null, // plan map: routes the router measured between stops (GeoJSON lines, solid)
+    sketch: String? = null, // plan map: stops joined by straight lines where no route is known yet, or a proposed order (dashed)
+    fit: List<Pair<Double, Double>> = emptyList(), // points to frame when there is no route or endpoint (plan stops)
     maskJson: String? = null, // GeoJSON polygon painted over the basemap in the sea colour: hides what is outside one country
     markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
@@ -149,6 +152,8 @@ fun RouteMap(
     ) {
         if (maskJson != null) FillLayer(id = "mask", source = rememberGeoJsonSource(GeoJsonData.JsonString(maskJson)), color = const(MASK_COLOR))
         // GeoJsonSource is immutable in maplibre-compose 0.20.0: key() recreates source + layer when the data changes.
+        if (sketch != null) key(sketch) { LineLayer(id = "plan-sketch", source = rememberGeoJsonSource(GeoJsonData.JsonString(sketch)), color = const(Palette.Muted), width = const(3.dp), dasharray = const(listOf(2, 2))) }
+        if (lines != null) key(lines) { LineLayer(id = "plan-lines", source = rememberGeoJsonSource(GeoJsonData.JsonString(lines)), color = const(Palette.Primary), width = const(5.dp)) }
         key(walkJson) { LineLayer(id = "route-walk", source = rememberGeoJsonSource(GeoJsonData.JsonString(walkJson)), color = const(Palette.Ink), width = const(4.dp), dasharray = const(listOf(1, 1.5))) }
         key(transitJson) { LineLayer(id = "route-transit", source = rememberGeoJsonSource(GeoJsonData.JsonString(transitJson)), color = const(Palette.Metro), width = const(6.dp)) }
         key(originJson) { CircleLayer(id = "origin", source = rememberGeoJsonSource(GeoJsonData.JsonString(originJson)), color = const(Palette.Primary), radius = const(8.dp), strokeColor = const(Color.White), strokeWidth = const(3.dp)) }
@@ -170,7 +175,7 @@ fun RouteMap(
     }
     if (stateOut != null) stateOut.value = mapState
 
-    val frame = remember(route, origin, destination) { framePoints(route, origin, destination) }
+    val frame = remember(route, origin, destination, fit) { framePoints(route, origin, destination).ifEmpty { fit } }
     LaunchedEffect(frame) {
         if (frame.isEmpty() || follow || focus != null) return@LaunchedEffect
         try {

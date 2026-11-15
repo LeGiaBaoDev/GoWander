@@ -21,6 +21,7 @@ class FakeApi : GoWanderApi {
         return apiJson.decodeFromString<PlacePage>(Fixtures.PLACES_NEARBY).places
     }
     override suspend fun placesInBounds(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?, limit: Int): List<PlaceSummary> = emptyList()
+    override suspend fun placeClusters(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?): List<PlaceCluster> = emptyList()
     override suspend fun place(id: String) = detailResult(id)
     override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> = emptyList()
     override suspend fun reverseGeocode(at: LatLon): List<GeoResult> = emptyList()

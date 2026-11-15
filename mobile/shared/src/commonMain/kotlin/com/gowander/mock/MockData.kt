@@ -30,7 +30,7 @@ val MOCK_REVIEWS = listOf(
 
 /** How to reach a stop from the previous one; [kind] picks the colour: walk, bus or metro. */
 /** Travel to a stop. [from] is the position ("lat,lon") of the stop it was measured from by the router; a leg whose previous stop is another one is stale. */
-@Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int, val walkM: Int = 0, val from: String? = null)
+@Serializable data class Move(val label: String, val kind: MoveKind, val minutes: Int, val walkM: Int = 0, val from: String? = null, val paths: List<String> = emptyList())
 @Serializable enum class MoveKind { Walk, Bus, Metro }
 
 

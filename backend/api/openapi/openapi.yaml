@@ -123,6 +123,38 @@ paths:
                     items: { $ref: '#/components/schemas/PlaceSummary' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places/map/clusters:
+    get:
+      operationId: placeClusters
+      summary: Số địa điểm đã xuất bản theo từng ô lưới của khung bản đồ (dùng khi bản đồ zoom xa)
+      parameters:
+        - { name: south, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: west, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
+        - { name: north, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 }, description: Lớn hơn south }
+        - { name: east, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 }, description: Lớn hơn west }
+        - { name: categories, in: query, schema: { type: string }, description: 'Tối đa 10 slug cách nhau bằng dấu phẩy' }
+        - { name: cols, in: query, schema: { type: integer, minimum: 1, maximum: 12, default: 4 } }
+        - { name: rows, in: query, schema: { type: integer, minimum: 1, maximum: 12, default: 6 } }
+      responses:
+        '200':
+          description: Mỗi ô có địa điểm là một cụm; lat/lon là chỗ vẽ cụm (tâm các địa điểm, giữ trong nửa giữa của ô)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clusters]
+                properties:
+                  clusters:
+                    type: array
+                    items:
+                      type: object
+                      required: [lat, lon, count]
+                      properties:
+                        lat: { type: number }
+                        lon: { type: number }
+                        count: { type: integer, minimum: 1 }
+        '400': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /api/v1/places/{id}:
     get:
       operationId: getPlace

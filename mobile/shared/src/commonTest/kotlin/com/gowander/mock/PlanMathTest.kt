@@ -32,8 +32,8 @@ class PlanMathTest {
             line = line?.let { com.gowander.api.Line("id", it) }, polyline = "",
         )
         fun route(sec: Int, walk: Double, vararg legs: com.gowander.api.Leg) = com.gowander.api.Route("", "", sec, walk, 0, legs.toList())
-        assertEquals(Move("Đi bộ 7 phút", MoveKind.Walk, 7, 480, "k"), moveOf(route(361, 480.4, leg("WALK", false)), "k"))
-        assertEquals(Move("Buýt 18 · 12 phút", MoveKind.Bus, 12, 200, "k"), moveOf(route(720, 200.0, leg("WALK", false), leg("BUS", true, "18")), "k"))
+        assertEquals(Move("Đi bộ 7 phút", MoveKind.Walk, 7, 480, "k", listOf("")), moveOf(route(361, 480.4, leg("WALK", false)), "k"))
+        assertEquals(Move("Buýt 18 · 12 phút", MoveKind.Bus, 12, 200, "k", listOf("", "")), moveOf(route(720, 200.0, leg("WALK", false), leg("BUS", true, "18")), "k"))
         assertEquals("Metro · 9 phút", moveOf(route(540, 100.0, leg("SUBWAY", true)), "k").label)
     }
 
@@ -44,6 +44,17 @@ class PlanMathTest {
         assertEquals(1, plan.nextStop())
         assertEquals(2, plan.copy(next = 2).nextStop())
         assertEquals(null, plan.copy(next = 3).nextStop())
+    }
+
+    @Test
+    fun straightLengthComparesTwoOrders() {
+        val a = PlanItem("A", "", 30, null, 10.00, 106.0)
+        val b = PlanItem("B", "", 30, null, 10.01, 106.0)
+        val c = PlanItem("C", "", 30, null, 10.02, 106.0)
+        val back = straightTotalM(listOf(a, c, b)) // A -> C -> B goes back
+        val straight = straightTotalM(listOf(a, b, c))
+        kotlin.test.assertTrue(straight in 2200.0..2250.0 && back > straight, "$straight $back")
+        assertEquals(straight, straightTotalM(listOf(PlanItem("Nhà", "", 0), a, b, c))) // stops without a position are skipped
     }
 
     @Test

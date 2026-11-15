@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import com.gowander.api.ApiError
 import com.gowander.api.GeoResult
 import com.gowander.api.Leg
+import com.gowander.api.PlaceCluster
 import com.gowander.api.PlaceSummary
 import com.gowander.api.Route
 import com.gowander.onboarding.LoadingView
@@ -131,6 +132,8 @@ fun MapHome(
     nearby: List<PlaceSummary>,
     // P3: places of the area on screen (south, west, north, east, category slugs); null = the load failed.
     loadPlaces: suspend (Double, Double, Double, Double, Set<String>?) -> List<PlaceSummary>?,
+    // Zoomed far out: how many places each part of the screen holds, instead of single places.
+    loadClusters: suspend (Double, Double, Double, Double, Set<String>?) -> List<PlaceCluster>?,
     loadPhoto: suspend (Double, Double) -> StreetPhoto?, // card photo: the nearest street photo, until places have their own (ADR-035)
     onSearch: () -> Unit,
     onLocate: () -> Unit,
@@ -146,6 +149,9 @@ fun MapHome(
     // The server picks the places for what is on screen, with the filter. Until it answers (and if it fails) the map
     // keeps what it had: the last answer, or [nearby] at the start, filtered here by primary category.
     var inView by remember { mutableStateOf<Pair<Int, List<PlaceSummary>>?>(null) }
+    var clusters by remember { mutableStateOf<List<PlaceCluster>>(emptyList()) }
+    // A dot the user tapped: the map centres on it and it gets a card (it stays even if the next server answer leaves it out).
+    var picked by remember { mutableStateOf<PlaceSummary?>(null) }
     LaunchedEffect(camera, filter) {
         var region = mapRef.value?.getVisibleRegion()
         do { delay(400); region = mapRef.value?.getVisibleRegion() } while (region == null) // wait for the map to rest / attach
@@ -154,22 +160,29 @@ fun MapHome(
         val north = corners.maxOf { it.latitude }.coerceIn(-90.0, 90.0)
         val west = corners.minOf { it.longitude }.coerceIn(-180.0, 180.0)
         val east = corners.maxOf { it.longitude }.coerceIn(-180.0, 180.0)
-        if (south < north && west < east) loadPlaces(south, west, north, east, MAP_FILTERS[filter].second)?.let { inView = filter to it }
+        if (south >= north || west >= east) return@LaunchedEffect
+        // Below this zoom a screen holds hundreds of places: show counts per area; tapping one zooms in.
+        if ((mapRef.value?.cameraPosition?.zoom ?: CLUSTER_BELOW_ZOOM) < CLUSTER_BELOW_ZOOM) {
+            loadClusters(south, west, north, east, MAP_FILTERS[filter].second)?.let { clusters = it; picked = null }
+        } else {
+            clusters = emptyList()
+            loadPlaces(south, west, north, east, MAP_FILTERS[filter].second)?.let { inView = filter to it }
+        }
     }
-    val shown = remember(nearby, inView, filter) {
+    val shown = remember(nearby, inView, filter, clusters) {
+        if (clusters.isNotEmpty()) return@remember emptyList()
         val slugs = MAP_FILTERS[filter].second
         if (inView?.first == filter) inView!!.second else (inView?.second ?: nearby).filter { slugs == null || it.category?.slug in slugs }
     }
     var photosShown by remember { mutableStateOf(false) } // street photos need their licence line on this screen (ADR-033)
-    // A dot the user tapped: the map centres on it and it gets a card (it stays even if the next server answer leaves it out).
-    var picked by remember { mutableStateOf<PlaceSummary?>(null) }
     val scope = rememberCoroutineScope()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth
         val height = maxHeight
         fun at(p: PlaceSummary) = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon))
         // Cards and dots are sized in dp, so the room they need in metres depends on the zoom.
-        val (cards, dots) = remember(shown, picked, camera, width, height) {
+        val (cards, dots) = remember(shown, picked, clusters, camera, width, height) {
+            if (clusters.isNotEmpty()) return@remember emptyList<PlaceSummary>() to emptyList()
             val all = picked?.takeIf { pick -> shown.none { it.id == pick.id } }?.let { shown + it } ?: shown
             val mPerDp = all.firstOrNull()?.let { mapRef.value?.metersPerDpAtLatitude(it.lat) } ?: M_PER_DP_HOME
             fun cardFits(p: PlaceSummary): Boolean {
@@ -198,6 +211,25 @@ fun MapHome(
             insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
             credit = if (photosShown) Strings.MAP_CREDIT + "\n" + Strings.STREET_PHOTO_CREDIT else Strings.MAP_CREDIT,
         ) {
+            clusters.forEach { c ->
+                val spot = Position(latitude = c.lat, longitude = c.lon)
+                val xy = mapRef.value?.screenLocationFromPosition(spot)
+                val free = xy != null && xy.x > 28.dp && xy.x < width - 28.dp && xy.y > DOT_TOP_CLEAR && xy.y < height - DOT_BOTTOM_CLEAR &&
+                    !(xy.y < CARD_LAYERS_CLEAR - CARD_PHOTO_HEIGHT && xy.x > width - 96.dp)
+                val bubble: @Composable () -> Unit = {
+                    Box(Modifier.size(44.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(3.dp).clip(CircleShape).background(Palette.Primary), contentAlignment = Alignment.Center) {
+                        Text(if (c.count > 999) "999+" else "${c.count}", size = if (c.count > 99) 11.sp else 13.sp, color = Palette.OnPrimary, weight = FontWeight.Bold, maxLines = 1)
+                    }
+                }
+                if (free) Box(
+                    Modifier.placedAt(spot).size(52.dp).semantics(mergeDescendants = true) { contentDescription = Strings.clusterLabel(c.count) }.clickable(role = Role.Button) {
+                        val zoom = (mapRef.value?.cameraPosition?.zoom ?: CLUSTER_BELOW_ZOOM) + 2
+                        scope.launch { try { mapRef.value?.animateCamera(CameraUpdate(center = spot, zoom = zoom)) } catch (e: CancellationException) { throw e } catch (e: Exception) { /* stays zoomed out */ } }
+                    },
+                    contentAlignment = Alignment.Center,
+                ) { bubble() }
+                // shortcut: a cluster under the bars or buttons is not drawn (it would cover them); its places show when the map moves.
+            }
             // Other places: small dots. Tapping one centres the map on it and gives it a card; "Danh sách" lists them all.
             dots.forEach { (p, tappable) ->
                 val spot = Position(latitude = p.lat, longitude = p.lon)
@@ -244,6 +276,7 @@ private val CARD_ROOM_WIDTH = 232.dp
 private val DOT_ROOM = 52.dp // one 48 dp touch target per dot
 private val DOT_TOP_CLEAR = 220.dp // status bar + search + filters
 private val DOT_BOTTOM_CLEAR = 200.dp // "Danh sách", locate button, credit line, tab bar
+private const val CLUSTER_BELOW_ZOOM = 13.5 // the home zoom is 15; two zoom steps out a screen holds most of the city centre
 private const val M_PER_DP_HOME = 2.35 // metres per dp at the home zoom (15) in TP.HCM, until the map can say
 private const val MAX_CARDS = 4
 private val CARD_BOTTOM_CLEAR = 176.dp // a place lower than this would put its card on "Danh sách", the credit line or the tab bar

@@ -100,10 +100,12 @@ private const val ARRIVED_M = 25.0
 private const val JOIN_M = 30.0
 private const val SWIPE_PX = 80f
 private const val BACKTRACK_M = 50.0
-private const val DRIVE_SPACING_M = 12.0
+// ▶▶ Chạy: 1.5 m every 100 ms = 15 m/s (~54 km/h, about 10x walking). It was 12 m / 160 ms (~270 km/h): far too fast
+// to read the street (owner, 15-11-2026). A 2 km route plays in about 2 minutes; Trước / Sau still jump step by step.
+private const val DRIVE_SPACING_M = 1.5
 private const val STREET_ZOOM = 20.5 // ~eye level: buildings and the road at near 1:1 scale
 private const val STREET_PITCH = 65.0 // 78° ran out of memory (tiles to the horizon, 1.1 GB on the emulator, 14-11-2026)
-private const val DRIVE_TICK_MS = 160L
+private const val DRIVE_TICK_MS = 100L
 private const val NUDGE_M = 20.0 // one tap on ︿ / ﹀ moves this far along the route (owner: small steps, like Street View)
 private const val LOOK_AHEAD_M = 8.0
 private const val NAV_STREET_ZOOM = 19.0 // moving: one step back from the preview's eye level, fewer tiles per second

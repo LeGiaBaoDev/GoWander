@@ -172,6 +172,11 @@ class GoWanderApiTest {
         api(HttpStatusCode.OK, Fixtures.PLACES_NEARBY).placesInBounds(10.76, 106.69, 10.78, 106.71, null, limit = 60)
         assertNull(requests.last().url.parameters["categories"])
 
+        val clusters = api(HttpStatusCode.OK, """{"clusters":[{"lat":10.77,"lon":106.7,"count":12}]}""").placeClusters(10.7, 106.6, 10.86, 106.8, setOf("cafe"))
+        assertEquals("/api/v1/places/map/clusters", requests.last().url.encodedPath)
+        assertEquals("cafe", requests.last().url.parameters["categories"])
+        assertEquals(listOf(PlaceCluster(10.77, 106.7, 12)), clusters)
+
         val detail = api(HttpStatusCode.OK, Fixtures.PLACE_DETAIL).place("01a1d0db-2bcf-7fb7-b314-f42c1e9c7156")
         assertEquals("Bảo tàng Chiến dịch Hồ Chí Minh", detail.name)
         assertEquals("ODbL-1.0", detail.source.license)

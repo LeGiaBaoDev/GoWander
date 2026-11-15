@@ -91,6 +91,20 @@ type MapQuery struct {
 	Limit                    int
 }
 
+// ClusterQuery asks how many places each cell of a grid over a map viewport holds (map zoomed out, UX-2 P3).
+type ClusterQuery struct {
+	MapQuery
+	Cols, Rows int
+}
+
+// Cluster is one grid cell that holds places. Lat/Lon is where to draw it: the centre of its places, kept inside
+// the middle half of the cell so two neighbouring clusters never sit on top of each other.
+type Cluster struct {
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	Count int     `json:"count"`
+}
+
 var ErrNotFound = errors.New("place not found")
 
 // Store reads published Discover data. Implementations return ErrNotFound for unknown or unpublished places.
@@ -99,6 +113,7 @@ type Store interface {
 	ListPlaces(ctx context.Context, q ListQuery) (places []PlaceSummary, next *Cursor, err error)
 	Nearby(ctx context.Context, q NearbyQuery) ([]PlaceSummary, error)
 	InBounds(ctx context.Context, q MapQuery) ([]PlaceSummary, error)
+	Clusters(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	Place(ctx context.Context, id string) (PlaceDetail, error)
 	Ready(ctx context.Context) error
 }

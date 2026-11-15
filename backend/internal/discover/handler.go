@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -27,6 +28,7 @@ func (h Handler) Mount(r chi.Router) {
 	r.Get("/api/v1/places", h.list)
 	r.Get("/api/v1/places/nearby", h.nearby)
 	r.Get("/api/v1/places/map", h.inBounds)
+	r.Get("/api/v1/places/map/clusters", h.clusters)
 	r.Get("/api/v1/places/{id}", h.place)
 }
 
@@ -97,8 +99,8 @@ func (h Handler) nearby(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"places": nonNil(places)})
 }
 
-func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
-	v := r.URL.Query()
+// mapBox reads the viewport and category filter shared by the map endpoints.
+func mapBox(v url.Values) (MapQuery, error) {
 	var q MapQuery
 	var err error
 	for _, p := range []struct {
@@ -123,6 +125,12 @@ func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	return q, err
+}
+
+func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	q, err := mapBox(v)
 	if err == nil {
 		q.Limit, err = intParam(v.Get("limit"), "limit", 50, 1, 100)
 	}
@@ -136,6 +144,28 @@ func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"places": nonNil(places)})
+}
+
+func (h Handler) clusters(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	box, err := mapBox(v)
+	q := ClusterQuery{MapQuery: box}
+	if err == nil {
+		q.Cols, err = intParam(v.Get("cols"), "cols", 4, 1, 12)
+	}
+	if err == nil {
+		q.Rows, err = intParam(v.Get("rows"), "rows", 6, 1, 12)
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	cs, err := h.Store.Clusters(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"clusters": nonNil(cs)})
 }
 
 func (h Handler) place(w http.ResponseWriter, r *http.Request) {
