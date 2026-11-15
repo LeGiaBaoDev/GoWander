@@ -1,11 +1,19 @@
 {{define "main"}}
-<h1>Xin chào{{if .Me.Name}}, {{.Me.Name}}{{end}}</h1>
-<p class="muted">Vai trò của bạn: {{range $i, $r := .Me.Roles}}{{if $i}}, {{end}}<span class="tag">{{$r}}</span>{{end}}</p>
-<div class="grid">
-  {{if has .Me "SYSTEM_ADMIN"}}
-  <a class="card tile" href="/admin/users"><h2>Người vận hành</h2><p>Cấp và thu hồi vai trò.</p></a>
-  <a class="card tile" href="/admin/audit"><h2>Nhật ký thao tác</h2><p>Ai đã làm gì, lúc nào.</p></a>
-  {{end}}
-  <div class="card tile muted"><h2>Nội dung</h2><p>Địa điểm, món ăn, câu chuyện, cẩm nang, hành trình: các lát tiếp theo của M07.</p></div>
-</div>
+<header class="head">
+  <h1>Xin chào{{if .Me.Name}}, {{.Me.Name}}{{end}}</h1>
+  <p class="muted">Quản lý nội dung app GoWander hiển thị cho người dùng.</p>
+</header>
+<section class="tiles" aria-label="Khu vực quản trị">
+  <div class="card tile"><span class="badge">{{template "icon" "pin"}}</span><h2>Địa điểm</h2><p>Thêm, sửa, ẩn địa điểm và loại địa điểm trên bản đồ.</p><em class="chip">Sắp có</em></div>
+  <div class="card tile"><span class="badge">{{template "icon" "bowl"}}</span><h2>Món ăn &amp; câu chuyện</h2><p>Món nên thử và câu chuyện địa phương trong cẩm nang.</p><em class="chip">Sắp có</em></div>
+  <div class="card tile"><span class="badge">{{template "icon" "book"}}</span><h2>Cẩm nang &amp; hành trình</h2><p>Cẩm nang vùng và gợi ý hành trình mẫu.</p><em class="chip">Sắp có</em></div>
+  <div class="card tile"><span class="badge accent">{{template "icon" "flag"}}</span><h2>Báo sai từ người dùng</h2><p>Duyệt báo sai và nội dung người dùng gửi.</p><em class="chip">Sắp có</em></div>
+</section>
+<section class="card">
+  <div class="row"><h2>Hoạt động gần đây</h2><a href="/admin/audit">Xem tất cả</a></div>
+  <ul class="feed">
+  {{range .Recent}}<li><span class="dot" aria-hidden="true"></span><span><strong>{{action .Action}}</strong> · {{.ActorName}}</span><time>{{at .At}}</time></li>
+  {{else}}<li class="muted">Chưa có hoạt động.</li>{{end}}
+  </ul>
+</section>
 {{end}}

@@ -38,11 +38,32 @@ type Handler struct {
 
 type ctxKey struct{}
 
+// actionNames shows audit actions in Vietnamese; unknown codes are shown as they are.
+var actionNames = map[string]string{
+	"admin.bootstrap": "Tạo quản trị viên đầu tiên",
+	"admin.login":     "Đăng nhập",
+	"admin.logout":    "Đăng xuất",
+	"role.grant":      "Cấp vai trò",
+	"role.revoke":     "Thu hồi vai trò",
+}
+
 func current(r *http.Request) Session { s, _ := r.Context().Value(ctxKey{}).(Session); return s }
 
 var pages = func() map[string]*template.Template {
 	funcs := template.FuncMap{
 		"has": func(s Session, role string) bool { return s.Has(role) },
+		"initial": func(s Session) string {
+			for _, c := range strings.TrimSpace(s.Name + s.Email) {
+				return strings.ToUpper(string(c))
+			}
+			return "?"
+		},
+		"action": func(a string) string {
+			if v, ok := actionNames[a]; ok {
+				return v
+			}
+			return a
+		},
 		"when": func(t *time.Time) string {
 			if t == nil {
 				return "chưa đăng nhập"
@@ -112,6 +133,7 @@ func (h Handler) render(w http.ResponseWriter, r *http.Request, status int, page
 		data = map[string]any{}
 	}
 	data["Me"] = current(r)
+	data["Page"] = page
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := pages[page].Execute(w, data); err != nil {
@@ -258,7 +280,12 @@ func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) home(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, http.StatusOK, "home", nil)
+	recent, err := h.Store.AuditLog(r.Context(), 6)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, "home", map[string]any{"Recent": recent})
 }
 
 func (h Handler) users(w http.ResponseWriter, r *http.Request) {

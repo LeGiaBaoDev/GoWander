@@ -1,13 +1,15 @@
 {{define "title"}}Đăng nhập · GoWander Admin{{end}}
 {{define "main"}}
-<section class="card narrow">
-  <h1>Đăng nhập quản trị</h1>
-  <p class="muted">Chỉ dành cho người vận hành đã được cấp vai trò. Người dùng app không cần đăng nhập ở đây.</p>
-  {{if .Error}}<p class="alert">{{.Error}}</p>{{end}}
+<section class="splash">
+  <img class="logo" src="/admin/static/logo_full.png" alt="GoWander" width="250" height="166">
+  <p class="tagline">Move Smart. Explore More.</p>
+  <h1>Trang quản trị</h1>
+  <p class="muted">Dành cho quản trị viên GoWander. Người dùng app không cần đăng nhập ở đây.</p>
+  {{if .Error}}<p class="notice bad" role="alert">{{.Error}}</p>{{end}}
   {{if .GoogleReady}}
-  <a class="button" href="/admin/auth/start">Đăng nhập bằng Google</a>
+  <a class="button block" href="/admin/auth/start">Đăng nhập bằng Google</a>
   {{else}}
-  <p class="alert">Đăng nhập Google chưa được bật: đặt GOOGLE_CLIENT_ID và GOOGLE_CLIENT_SECRET rồi khởi động lại API.</p>
+  <p class="notice bad">Đăng nhập Google chưa được bật: đặt GOOGLE_CLIENT_ID và GOOGLE_CLIENT_SECRET rồi khởi động lại API.</p>
   {{end}}
 </section>
 {{end}}

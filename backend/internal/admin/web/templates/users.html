@@ -1,10 +1,10 @@
 {{define "title"}}Người vận hành · GoWander Admin{{end}}
 {{define "main"}}
-<h1>Người vận hành</h1>
-{{if eq .Notice "granted"}}<p class="ok">Đã cấp vai trò.</p>{{end}}
-{{if eq .Notice "revoked"}}<p class="ok">Đã thu hồi vai trò.</p>{{end}}
-{{if eq .Notice "bad"}}<p class="alert">Email hoặc vai trò không hợp lệ.</p>{{end}}
-{{if eq .Notice "last"}}<p class="alert">Không thể thu hồi: phải còn ít nhất một quản trị hệ thống.</p>{{end}}
+<header class="head"><h1>Người vận hành</h1></header>
+{{if eq .Notice "granted"}}<p class="notice ok">Đã cấp vai trò.</p>{{end}}
+{{if eq .Notice "revoked"}}<p class="notice ok">Đã thu hồi vai trò.</p>{{end}}
+{{if eq .Notice "bad"}}<p class="notice bad">Email hoặc vai trò không hợp lệ.</p>{{end}}
+{{if eq .Notice "last"}}<p class="notice bad">Không thể thu hồi: phải còn ít nhất một quản trị hệ thống.</p>{{end}}
 <form method="post" action="/admin/users/grant" class="card inline">
   <input type="hidden" name="csrf" value="{{.Me.CSRF}}">
   <label>Email Google <input type="email" name="email" required maxlength="320" autocomplete="off"></label>
@@ -12,14 +12,14 @@
   <button type="submit">Cấp vai trò</button>
 </form>
 <p class="muted">Người được cấp đăng nhập bằng đúng email Google này. Mỗi thay đổi được ghi vào nhật ký.</p>
-<table>
+<div class="table-wrap"><table>
   <thead><tr><th>Email</th><th>Trạng thái</th><th>Vai trò</th><th>Đăng nhập gần nhất</th></tr></thead>
   <tbody>
   {{range $o := .Operators}}
   <tr>
     <td>{{$o.Email}}</td><td>{{$o.Status}}</td>
     <td>{{range $o.Roles}}
-      <form method="post" action="/admin/users/revoke" class="chip">
+      <form method="post" action="/admin/users/revoke" class="chip-form">
         <input type="hidden" name="csrf" value="{{$.Me.CSRF}}"><input type="hidden" name="user" value="{{$o.UserID}}"><input type="hidden" name="role" value="{{.}}">
         <span class="tag">{{.}}</span><button type="submit" class="link" aria-label="Thu hồi {{.}} của {{$o.Email}}">×</button>
       </form>{{end}}</td>
@@ -27,5 +27,5 @@
   </tr>
   {{else}}<tr><td colspan="4" class="muted">Chưa có ai.</td></tr>{{end}}
   </tbody>
-</table>
+</table></div>
 {{end}}
