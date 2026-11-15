@@ -101,6 +101,15 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if audit, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(audit, ",") != "admin_audit_logs:INSERT,admin_audit_logs:SELECT" {
 		t.Fatalf("gowander_admin on admin_audit_logs: %v %v", audit, err)
 	}
+	// 0003: the Admin role reads content for the overview, and cannot change it yet.
+	rows, err = conn.Query(ctx, `SELECT table_name || ':' || privilege_type FROM information_schema.role_table_grants
+		WHERE grantee = 'gowander_admin' AND table_name IN ('places', 'place_categories', 'place_media', 'food_items', 'historical_stories') ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(content, ",") != "food_items:SELECT,historical_stories:SELECT,place_categories:SELECT,place_media:SELECT,places:SELECT" {
+		t.Fatalf("gowander_admin on content: %v %v", content, err)
+	}
 	if v, dirty, err := m.Version(); err != nil || dirty || v == 0 {
 		t.Fatalf("version %d dirty %v err %v", v, dirty, err)
 	}

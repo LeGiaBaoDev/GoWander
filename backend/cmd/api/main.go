@@ -120,7 +120,8 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	})
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
-	adminHandler := admin.Handler{Store: adminStore, BootstrapEmail: cfg.AdminBootstrapEmail, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log}
+	adminHandler := admin.Handler{Store: adminStore, BootstrapEmail: cfg.AdminBootstrapEmail, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
+		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
 	if cfg.GoogleLogin() {
 		adminHandler.Auth = admin.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.AdminBaseURL+"/admin/auth/callback")
 	}

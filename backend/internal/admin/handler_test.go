@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -61,6 +62,10 @@ func (f *fakeStore) Audit(_ context.Context, e AuditEntry) error {
 }
 func (f *fakeStore) AuditLog(context.Context, int) ([]AuditEntry, error) { return nil, nil }
 func (f *fakeStore) Ready(context.Context) error                         { return nil }
+func (f *fakeStore) Overview(context.Context) (Overview, error) {
+	return Overview{Places: 1030, Published: 1030, WithAddress: 410, WithCategory: 1030, Categories: 10,
+		ByCategory: []CategoryCount{{"Ăn uống", 600}, {"Bảo tàng", 30}}}, nil
+}
 
 type fakeAuth struct{ id Identity }
 
@@ -221,5 +226,32 @@ func TestNormalizeEmail(t *testing.T) {
 		if got := NormalizeEmail(in); got != want {
 			t.Errorf("%q: got %q want %q", in, got, want)
 		}
+	}
+}
+
+func TestHomeShowsRealCountsAndWhatNeedsAttention(t *testing.T) {
+	r := chi.NewRouter()
+	Handler{Store: newFake(), Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DataStatus: "ASSUMED",
+		Health: []Health{{"Tìm đường", func(context.Context) error { return errors.New("down") }}, {"Cơ sở dữ liệu", func(context.Context) error { return nil }}}}.Mount(r)
+	w := do(r, "GET", "/admin/", "sys", nil, nil)
+	body := w.Body.String()
+	for _, want := range []string{"1.030", "Tìm đường không phản hồi", "620", "chưa có địa chỉ", "giả định", "Ăn uống", "39%"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("home page lacks %q", want)
+		}
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d", w.Code)
+	}
+}
+
+func TestAttentionListsOnlyProblems(t *testing.T) {
+	done := Overview{Places: 5, Published: 5, WithPhoto: 5, WithDescription: 5, WithAddress: 5, WithCategory: 5, Foods: 1}
+	if got := attention(done, nil, "OFFICIAL"); len(got) != 0 {
+		t.Fatalf("nothing to do, got %+v", got)
+	}
+	got := attention(Overview{Places: 3, WithPhoto: 1, WithDescription: 3, WithAddress: 3, WithCategory: 3, Draft: 2}, []string{"Tìm đường"}, "ASSUMED")
+	if len(got) < 4 || !got[0].Bad || got[2].Count != 2 || got[3].Count != 2 {
+		t.Fatalf("%+v", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,17 @@ type Handler struct {
 	Auth           Authenticator
 	BootstrapEmail string
 	SecureCookies  bool // https deployments; false only for http://localhost development
+	Health         []Health
+	DataStatus     string // ROUTING_DATA_STATUS (ADR-027)
 	Log            *slog.Logger
 }
 
 type ctxKey struct{}
+
+type bar struct {
+	Label string
+	Value int
+}
 
 // actionNames shows audit actions in Vietnamese; unknown codes are shown as they are.
 var actionNames = map[string]string{
@@ -57,6 +65,26 @@ var pages = func() map[string]*template.Template {
 				return strings.ToUpper(string(c))
 			}
 			return "?"
+		},
+		"list": func(kv ...any) []bar { // "Label", value, "Label", value ... -> rows of a bar list
+			var out []bar
+			for i := 0; i+1 < len(kv); i += 2 {
+				out = append(out, bar{kv[i].(string), kv[i+1].(int)})
+			}
+			return out
+		},
+		"pct": func(part, whole int) int {
+			if whole == 0 {
+				return 0
+			}
+			return part * 100 / whole
+		},
+		"num": func(n int) string { // 1030 -> 1.030 (Vietnamese grouping)
+			s := strconv.Itoa(n)
+			for i := len(s) - 3; i > 0; i -= 3 {
+				s = s[:i] + "." + s[i:]
+			}
+			return s
 		},
 		"action": func(a string) string {
 			if v, ok := actionNames[a]; ok {
@@ -277,12 +305,35 @@ func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) home(w http.ResponseWriter, r *http.Request) {
-	recent, err := h.Store.AuditLog(r.Context(), 6)
+	o, err := h.Store.Overview(r.Context())
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, http.StatusOK, "home", map[string]any{"Recent": recent})
+	recent, err := h.Store.AuditLog(r.Context(), 5)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	type state struct {
+		Name string
+		OK   bool
+	}
+	var health []state
+	var down []string
+	for _, c := range h.Health {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		err := c.Ready(ctx)
+		cancel()
+		if err != nil {
+			h.Log.Warn("admin health check failed", "dependency", c.Name, "requestId", httpx.RequestID(r), "err", err)
+			down = append(down, c.Name)
+		}
+		health = append(health, state{c.Name, err == nil})
+	}
+	h.render(w, r, http.StatusOK, "home", map[string]any{
+		"O": o, "Recent": recent, "Health": health, "Official": h.DataStatus == "OFFICIAL", "Attention": attention(o, down, h.DataStatus),
+	})
 }
 
 func (h Handler) audit(w http.ResponseWriter, r *http.Request) {

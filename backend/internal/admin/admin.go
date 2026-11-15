@@ -52,6 +52,21 @@ type AuditEntry struct {
 	At                                               time.Time // filled when listing
 }
 
+// Overview is what the home page shows: real counts from the content tables, never estimates.
+type Overview struct {
+	Places, Published, Hidden, Draft                      int
+	WithPhoto, WithDescription, WithAddress, WithCategory int
+	Categories, Foods, Stories                            int
+	ByCategory                                            []CategoryCount
+	LastPlaceUpdate                                       *time.Time
+}
+
+// CategoryCount is the number of published places whose main category is Name.
+type CategoryCount struct {
+	Name  string
+	Count int
+}
+
 var (
 	// ErrNotAllowed: the person is not an operator (no role, suspended, or an unknown Google account for that email).
 	ErrNotAllowed = errors.New("not an operator")
@@ -75,6 +90,7 @@ type Store interface {
 	Revoke(ctx context.Context, actorID, userID, role, requestID string) error
 	Audit(ctx context.Context, e AuditEntry) error
 	AuditLog(ctx context.Context, limit int) ([]AuditEntry, error)
+	Overview(ctx context.Context) (Overview, error)
 	Ready(ctx context.Context) error
 }
 

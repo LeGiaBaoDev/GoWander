@@ -1,19 +1,57 @@
+{{define "title"}}Tổng quan · GoWander Admin{{end}}
 {{define "main"}}
 <header class="head">
-  <h1>Xin chào{{if .Me.Name}}, {{.Me.Name}}{{end}}</h1>
-  <p class="muted">Quản lý nội dung app GoWander hiển thị cho người dùng.</p>
+  <h1>Tổng quan</h1>
+  <p class="muted">Hệ thống có ổn không, và nội dung nào cần làm tiếp. Số liệu đếm thật từ database lúc mở trang.</p>
 </header>
-<section class="tiles" aria-label="Khu vực quản trị">
-  <div class="card tile"><span class="badge">{{template "icon" "pin"}}</span><h2>Địa điểm</h2><p>Thêm, sửa, ẩn địa điểm và loại địa điểm trên bản đồ.</p><em class="chip">Sắp có</em></div>
-  <div class="card tile"><span class="badge">{{template "icon" "bowl"}}</span><h2>Món ăn &amp; câu chuyện</h2><p>Món nên thử và câu chuyện địa phương trong cẩm nang.</p><em class="chip">Sắp có</em></div>
-  <div class="card tile"><span class="badge">{{template "icon" "book"}}</span><h2>Cẩm nang &amp; hành trình</h2><p>Cẩm nang vùng và gợi ý hành trình mẫu.</p><em class="chip">Sắp có</em></div>
-  <div class="card tile"><span class="badge accent">{{template "icon" "flag"}}</span><h2>Báo sai từ người dùng</h2><p>Duyệt báo sai và nội dung người dùng gửi.</p><em class="chip">Sắp có</em></div>
+
+<section class="status" aria-label="Trạng thái hệ thống">
+  {{range .Health}}<span class="pill {{if .OK}}ok{{else}}bad{{end}}"><span class="led" aria-hidden="true"></span>{{.Name}}: {{if .OK}}hoạt động{{else}}không phản hồi{{end}}</span>{{end}}
+  <span class="pill {{if .Official}}ok{{else}}warn{{end}}"><span class="led" aria-hidden="true"></span>Dữ liệu xe buýt: {{if .Official}}chính thức{{else}}giả định{{end}}</span>
 </section>
-<section class="card">
-  <div class="row"><h2>Hoạt động gần đây</h2><a href="/admin/audit">Xem tất cả</a></div>
-  <ul class="feed">
-  {{range .Recent}}<li><span class="dot" aria-hidden="true"></span><span><strong>{{action .Action}}</strong> · {{.ActorName}}</span><time>{{at .At}}</time></li>
-  {{else}}<li class="muted">Chưa có hoạt động.</li>{{end}}
-  </ul>
+
+<section class="kpis" aria-label="Nội dung đang có">
+  <div class="card kpi"><span class="label">Địa điểm đang hiển thị</span><strong>{{num .O.Published}}</strong><span class="muted">trên {{num .O.Places}} địa điểm{{if .O.Hidden}} · {{num .O.Hidden}} đang ẩn{{end}}</span></div>
+  <div class="card kpi"><span class="label">Loại địa điểm</span><strong>{{num .O.Categories}}</strong><span class="muted">bộ lọc trên bản đồ</span></div>
+  <div class="card kpi"><span class="label">Món ăn</span><strong>{{num .O.Foods}}</strong><span class="muted">trên server</span></div>
+  <div class="card kpi"><span class="label">Câu chuyện</span><strong>{{num .O.Stories}}</strong><span class="muted">trên server</span></div>
 </section>
+
+<div class="cols">
+  <section class="card">
+    <h2>Cần chú ý</h2>
+    <ul class="todo">
+    {{range .Attention}}<li class="{{if .Bad}}bad{{end}}">{{if .Count}}<strong>{{num .Count}}</strong> {{end}}{{.Text}}</li>
+    {{else}}<li class="done">Không có việc gì cần làm.</li>{{end}}
+    </ul>
+  </section>
+  <section class="card">
+    <h2>Độ đầy đủ của địa điểm</h2>
+    <p class="muted small">Thông tin người dùng thấy khi mở một địa điểm.</p>
+    {{$n := .O.Places}}
+    {{range $row := list "Có loại" .O.WithCategory "Có địa chỉ" .O.WithAddress "Có mô tả ngắn" .O.WithDescription "Có ảnh" .O.WithPhoto}}
+    <div class="bar"><span>{{$row.Label}}</span><span class="muted">{{num $row.Value}}/{{num $n}} · {{pct $row.Value $n}}%</span>
+      <progress max="{{$n}}" value="{{$row.Value}}" aria-label="{{$row.Label}}: {{pct $row.Value $n}}%"></progress></div>
+    {{end}}
+    {{with .O.LastPlaceUpdate}}<p class="muted small">Dữ liệu địa điểm cập nhật lần cuối: {{at .}}</p>{{end}}
+  </section>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Địa điểm đang hiển thị theo loại</h2>
+    <p class="muted small">Loại ít địa điểm là chỗ bản đồ còn mỏng.</p>
+    {{with .O.ByCategory}}{{$max := (index . 0).Count}}
+    {{range .}}<div class="bar"><span>{{.Name}}</span><span class="muted">{{num .Count}}</span>
+      <progress class="cat" max="{{$max}}" value="{{.Count}}" aria-label="{{.Name}}: {{.Count}}"></progress></div>
+    {{end}}{{else}}<p class="muted">Chưa có loại địa điểm.</p>{{end}}
+  </section>
+  <section class="card">
+    <div class="row"><h2>Hoạt động gần đây</h2><a href="/admin/audit">Xem nhật ký</a></div>
+    <ul class="feed">
+    {{range .Recent}}<li><span class="dot" aria-hidden="true"></span><span><strong>{{action .Action}}</strong> · {{.ActorName}}</span><time>{{at .At}}</time></li>
+    {{else}}<li class="muted">Chưa có hoạt động.</li>{{end}}
+    </ul>
+  </section>
+</div>
 {{end}}

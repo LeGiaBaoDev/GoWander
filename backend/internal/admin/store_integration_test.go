@@ -141,6 +141,13 @@ func TestStore(t *testing.T) {
 		}
 	})
 
+	t.Run("the overview reads content counts as the admin role", func(t *testing.T) {
+		o, err := s.Overview(ctx)
+		if err != nil || o.Places < o.Published || o.WithPhoto > o.Places {
+			t.Fatalf("%+v %v", o, err)
+		}
+	})
+
 	t.Run("audit log records the changes and the admin role cannot change it", func(t *testing.T) {
 		entries, err := s.AuditLog(ctx, 50)
 		if err != nil {
