@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/admin"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/geocode"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
@@ -44,9 +46,20 @@ func run(log *slog.Logger) error {
 	}
 	defer pool.Close()
 
+	// Admin pages (M07, ADR-037): their own pool with the role gowander_admin; the public API keeps the read-only pool.
+	var adminStore admin.Store
+	if cfg.AdminEnabled() {
+		adminPool, err := database.NewPool(context.Background(), cfg.AdminDatabaseURL)
+		if err != nil {
+			return err
+		}
+		defer adminPool.Close()
+		adminStore = &admin.PG{Pool: adminPool}
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}),
+		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      max(cfg.OTPTimeout, streetImageTimeout) + 5*time.Second, // the slowest upstream wait + margin (review 15-11-2026)
@@ -81,7 +94,7 @@ func run(log *slog.Logger) error {
 }
 
 // newHandler wires every route; integration tests use it with a real OTP.
-func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store) http.Handler {
+func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store) http.Handler {
 	mux := httpx.NewRouter(log)
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -107,6 +120,11 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	})
 	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
+	adminHandler := admin.Handler{Store: adminStore, BootstrapEmail: cfg.AdminBootstrapEmail, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log}
+	if cfg.GoogleLogin() {
+		adminHandler.Auth = admin.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.AdminBaseURL+"/admin/auth/callback")
+	}
+	adminHandler.Mount(mux)
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
 	streetview.Handler{
 		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, streetImageTimeout), 24*time.Hour, 5000),

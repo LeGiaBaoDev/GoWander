@@ -22,9 +22,23 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com"}
+	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090"}
 	if c != want {
 		t.Fatalf("got %+v, want %+v", c, want)
+	}
+	if c.AdminEnabled() || c.GoogleLogin() {
+		t.Fatal("admin must be off without its settings")
+	}
+}
+
+func TestLoadAdmin(t *testing.T) {
+	c, err := Load(only("ADMIN_DATABASE_URL", "postgres://gowander_admin:secret@127.0.0.1/gowander", "ADMIN_BASE_URL", "https://admin.example.vn/",
+		"GOOGLE_CLIENT_ID", "id", "GOOGLE_CLIENT_SECRET", "s", "ADMIN_BOOTSTRAP_EMAIL", "  Owner@Example.VN "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.AdminEnabled() || !c.GoogleLogin() || c.AdminBaseURL != "https://admin.example.vn" || c.AdminBootstrapEmail != "owner@example.vn" {
+		t.Fatalf("got %+v", c)
 	}
 }
 
@@ -51,6 +65,10 @@ func TestLoadInvalid(t *testing.T) {
 		"PHOTON_URL without scheme": only("PHOTON_URL", "127.0.0.1:2322"),
 		"MAPILLARY_URL plain http":  only("MAPILLARY_URL", "http://graph.mapillary.com"),
 		"DATABASE_URL not postgres": only("DATABASE_URL", "mysql://root:secret@db/gowander"),
+		"ADMIN_DATABASE_URL not pg": only("ADMIN_DATABASE_URL", "mysql://admin:secret@db/gowander"),
+		"ADMIN_BASE_URL plain http": only("ADMIN_BASE_URL", "http://admin.example.vn"),
+		"ADMIN_BASE_URL with path":  only("ADMIN_BASE_URL", "https://example.vn/admin"),
+		"Google id without secret":  only("GOOGLE_CLIENT_ID", "id"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(getenv)

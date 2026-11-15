@@ -32,6 +32,7 @@ infrastructure/postgres/db.sh seed data/discover/seed.sql
 | `postgres` | Chỉ `init/01-roles.sh`, chạy **một lần** khi volume trống | superuser của image |
 | `gowander_owner` | `cmd/migrate`, nạp seed | sở hữu schema `gowander` |
 | `gowander_app` | API (`DATABASE_URL`) | `SELECT` trên đúng các bảng được `GRANT` trong migration; `statement_timeout` 5 s |
+| `gowander_admin` | Trang Admin (`ADMIN_DATABASE_URL`, ADR-037) | ghi bảng nội dung và bảng admin theo `GRANT` trong migration; `statement_timeout` 10 s. Volume cũ: `./db.sh admin-role` một lần |
 
 - Không có `ALTER DEFAULT PRIVILEGES`: bảng mới **phải** có `GRANT SELECT … TO gowander_app` trong migration nếu API công khai cần đọc. Test `TestMigrationsUpDownUp` kiểm tra danh sách quyền.
 - Thời gian truy vấn của API được giới hạn bởi `statement_timeout` của role `gowander_app`; đổi role thì phải đặt lại giới hạn này.

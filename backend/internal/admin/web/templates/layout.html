@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}GoWander Admin{{end}}</title>
+<link rel="stylesheet" href="/admin/static/admin.css">
+<script src="/admin/static/htmx.min.js" defer></script>
+</head>
+<body{{if .Me.CSRF}} hx-headers='{"X-CSRF-Token": "{{.Me.CSRF}}"}'{{end}}>
+<header class="top">
+  <a class="brand" href="/admin/">GoWander Admin</a>
+  {{if .Me.UserID}}
+  <nav>
+    <a href="/admin/">Tổng quan</a>
+    {{if has .Me "SYSTEM_ADMIN"}}<a href="/admin/users">Người vận hành</a><a href="/admin/audit">Nhật ký</a>{{end}}
+  </nav>
+  <form method="post" action="/admin/logout" class="me">
+    <span>{{if .Me.Name}}{{.Me.Name}}{{else}}{{.Me.Email}}{{end}}</span>
+    <input type="hidden" name="csrf" value="{{.Me.CSRF}}">
+    <button type="submit" class="link">Đăng xuất</button>
+  </form>
+  {{end}}
+</header>
+<main>{{block "main" .}}{{end}}</main>
+</body>
+</html>

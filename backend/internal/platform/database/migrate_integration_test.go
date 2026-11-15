@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -18,6 +19,15 @@ import (
 )
 
 var discoverTables = []string{"food_items", "historical_stories", "place_categories", "place_category_links", "place_foods", "place_media", "places"}
+
+// adminTables (0002, ADR-037): never readable by the public API role.
+var adminTables = []string{"admin_audit_logs", "admin_sessions", "roles", "user_auth_identities", "user_contacts", "user_roles", "users"}
+
+func allTables() []string {
+	all := append(append([]string{}, discoverTables...), adminTables...)
+	sort.Strings(all)
+	return all
+}
 
 func testURL(t *testing.T, env string) string {
 	t.Helper()
@@ -62,7 +72,7 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err := m.Up(); err != nil {
 		t.Fatalf("fresh up: %v", err)
 	}
-	if got := tables(t, conn); strings.Join(got, ",") != strings.Join(discoverTables, ",") {
+	if got := tables(t, conn); strings.Join(got, ",") != strings.Join(allTables(), ",") {
 		t.Fatalf("tables after up: %v", got)
 	}
 	// Least privilege: the runtime role can SELECT exactly the Discover tables and nothing else.
@@ -81,6 +91,15 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	}
 	if strings.Join(grants, ",") != strings.Join(want, ",") {
 		t.Fatalf("gowander_app grants:\n got %v\nwant %v", grants, want)
+	}
+	// The Admin role (ADR-037): no UPDATE or DELETE on the audit log, nothing at all on tables it does not need.
+	rows, err = conn.Query(ctx, `SELECT table_name || ':' || privilege_type FROM information_schema.role_table_grants
+		WHERE grantee = 'gowander_admin' AND table_name = 'admin_audit_logs' ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if audit, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(audit, ",") != "admin_audit_logs:INSERT,admin_audit_logs:SELECT" {
+		t.Fatalf("gowander_admin on admin_audit_logs: %v %v", audit, err)
 	}
 	if v, dirty, err := m.Version(); err != nil || dirty || v == 0 {
 		t.Fatalf("version %d dirty %v err %v", v, dirty, err)

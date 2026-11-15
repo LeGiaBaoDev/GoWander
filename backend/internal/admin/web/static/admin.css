@@ -1,0 +1,25 @@
+:root { --bg: #fff; --ink: #123c48; --muted: #52717a; --line: #e5f2f1; --primary: #047a7d; --soft: #ddf7f0; --alert: #c8234f; color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: #f6fafa; }
+.top { display: flex; align-items: center; gap: 24px; padding: 12px 24px; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { font-weight: 700; color: var(--primary); text-decoration: none; }
+nav { display: flex; gap: 16px; flex: 1; } nav a { color: var(--ink); text-decoration: none; padding: 12px 0; }
+.me { display: flex; align-items: center; gap: 8px; margin: 0; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 24px; margin: 0 0 12px; } h2 { font-size: 17px; margin: 0 0 4px; }
+.muted { color: var(--muted); }
+.card { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.narrow { max-width: 480px; margin: 48px auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+.tile { text-decoration: none; color: inherit; }
+.button, button { display: inline-block; min-height: 44px; padding: 10px 18px; border: 0; border-radius: 999px; background: var(--primary); color: #fff; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+button.link { background: none; color: var(--primary); padding: 4px 8px; min-height: 32px; }
+.inline { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 8px; }
+label { display: grid; gap: 4px; font-weight: 600; }
+input, select { min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+table { width: 100%; border-collapse: collapse; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--primary); font-size: 13px; font-weight: 600; }
+.chip { display: inline-flex; align-items: center; margin: 2px 4px 2px 0; }
+.alert { color: var(--alert); font-weight: 600; } .ok { color: var(--primary); font-weight: 600; }
+code { font-size: 13px; }

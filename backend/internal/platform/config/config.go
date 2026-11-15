@@ -24,7 +24,19 @@ type Config struct {
 	// feature off (STREET_IMAGERY_UNAVAILABLE) and the app shows a 3D map instead. A secret: never log it.
 	MapillaryToken string
 	MapillaryURL   string // MAPILLARY_URL, default https://graph.mapillary.com
+
+	// Admin pages (M07, ADR-037). Optional: without ADMIN_DATABASE_URL the /admin pages answer 503 and the public API
+	// works as before. ADMIN_DATABASE_URL uses the role gowander_admin and holds a password: never log it.
+	AdminDatabaseURL    string
+	AdminBaseURL        string // ADMIN_BASE_URL, default http://localhost:8090: builds the OAuth redirect URI
+	GoogleClientID      string // GOOGLE_CLIENT_ID; with GOOGLE_CLIENT_SECRET turns Google sign-in on
+	GoogleClientSecret  string // a secret: never log it
+	AdminBootstrapEmail string // ADMIN_BOOTSTRAP_EMAIL: first SYSTEM_ADMIN while nobody has a role. Private data.
 }
+
+// AdminEnabled: the Admin pages can open the database. GoogleLogin: they can also sign people in.
+func (c Config) AdminEnabled() bool { return c.AdminDatabaseURL != "" }
+func (c Config) GoogleLogin() bool  { return c.GoogleClientID != "" && c.GoogleClientSecret != "" }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
 func Load(getenv func(string) string) (Config, error) {
@@ -42,6 +54,12 @@ func Load(getenv func(string) string) (Config, error) {
 		PhotonURL:      or("PHOTON_URL", "http://127.0.0.1:2322"),
 		MapillaryToken: getenv("MAPILLARY_TOKEN"),
 		MapillaryURL:   or("MAPILLARY_URL", "https://graph.mapillary.com"),
+
+		AdminDatabaseURL:    getenv("ADMIN_DATABASE_URL"),
+		AdminBaseURL:        strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
+		GoogleClientID:      getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:  getenv("GOOGLE_CLIENT_SECRET"),
+		AdminBootstrapEmail: strings.ToLower(strings.TrimSpace(getenv("ADMIN_BOOTSTRAP_EMAIL"))),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -65,6 +83,17 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
 		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))
+	}
+	if c.AdminDatabaseURL != "" && !strings.HasPrefix(c.AdminDatabaseURL, "postgres://") && !strings.HasPrefix(c.AdminDatabaseURL, "postgresql://") {
+		errs = append(errs, errors.New("ADMIN_DATABASE_URL must be a postgres:// URL"))
+	}
+	// Session cookies are Secure: the browser only sends them over https, or to localhost during development.
+	if u, err := url.Parse(c.AdminBaseURL); err != nil || u.Host == "" || u.User != nil || u.Path != "" ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) {
+		errs = append(errs, errors.New("ADMIN_BASE_URL must be https://host (http only for localhost), without a path"))
+	}
+	if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
+		errs = append(errs, errors.New("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together"))
 	}
 	return c, errors.Join(errs...)
 }
