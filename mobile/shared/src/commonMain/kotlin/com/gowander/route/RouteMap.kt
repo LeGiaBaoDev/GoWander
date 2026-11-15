@@ -64,6 +64,7 @@ import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.LocationIndicatorLayer
 import org.maplibre.compose.location.BearingUpdate
@@ -85,6 +86,8 @@ import org.maplibre.spatialk.geojson.Position
 // name:vi ("Biển Đông", "Trung Quốc"); the stock style prints English names. Owner, 15-11-2026.
 // shortcut: a frozen copy of the style, re-download and re-patch it if OpenFreeMap retires its sprite or font paths.
 private val STYLE_URL = Res.getUri("files/map_style.json")
+
+private val MASK_COLOR = Color(158, 189, 255) // the water colour of map_style.json, so the coast stays seamless
 
 private val STREET_LEVEL = CameraConstraints { maxZoom = 21.0; maxPitch = 65.0 }
 
@@ -122,6 +125,9 @@ fun RouteMap(
     streetLevel: Boolean = false, // preview top half: allow eye-level zoom and tilt beyond MapLibre's defaults (20, 60°)
     followZoom: Double = 17.5, // UX-2 split navigation: street view on top follows closer than the 2D map below
     followPitch: Double? = null, // null: from the user's 2D / 3D choice
+    credit: String = Strings.MAP_CREDIT, // the licence line; a screen that also shows street photos adds their credit
+    style: BaseStyle = BaseStyle.Uri(STYLE_URL), // the country map passes the same style without its text labels
+    maskJson: String? = null, // GeoJSON polygon painted over the basemap in the sea colour: hides what is outside one country
     markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
     val viewState = LocalMapView.current
@@ -134,9 +140,10 @@ fun RouteMap(
     val highlightJson = remember(highlight) { pointGeoJson(highlight?.let { Endpoint(it.first, it.second, "") }) }
 
     val mapState = rememberMapState(
-        baseStyle = BaseStyle.Uri(STYLE_URL),
+        baseStyle = style,
         initialCameraPosition = CameraPosition(center = Position(latitude = 10.785, longitude = 106.715), zoom = 12.0),
     ) {
+        if (maskJson != null) FillLayer(id = "mask", source = rememberGeoJsonSource(GeoJsonData.JsonString(maskJson)), color = const(MASK_COLOR))
         // GeoJsonSource is immutable in maplibre-compose 0.20.0: key() recreates source + layer when the data changes.
         key(walkJson) { LineLayer(id = "route-walk", source = rememberGeoJsonSource(GeoJsonData.JsonString(walkJson)), color = const(Palette.Ink), width = const(4.dp), dasharray = const(listOf(1, 1.5))) }
         key(transitJson) { LineLayer(id = "route-transit", source = rememberGeoJsonSource(GeoJsonData.JsonString(transitJson)), color = const(Palette.Metro), width = const(6.dp)) }
@@ -192,7 +199,7 @@ fun RouteMap(
         )
         // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
         Text(
-            Strings.MAP_CREDIT,
+            credit,
             Modifier.align(Alignment.BottomEnd).padding(insets).padding(end = 8.dp, bottom = 4.dp)
                 .clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
             size = 10.sp, color = Palette.Muted,

@@ -73,6 +73,25 @@ import com.gowander.ui.ListRow
 import com.gowander.ui.MockPhoto
 import com.gowander.ui.Note
 import com.gowander.ui.Palette
+import com.gowander.ui.PinCard
+import com.gowander.resources.Res
+import com.gowander.resources.region_da_lat
+import com.gowander.resources.region_ha_long
+import com.gowander.resources.region_ha_noi
+import com.gowander.resources.region_mien_trung
+import com.gowander.resources.region_phu_quoc
+import com.gowander.resources.region_tp_hcm
+import org.jetbrains.compose.resources.painterResource
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.runtime.produceState
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.maplibre.compose.style.BaseStyle
 import com.gowander.ui.Stars
 import com.gowander.ui.Strings
 import com.gowander.ui.Text
@@ -80,9 +99,14 @@ import com.gowander.ui.kitShadow
 import kotlinx.coroutines.launch
 
 // Whole country in view, islands included (plan §9.2).
-private val VIETNAM = CameraUpdate(center = Position(latitude = 15.9, longitude = 109.5), zoom = 4.05, pitch = 0.0, bearing = 0.0)
-private val HOANG_SA = Position(latitude = 16.5, longitude = 112.0)
-private val TRUONG_SA = Position(latitude = 10.0, longitude = 114.2)
+private val VIETNAM = CameraUpdate(center = Position(latitude = 15.9, longitude = 108.2), zoom = 4.05, pitch = 0.0, bearing = 0.0)
+private val HOANG_SA = Position(latitude = 16.3, longitude = 112.0)
+private val TRUONG_SA = Position(latitude = 9.0, longitude = 114.5)
+private val EAST_SEA = Position(latitude = 12.8, longitude = 115.8)
+private val REGION_PHOTOS = mapOf(
+    "ha-noi" to Res.drawable.region_ha_noi, "ha-long" to Res.drawable.region_ha_long, "mien-trung" to Res.drawable.region_mien_trung,
+    "da-lat" to Res.drawable.region_da_lat, "tp-hcm" to Res.drawable.region_tp_hcm, "phu-quoc" to Res.drawable.region_phu_quoc,
+)
 
 /**
  * UX-2 screen 13: the real map (OpenStreetMap data) showing all of Vietnam, one card per region pinned to its real
@@ -92,11 +116,19 @@ private val TRUONG_SA = Position(latitude = 10.0, longitude = 114.2)
 @Composable
 fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
     var asList by rememberSaveable { mutableStateOf(false) }
+    var credits by remember { mutableStateOf(false) }
+    // Only this country's land is drawn (owner, 15-11-2026); other countries get their own mask file in a later phase.
+    // The basemap loses its text labels here: the mask would cut them at the coast, and the cards name the regions.
+    val countryMap by produceState<Pair<BaseStyle, String>?>(null) {
+        val style = Json.parseToJsonElement(Res.readBytes("files/map_style.json").decodeToString()).jsonObject
+        val layers = JsonArray(style.getValue("layers").jsonArray.filter { it.jsonObject["type"]?.jsonPrimitive?.content != "symbol" })
+        value = BaseStyle.Json(JsonObject(style + ("layers" to layers)).toString()) to Res.readBytes("files/vn_mask.json").decodeToString()
+    }
     Box(modifier.fillMaxWidth().background(Palette.Sky)) {
         if (asList) Column(Modifier.fillMaxSize().background(Palette.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
-            MOCK_REGIONS.forEach { r -> ListRow(r.name, r.area, lead = { MockPhoto(r.id, Modifier.size(48.dp), KitIcons.landmark, radius = 10.dp) }, onClick = { onRegion(r.id) }) }
-        } else RouteMap(null, null, null, null, Modifier.fillMaxSize().semantics { contentDescription = Strings.VIETNAM_MAP }, focus = VIETNAM) {
-            listOf(HOANG_SA to Strings.ISLANDS_NORTH, TRUONG_SA to Strings.ISLANDS_SOUTH).forEach { (at, label) ->
+            MOCK_REGIONS.forEach { r -> ListRow(r.name, r.area, lead = { Image(painterResource(REGION_PHOTOS.getValue(r.id)), contentDescription = null, Modifier.size(64.dp, 48.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop) }, onClick = { onRegion(r.id) }) }
+        } else countryMap?.let { (style, mask) -> RouteMap(null, null, null, null, Modifier.fillMaxSize().semantics { contentDescription = Strings.VIETNAM_MAP }, focus = VIETNAM, style = style, maskJson = mask) {
+            listOf(HOANG_SA to Strings.ISLANDS_NORTH, TRUONG_SA to Strings.ISLANDS_SOUTH, EAST_SEA to Strings.EAST_SEA).forEach { (at, label) ->
                 Text(label, Modifier.placedAt(at).clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 4.dp, vertical = 1.dp), size = 10.sp, color = Palette.Body)
             }
             MOCK_REGIONS.forEach { r ->
@@ -108,7 +140,7 @@ fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
                 }
                 RegionPin(r, Modifier.placedAt(at, align)) { onRegion(r.id) }
             }
-        }
+        } }
         Row(
             Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 16.dp).sizeIn(minHeight = 48.dp)
                 .kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg)
@@ -118,6 +150,16 @@ fun RegionsMap(modifier: Modifier, onRegion: (String) -> Unit) {
             Icon(if (asList) KitIcons.map else ExtraIcons.list, 18.dp, Palette.Primary)
             Spacer(Modifier.width(8.dp))
             Text(if (asList) Strings.TAB_MAP else Strings.LIST, size = 13.sp, weight = FontWeight.SemiBold)
+        }
+        // CC BY / BY-SA photos: author and licence one tap away, on the same screen.
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 4.dp)) {
+            if (credits) Column(Modifier.kitShadow(RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(Palette.Bg).padding(10.dp)) {
+                MOCK_REGIONS.forEach { r -> Text("${r.name}: ${r.photoCredit}", size = 11.sp, color = Palette.Body) }
+                Text("Wikimedia Commons", size = 11.sp, color = Palette.Muted)
+            }
+            Box(Modifier.sizeIn(minHeight = 48.dp).clickable(role = Role.Button) { credits = !credits }, contentAlignment = Alignment.Center) {
+                Text(Strings.PHOTO_SOURCES, Modifier.clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp), size = 10.sp, color = Palette.Muted)
+            }
         }
     }
 }
@@ -136,26 +178,23 @@ private fun RegionPin(r: Region, modifier: Modifier, onClick: () -> Unit) {
         CardSide.Right -> Row(modifier, verticalAlignment = Alignment.CenterVertically) { dot(); stemH(); card() }
         CardSide.Above -> Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { card(); stemV(); dot() }
         CardSide.Below -> Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { dot(); stemV(); card() }
-        CardSide.AboveRight -> Column(modifier) { Box(Modifier.padding(start = 10.dp)) { card() }; Box(Modifier.padding(start = 5.dp)) { stemV() }; dot() }
+        CardSide.AboveRight -> Column(modifier) { card(); Box(Modifier.padding(start = 5.dp)) { stemV() }; dot() }
         CardSide.BelowRight -> Column(modifier) { dot(); Box(Modifier.padding(start = 5.dp)) { stemV() }; Box(Modifier.padding(start = 10.dp)) { card() } }
     }
 }
 
 @Composable
 private fun RegionCard(r: Region, modifier: Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    Row(
+    val shape = RoundedCornerShape(12.dp)
+    PinCard(
+        painterResource(REGION_PHOTOS.getValue(r.id)), KitIcons.landmark,
         modifier.kitShadow(shape).clip(shape).background(Palette.Bg).border(if (r.routing) 2.dp else 1.dp, if (r.routing) Palette.Primary else Palette.Line, shape)
             .semantics(mergeDescendants = true) { contentDescription = "${r.name}, ${r.area}, ${Strings.OPEN_GUIDE}" }
-            .clickable(role = Role.Button, onClick = onClick).padding(start = 6.dp, top = 6.dp, bottom = 6.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(role = Role.Button, onClick = onClick),
+        width = 120.dp, photoHeight = 40.dp, iconSize = 16.dp,
     ) {
-        MockPhoto(r.id, Modifier.size(40.dp), KitIcons.landmark, radius = 10.dp, iconSize = 18.dp)
-        Spacer(Modifier.width(8.dp))
-        Column {
-            Text(r.name, size = 14.sp, weight = if (r.routing) FontWeight.ExtraBold else FontWeight.Bold, maxLines = 1)
-            Text(r.area, size = if (r.routing) 10.sp else 11.sp, color = if (r.routing) Palette.Primary else Palette.Muted, weight = if (r.routing) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
-        }
+        Text(r.name, size = 12.sp, weight = if (r.routing) FontWeight.ExtraBold else FontWeight.Bold, maxLines = 2)
+        Text(r.area, size = 10.sp, color = if (r.routing) Palette.Primary else Palette.Muted, weight = if (r.routing) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
     }
 }
 

@@ -3,7 +3,12 @@ package com.gowander.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,7 +20,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -64,6 +71,22 @@ private val PHOTO_TINTS = listOf(Palette.Soft, Palette.Warn, Palette.Sky, Palett
 fun MockPhoto(seed: String, modifier: Modifier, icon: ImageVector = KitIcons.camera, radius: Dp = 14.dp, iconSize: Dp = 24.dp) =
     Box(modifier.clip(RoundedCornerShape(radius)).background(PHOTO_TINTS[abs(seed.hashCode()) % PHOTO_TINTS.size]), contentAlignment = Alignment.Center) {
         Icon(icon, iconSize, Palette.Muted)
+    }
+
+/**
+ * Body of a card pinned to a map (owner, 15-11-2026): a wide photo on top when there is one, below it the place-type
+ * icon (no tile) and the caller's text. The photo is decorative: the text says what the place is. The caller's
+ * [modifier] gives shape, border and click.
+ */
+@Composable
+fun PinCard(photo: Painter?, icon: ImageVector, modifier: Modifier, width: Dp, photoHeight: Dp, iconSize: Dp = 20.dp, text: @Composable ColumnScope.() -> Unit) =
+    Column(modifier.width(width)) {
+        if (photo != null) Image(photo, contentDescription = null, Modifier.fillMaxWidth().height(photoHeight), contentScale = ContentScale.Crop)
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, iconSize, Palette.Primary)
+            Spacer(Modifier.width(8.dp))
+            Column(content = text)
+        }
     }
 
 /** "★ 4,5" in the canvas amber; the number uses the Vietnamese decimal comma. */

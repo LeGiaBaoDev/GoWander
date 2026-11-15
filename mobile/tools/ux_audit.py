@@ -62,6 +62,11 @@ def audit(root, density, status_bar_px):
                 x1, y1, x2, y2 = max(x1, ax1), max(y1, ay1), min(x2, ax2), min(y2, ay2)
             a = parent.get(a)
         return x1, y1, x2, y2
+    def scrolls(n):
+        a = parent.get(n)
+        while a is not None and a.get("scrollable") != "true":
+            a = parent.get(a)
+        return a is not None
     clickables = [n for n in root.iter("node") if n.get("clickable") == "true" and n.get("enabled", "true") == "true"
                   and n.get("package", PACKAGE) == PACKAGE]  # only GoWander, not the launcher or system UI
     problems = []
@@ -78,7 +83,7 @@ def audit(root, density, status_bar_px):
             problems.append(("T2", f"[{x1},{y1}]", "no text or content description"))
         if y1 < status_bar_px:
             problems.append(("T4", label or "?", f"top {y1}px < status bar {status_bar_px}px"))
-        boxes.append((*visible(n), label))
+        boxes.append((*visible(n), label, scrolls(n)))
     if not clickables:
         problems.append(("T0", "?", "no clickable element of the app found (wrong package or screen?)"))  # never pass on nothing
     for i, a in enumerate(boxes):
@@ -87,7 +92,8 @@ def audit(root, density, status_bar_px):
             nested = (a[0] <= b[0] and a[1] <= b[1] and a[2] >= b[2] and a[3] >= b[3]) or (b[0] <= a[0] and b[1] <= a[1] and b[2] >= a[2] and b[3] >= a[3])
             ox = min(a[2], b[2]) - max(a[0], b[0])
             oy = min(a[3], b[3]) - max(a[1], b[1])
-            if ox > 2 and oy > 2 and not nested:
+            # a list row under a fixed control (the raised "Đi đâu?" circle) can be scrolled clear of it: not a T3 problem
+            if ox > 2 and oy > 2 and not nested and a[5] == b[5]:
                 problems.append(("T3", f"{a[4] or '?'} / {b[4] or '?'}", f"overlap {ox}x{oy}px"))
     return problems, len(clickables)
 
@@ -129,6 +135,10 @@ def self_test():
       <node clickable="true" text="Row" bounds="[0,1900][1080,2100]"/></node><node clickable="true" text="Go" bounds="[400,2050][600,2300]"/></node></hierarchy>"""
     p3, _ = audit(ET.fromstring(cut), 420, 0)
     assert not any(p[0] == "T3" for p in p3), p3
+    fab = """<hierarchy><node clickable="false" bounds="[0,0][1080,2400]"><node scrollable="true" clickable="false" bounds="[0,300][1080,2100]">
+      <node clickable="true" text="Row" bounds="[0,1900][1080,2100]"/></node><node clickable="true" text="Go" bounds="[400,2000][600,2300]"/></node></hierarchy>"""
+    p4, _ = audit(ET.fromstring(fab), 420, 0)
+    assert not any(p[0] == "T3" for p in p4), p4  # a scrolling row under a fixed button
     empty, _ = audit(ET.fromstring("<hierarchy><node clickable='false' bounds='[0,0][10,10]'/></hierarchy>"), 420, 60)
     assert [p[0] for p in empty] == ["T0"], empty
     print("self-test ok")

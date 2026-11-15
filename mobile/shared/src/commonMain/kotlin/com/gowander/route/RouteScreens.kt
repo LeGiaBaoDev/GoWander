@@ -18,6 +18,8 @@ import com.gowander.ui.MockPhoto
 import com.gowander.ui.Pill
 import com.gowander.ui.Stars
 import com.gowander.home.MAP_FILTERS
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import com.gowander.ui.PinCard
 import com.gowander.home.spreadOut
 import com.gowander.mock.mockRating
 import androidx.compose.foundation.horizontalScroll
@@ -126,6 +128,7 @@ fun MapHome(
     nearby: List<PlaceSummary>,
     // P3: places of the area on screen (south, west, north, east, category slugs); null = the load failed.
     loadPlaces: suspend (Double, Double, Double, Double, Set<String>?) -> List<PlaceSummary>?,
+    loadPhoto: suspend (Double, Double) -> StreetPhoto?, // card photo: the nearest street photo, until places have their own (ADR-035)
     onSearch: () -> Unit,
     onLocate: () -> Unit,
     onOpenPlace: (PlaceSummary) -> Unit,
@@ -154,13 +157,16 @@ fun MapHome(
         val slugs = MAP_FILTERS[filter].second
         if (inView?.first == filter) inView!!.second else (inView?.second ?: nearby).filter { slugs == null || it.category?.slug in slugs }
     }
+    var photosShown by remember { mutableStateOf(false) } // street photos need their licence line on this screen (ADR-033)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth
         val height = maxHeight
         val cards = remember(shown, camera, width, height) {
             val free = shown.filter { p ->
                 val at = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon)) ?: return@filter true
-                at.y > CARD_TOP_CLEAR && at.y < height - CARD_BOTTOM_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
+                // A card is centred on its place: a place near a side edge would have its card cut off.
+                at.x > CARD_HALF_WIDTH + 8.dp && at.x < width - CARD_HALF_WIDTH - 8.dp &&
+                    at.y > CARD_TOP_CLEAR && at.y < height - CARD_BOTTOM_CLEAR && !(at.y < CARD_LAYERS_CLEAR && at.x + CARD_HALF_WIDTH > width - 72.dp)
             }
             spreadOut(free, minNorthM = CARD_SPACING_M, max = MAX_CARDS, minEastM = CARD_SPACING_EAST_M)
         }
@@ -168,12 +174,13 @@ fun MapHome(
             // No route here (design screen 1): a found route belongs to the route screens. The origin only centres the camera.
             null, state.origin, null, location, Modifier.fillMaxSize(), viewSwitch = true,
             insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
+            credit = if (photosShown) Strings.MAP_CREDIT + "\n" + Strings.STREET_PHOTO_CREDIT else Strings.MAP_CREDIT,
         ) {
             // Other places: small dots, spread out and decorative (too dense to tap safely); "Danh sách" lists them all.
             spreadOut(shown.filter { it !in cards }, minNorthM = DOT_SPACING_M, max = MAX_DOTS).forEach { p ->
                 Box(Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon)).size(12.dp).clearAndSetSemantics { }.kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg).padding(2.dp).clip(CircleShape).background(Palette.Primary))
             }
-            cards.forEach { p -> PlaceCard(p, Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon), Alignment.BottomCenter)) { onOpenPlace(p) } }
+            cards.forEach { p -> PlaceCard(p, Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon), Alignment.BottomCenter), loadPhoto, { photosShown = true }) { onOpenPlace(p) } }
         }
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SearchBar(Strings.FIND_PLACE, Modifier.fillMaxWidth(), floating = true, onClick = onSearch)
@@ -202,38 +209,38 @@ fun MapHome(
     }
 }
 
-private const val CARD_SPACING_M = 380.0 // ~card height + stem at the home zoom (15)
-private const val CARD_SPACING_EAST_M = 1100.0 // ~card width
+private const val CARD_SPACING_M = 460.0 // ~card height with its photo + stem at the home zoom (15)
+private const val CARD_SPACING_EAST_M = 560.0 // ~card width
 private const val MAX_CARDS = 4
 private val CARD_BOTTOM_CLEAR = 176.dp // a place lower than this would put its card on "Danh sách", the credit line or the tab bar
-private val CARD_TOP_CLEAR = 300.dp // status bar + search + filters + card and stem
-private val CARD_LAYERS_CLEAR = 360.dp // ... plus the map-type button on the right
-private val CARD_HALF_WIDTH = 134.dp
+private val CARD_PHOTO_HEIGHT = 84.dp
+private val CARD_TOP_CLEAR = 300.dp + CARD_PHOTO_HEIGHT // status bar + search + filters + card (with photo) and stem
+private val CARD_LAYERS_CLEAR = 360.dp + CARD_PHOTO_HEIGHT // ... plus the map-type button on the right
+private val CARD_HALF_WIDTH = 104.dp
 private const val DOT_SPACING_M = 120.0
 private const val MAX_DOTS = 12
 
 /** Floating card + stem + red dot; the dot sits on the place. One spoken label for the whole card. */
 @Composable
-private fun PlaceCard(p: PlaceSummary, modifier: Modifier, onClick: () -> Unit) {
+private fun PlaceCard(p: PlaceSummary, modifier: Modifier, loadPhoto: suspend (Double, Double) -> StreetPhoto?, onPhoto: () -> Unit, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
+    var photo by remember(p.id) { mutableStateOf<StreetPhoto?>(null) }
+    LaunchedEffect(p.id) { photo = loadPhoto(p.lat, p.lon)?.also { onPhoto() } }
     val rating = mockRating(p.id)
     val meta = listOfNotNull(p.category?.name, null, p.distanceM?.let { distanceLabel(it) })
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            Modifier.widthIn(max = 268.dp).kitShadow(shape).clip(shape).background(Palette.Bg.copy(alpha = 0.96f)).border(1.dp, Palette.Line, shape)
+        PinCard(
+            photo?.let { remember(it) { BitmapPainter(it.image) } }, categoryIcon(p.category?.slug),
+            Modifier.kitShadow(shape).clip(shape).background(Palette.Bg.copy(alpha = 0.96f)).border(1.dp, Palette.Line, shape)
                 .semantics(mergeDescendants = true) { contentDescription = "${p.name}, ${meta.joinToString(", ")}, ${Strings.SAMPLE_STARS} $rating" }
-                .clickable(role = Role.Button, onClick = onClick).padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .clickable(role = Role.Button, onClick = onClick),
+            width = CARD_HALF_WIDTH * 2, photoHeight = CARD_PHOTO_HEIGHT,
         ) {
-            MockPhoto(p.id, Modifier.size(48.dp), categoryIcon(p.category?.slug), radius = 10.dp, iconSize = 22.dp)
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(p.name, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    p.category?.name?.let { Text("$it · ", size = 12.sp, color = Palette.Muted, maxLines = 1) }
-                    Stars(rating)
-                    p.distanceM?.let { Text(" · ${distanceLabel(it)}", size = 12.sp, color = Palette.Muted, maxLines = 1) }
-                }
+            Text(p.name, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                p.category?.name?.let { Text("$it · ", size = 12.sp, color = Palette.Muted, maxLines = 1) }
+                Stars(rating)
+                p.distanceM?.let { Text(" · ${distanceLabel(it)}", size = 12.sp, color = Palette.Muted, maxLines = 1) }
             }
         }
         Box(Modifier.width(2.dp).height(28.dp).background(Palette.Primary))

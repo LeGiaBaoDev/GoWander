@@ -68,15 +68,16 @@ fun mockTrip(id: String) = MOCK_TRIPS.firstOrNull { it.id == id } ?: MOCK_TRIPS.
 enum class CardSide { Left, Right, Above, Below, AboveRight, BelowRight }
 
 /** A destination region at its real coordinates; the list of regions and their guides are still sample content. */
-data class Region(val id: String, val name: String, val area: String, val lat: Double, val lon: Double, val side: CardSide, val routing: Boolean = false)
+/** [photoCredit]: author and licence of the bundled photo `drawable/region_<id>.jpg` (Wikimedia Commons, docs/photo-credits.md). */
+data class Region(val id: String, val name: String, val area: String, val lat: Double, val lon: Double, val side: CardSide, val photoCredit: String, val routing: Boolean = false)
 
 val MOCK_REGIONS = listOf(
-    Region("ha-noi", "Hà Nội", "Miền Bắc", 21.028, 105.854, CardSide.Above),
-    Region("ha-long", "Hạ Long", "Quảng Ninh", 20.951, 107.080, CardSide.Right),
-    Region("mien-trung", "Huế · Đà Nẵng · Hội An", "Miền Trung", 16.054, 108.202, CardSide.Above),
-    Region("da-lat", "Đà Lạt", "Lâm Đồng", 11.940, 108.438, CardSide.AboveRight),
-    Region("tp-hcm", "TP.HCM", "Có tìm tuyến", 10.776, 106.701, CardSide.BelowRight, routing = true),
-    Region("phu-quoc", "Phú Quốc", "Kiên Giang", 10.227, 103.964, CardSide.Below),
+    Region("ha-noi", "Hà Nội", "Miền Bắc", 21.028, 105.854, CardSide.Left, "Bex Walton, CC BY 2.0"),
+    Region("ha-long", "Hạ Long", "Quảng Ninh", 20.951, 107.080, CardSide.AboveRight, "Steffen Schmitz, CC BY-SA 4.0"),
+    Region("mien-trung", "Huế · Đà Nẵng · Hội An", "Miền Trung", 16.054, 108.202, CardSide.AboveRight, "Steffen Schmitz, CC BY-SA 4.0"),
+    Region("da-lat", "Đà Lạt", "Lâm Đồng", 11.940, 108.438, CardSide.Right, "Diane Selwyn, phạm vi công cộng"),
+    Region("tp-hcm", "TP.HCM", "Có tìm tuyến", 10.776, 106.701, CardSide.Below, "Tran Van Ngoc, CC0", routing = true),
+    Region("phu-quoc", "Phú Quốc", "Kiên Giang", 10.227, 103.964, CardSide.Above, "Elmschrat, CC0"),
 )
 
 fun mockRegion(id: String) = MOCK_REGIONS.firstOrNull { it.id == id } ?: MOCK_REGIONS.first { it.routing }

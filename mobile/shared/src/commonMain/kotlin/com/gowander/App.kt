@@ -284,10 +284,11 @@ private fun AppContent() {
     CompositionLocalProvider(LocalNotice provides { noticeText = it }) {
     Box(Modifier.fillMaxSize().background(Palette.Bg)) {
         // The bar floats over the content: the map runs down to the bar itself, under the clear strip that holds the
-        // raised "Đi đâu?" circle (no white band, owner 15-11-2026). Lists stop above the circle so no row hides under it.
+        // raised "Đi đâu?" circle (no white band, owner 15-11-2026). Lists do the same: rows scroll under the circle like
+        // under any floating button (stopping them above it left a white band, owner 15-11-2026).
         var barHeight by remember { mutableStateOf(0.dp) }
         val density = LocalDensity.current
-        val below = when { nav.canPop -> 0.dp; nav.tab == Tab.Map -> (barHeight - NAV_CLEAR_STRIP).coerceAtLeast(0.dp); else -> barHeight + 14.dp }
+        val below = if (nav.canPop) 0.dp else (barHeight - NAV_CLEAR_STRIP).coerceAtLeast(0.dp)
         Box(Modifier.fillMaxSize().padding(bottom = below)) {
             when (val top = nav.top) {
                 Screen.Search -> SearchScreen(
@@ -388,7 +389,7 @@ private fun AppContent() {
                 Screen.Settings -> SettingsScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
-                        route, location, nearby,
+                        route, location, nearby, loadPhoto = loadPhoto,
                         loadPlaces = { south, west, north, east, slugs ->
                             try { sharedApi.placesInBounds(south, west, north, east, slugs, limit = MAP_PLACES_LIMIT).map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) } } catch (e: ApiError) { null }
                         },

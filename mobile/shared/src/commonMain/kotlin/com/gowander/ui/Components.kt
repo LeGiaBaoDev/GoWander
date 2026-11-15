@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -365,7 +366,7 @@ fun PhotoTile(icon: ImageVector = KitIcons.landmark, size: Dp = 56.dp, radius: D
 fun BottomNav(active: Tab, modifier: Modifier = Modifier, onGo: () -> Unit, onSelect: (Tab) -> Unit) {
     Box(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(top = 32.dp).background(Palette.Bg).border(1.dp, Palette.Line).padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(top = 32.dp).background(Palette.Bg).border(1.dp, Palette.Line).padding(bottom = 8.dp),
         ) {
             NavItem(Tab.Map, KitIcons.map, Strings.TAB_MAP, active, onSelect)
             NavItem(Tab.Discover, KitIcons.compass, Strings.TAB_DISCOVER, active, onSelect)
@@ -393,12 +394,13 @@ private fun RowScope.NavItem(tab: Tab, icon: ImageVector, label: String, active:
     val on = tab == active
     Column(
         Modifier.weight(1f).sizeIn(minHeight = 48.dp).semantics { selected = on }
-            .clickable(role = Role.Tab) { onSelect(tab) }.padding(vertical = 4.dp),
+            .clickable(role = Role.Tab) { onSelect(tab) }.padding(bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Active indicator bar (kit: 24x3 primary) plus colour: two cues, not colour alone.
-        Box(Modifier.size(24.dp, 3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Palette.Primary else Color.Transparent))
-        Spacer(Modifier.size(6.dp))
+        // Active indicator plus colour: two cues, not colour alone. It sits on the bar's top edge and is half the tab
+        // wide, so it scales with the screen (owner, 15-11-2026).
+        Box(Modifier.fillMaxWidth(0.5f).height(3.dp).clip(RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp)).background(if (on) Palette.Primary else Color.Transparent))
+        Spacer(Modifier.size(18.dp))
         Icon(icon, 24.dp, if (on) Palette.Primary else Palette.Muted)
         Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }

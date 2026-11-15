@@ -236,7 +236,7 @@ def journey():
 
     # Step by step (screen 6): always split, 3D street view on top with ︿ / ﹀, 2D below, card with Trước / ▶▶ / Sau.
     tap("Xem từng bước")
-    check(find("Góc nhìn trên đường · 3D", timeout=8) is not None and find(desc="Tiến lên 20 m") is not None and find(r"~Bước \d+/\d+.*") is not None,
+    check(find(r"~(Góc nhìn trên đường · 3D|Ảnh đường phố)", timeout=8) is not None and find(desc="Tiến lên 20 m") is not None and find(r"~Bước \d+/\d+.*") is not None,
           "Xem từng bước: chia đôi, 3D trên có ︿ / ﹀, 2D dưới, thẻ bước")
     check(find("2D") is not None and find("3D") is not None and find("Chạy") is not None, "Xem từng bước: bản đồ dưới có 2D | 3D, nút '▶▶ Chạy' có chữ (mẫu màn 6)")
     audit("Xem từng bước")
