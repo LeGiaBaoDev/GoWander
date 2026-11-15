@@ -219,6 +219,20 @@ def journey():
     check(find("Điểm kế tiếp: Chợ Bến Thành", timeout=8) is not None and find("Đi tới điểm kế tiếp") is not None, "Bắt đầu chuyến: mở kế hoạch, điểm kế tiếp là điểm đầu")
     check(find(r"~(Đi bộ|Buýt|Metro).* \d+ phút", timeout=40) is not None and find(r"~.*đi bộ \d.*giờ là ước tính", timeout=40) is not None,
           "Kế hoạch: thời gian từng chặng do bộ tìm tuyến tính, có tổng quãng đi bộ")
+    # Day, start time and way of travelling (owner, 15-11-2026): the legs are measured again for that day and mode.
+    tap("~Chưa chọn ngày.*")
+    check(find("~Hôm nay \\d\\d-\\d\\d", timeout=4) is not None and find("~Ngày mai \\d\\d-\\d\\d") is not None, "Chọn ngày: mở danh sách 14 ngày tới")
+    tap("~Ngày mai \\d\\d-\\d\\d")
+    check(find("~Ngày mai \\d\\d-\\d\\d ▾", timeout=4) is not None, "Chọn Ngày mai: ô ngày đổi thành ngày đã chọn")
+    tap("~Bắt đầu 08:00 ▾")
+    tap(desc="Muộn hơn 15 phút")
+    check(find("08:15", timeout=3) is not None, "Giờ bắt đầu +15 phút: 08:00 thành 08:15")
+    tap("Xong")
+    tap("~.*đi bộ ▾|Buýt.*▾")
+    audit("Kế hoạch đang chọn phương tiện")
+    tap("Đi bộ")
+    check(find("~Đi bộ ▾", timeout=4) is not None and find("~(Đang tính thời gian đi…|Đi bộ \\d+ phút)", timeout=4) is not None, "Đổi sang Đi bộ: các chặng được tính lại")
+    check(find("~Đi bộ \\d+ phút", timeout=40) is not None and gone("Đang tính thời gian đi…"), "Đi bộ: thời gian từng chặng tính xong")
     # The plan on a map: numbered stops and the way between them; "Sắp xếp lại" only proposes a new order.
     check(find(desc="Bản đồ kế hoạch", timeout=4) is not None and find(desc="Điểm 1: Chợ Bến Thành") is not None, "Kế hoạch có bản đồ: các điểm đánh số và đường đi")
     # Full-screen map of the plan, like the Map tab: numbered stops with names, the way between them, 2D / 3D.

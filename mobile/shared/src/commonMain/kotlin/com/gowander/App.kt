@@ -1,5 +1,8 @@
 package com.gowander
 
+import com.gowander.route.TravelMode
+import com.gowander.mock.legContext
+import com.gowander.mock.legFrom
 import com.gowander.home.PlanMapScreen
 import com.gowander.mock.nextStop
 import com.gowander.mock.spot
@@ -393,9 +396,17 @@ private fun AppContent() {
                             noticeText = Strings.SAVED_TO_PROFILE
                             nav = nav.pop()
                         },
-                        measure = { a, b ->
+                        measure = { a, b, depart, p ->
+                            val travel = TravelMode.entries.firstOrNull { it.name == p.travel } ?: TravelMode.Bus
                             try {
-                                sharedApi.planRoute(PlanRequest(LatLon(a.lat!!, a.lon!!), LatLon(b.lat!!, b.lon!!), maxResults = 1)).routes.minByOrNull { it.durationSec }?.let { moveOf(it, a.spot()!!) }
+                                // On a chosen day the router uses that day's timetable at the time the user leaves the stop.
+                                val request = PlanRequest(
+                                    LatLon(a.lat!!, a.lon!!), LatLon(b.lat!!, b.lon!!), dateTime = p.day?.let { "${it}T$depart:00+07:00" },
+                                    // "Buýt + đi bộ" / "Metro + đi bộ": walking and public transport, so a short hop is just a walk
+                                    // (bus-only makes the router refuse legs that need no bus).
+                                    maxResults = 3, modes = if (travel.isTransit) null else travel.apiModes,
+                                )
+                                sharedApi.planRoute(request).routes.minByOrNull { it.durationSec }?.let { moveOf(it, legFrom(a, p.legContext())!!) }
                             } catch (e: ApiError) { null }
                         },
                         onGo = ::startPlan, onRoute = { e -> chooseDestination(e, null) }, onMap = { nav = nav.push(Screen.PlanMap(plan.id)) },

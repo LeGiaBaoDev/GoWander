@@ -1,5 +1,21 @@
 package com.gowander.home
 
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.gowander.route.weekdayOf
+import com.gowander.route.daysInMonth
+import com.gowander.mock.legContext
+import com.gowander.mock.legFrom
+import com.gowander.mock.departTime
+import com.gowander.mock.shiftClock
+import com.gowander.route.TravelMode
+import com.gowander.route.pilotDay
+import com.gowander.route.nowMillis
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
 import com.gowander.mock.straightTotalM
@@ -241,14 +257,14 @@ internal fun ReorderPanel(plan: Plan, proposal: List<PlanItem>?, onProposal: (Li
  * full-screen map, with the stop names next to the numbers and the 2D / 3D button.
  */
 @Composable
-private fun PlanMap(items: List<PlanItem>, proposal: List<PlanItem>?, modifier: Modifier, full: Boolean = false, insets: PaddingValues = PaddingValues(0.dp)) {
+private fun PlanMap(items: List<PlanItem>, proposal: List<PlanItem>?, context: String, modifier: Modifier, full: Boolean = false, insets: PaddingValues = PaddingValues(0.dp)) {
     val shown = proposal ?: items
     val (solid, dashed) = remember(shown, proposal) {
         val solid = mutableListOf<List<Pair<Double, Double>>>()
         val dashed = mutableListOf<List<Pair<Double, Double>>>()
         val stops = shown.filter { it.spot() != null }
         stops.zipWithNext { a, b ->
-            val measured = b.move?.takeIf { proposal == null && it.from == a.spot() && it.paths.isNotEmpty() }
+            val measured = b.move?.takeIf { proposal == null && it.from == legFrom(a, context) && it.paths.isNotEmpty() }
             if (measured != null) solid += measured.paths.map { decodePolyline(it) }
             else dashed += listOf(a.lat!! to a.lon!!, b.lat!! to b.lon!!)
         }
@@ -292,7 +308,7 @@ fun PlanMapScreen(plan: Plan, onBack: () -> Unit, onChange: (Plan) -> Unit, onGo
     // A proposal is for the stops it was made from: any change to them (a stop added or removed) drops it.
     var proposal by remember(plan.id, plan.items.map { it.title to it.spot() }) { mutableStateOf<List<PlanItem>?>(null) }
     Box(Modifier.fillMaxSize().background(Palette.Bg)) {
-        PlanMap(plan.items, proposal, Modifier.fillMaxSize(), full = true, insets = PaddingValues(top = 72.dp, bottom = 230.dp))
+        PlanMap(plan.items, proposal, plan.legContext(), Modifier.fillMaxSize(), full = true, insets = PaddingValues(top = 72.dp, bottom = 230.dp))
         Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header(plan.name, floating = true, onBack = onBack) }
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Palette.Bg)
@@ -308,6 +324,133 @@ fun PlanMapScreen(plan: Plan, onBack: () -> Unit, onChange: (Plan) -> Unit, onGo
             ReorderPanel(plan, proposal, { proposal = it }, onChange)
             val next = plan.nextStop()
             if (proposal == null && next != null && plan.routing) Button("${Strings.GO_NEXT}: ${plan.items[next].title}", Modifier.fillMaxWidth(), compact = true, pill = true) { onGo(plan) }
+        }
+    }
+}
+
+/** The panel under the plan's option row: a month calendar for the day, hour and minute wheels for the start, or the way of travelling. */
+@Composable
+private fun PlanOptions(plan: Plan, picking: Int, onChange: (Plan) -> Unit, onDone: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Palette.Subtle).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(listOf(Strings.PLAN_DAY, Strings.PLAN_START, Strings.PLAN_TRAVEL)[picking - 1], Modifier.semantics { heading() }, size = 14.sp, weight = FontWeight.Bold)
+        when (picking) {
+            1 -> DayCalendar(plan.day, onPick = { iso, label ->
+                onChange(plan.copy(day = iso, date = label ?: Strings.NO_DATE, status = if (iso != null && plan.status == PlanStatus.Draft && plan.routing) PlanStatus.Upcoming else plan.status))
+                onDone()
+            })
+            2 -> {
+                TimeWheels(plan.start) { onChange(plan.copy(start = it)) }
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { Pill(Strings.DONE_PICKING, onClick = onDone) }
+            }
+            else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(TravelMode.Bus to Strings.BUS_AND_WALK, TravelMode.Metro to Strings.METRO_AND_WALK, TravelMode.Walk to Strings.MODE_WALK, TravelMode.Bicycle to Strings.MODE_BICYCLE, TravelMode.Car to Strings.MODE_CAR).forEach { (m, label) ->
+                    Pill(label, selected = plan.travel == m.name) { onChange(plan.copy(travel = m.name, mode = label)); onDone() }
+                }
+            }
+        }
+        if (plan.day != null && picking != 2) Text(Strings.TIMES_FOR_DAY, size = 11.sp, color = Palette.Muted)
+    }
+}
+
+/**
+ * Month calendar (owner, 15-11-2026: a calendar, not a list; past days cannot be chosen). Weeks start on Monday.
+ * [onPick] gets the chosen day ("yyyy-MM-dd") and its label, or nulls for "Bỏ chọn ngày".
+ */
+@Composable
+private fun DayCalendar(selected: String?, onPick: (String?, String?) -> Unit) {
+    val today = remember { pilotDay(nowMillis(), 0).first }
+    val (ty, tm) = today.substring(0, 4).toInt() to today.substring(5, 7).toInt()
+    val start = selected?.takeIf { it >= today } ?: today
+    var shown by remember { mutableStateOf(start.substring(0, 4).toInt() * 12 + start.substring(5, 7).toInt() - 1) }
+    val y = shown / 12
+    val m = shown % 12 + 1
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val canBack = shown > ty * 12 + tm - 1
+            IconButton(KitIcons.back, Strings.PREV_MONTH, tint = if (canBack) Palette.Ink else Palette.Line) { if (canBack) shown-- }
+            Text(Strings.monthTitle(m, y), Modifier.weight(1f).semantics { heading() }, size = 15.sp, weight = FontWeight.Bold)
+            IconButton(KitIcons.back, Strings.NEXT_MONTH, Modifier.rotate(180f), tint = Palette.Ink) { if (shown < ty * 12 + tm - 1 + 12) shown++ }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Strings.WEEK_SHORT.forEach { Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(it, size = 12.sp, color = Palette.Muted, weight = FontWeight.SemiBold) } }
+        }
+        val lead = (weekdayOf(y, m, 1) + 6) % 7 // Monday first
+        val count = daysInMonth(y, m)
+        (0 until (lead + count + 6) / 7).forEach { week ->
+            Row(Modifier.fillMaxWidth()) {
+                (0 until 7).forEach { col ->
+                    val d = week * 7 + col - lead + 1
+                    Box(Modifier.weight(1f).height(48.dp), contentAlignment = Alignment.Center) {
+                        if (d in 1..count) {
+                            val iso = "$y-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
+                            val past = iso < today
+                            val on = iso == selected
+                            val label = when (iso) { today -> Strings.TODAY; pilotDay(nowMillis(), 1).first -> Strings.TOMORROW; else -> Strings.WEEKDAYS[weekdayOf(y, m, d)] }.let { Strings.dayLabel(d, m, it) }
+                            Box(
+                                Modifier.size(44.dp).clip(CircleShape)
+                                    .then(if (on) Modifier.background(Palette.Primary) else if (iso == today) Modifier.border(1.5.dp, Palette.Primary, CircleShape) else Modifier)
+                                    .semantics { contentDescription = label; this.selected = on }
+                                    .then(if (past) Modifier else Modifier.clickable(role = Role.Button) { onPick(iso, label) }),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("$d", size = 15.sp, color = when { on -> Palette.OnPrimary; past -> Palette.Line; else -> Palette.Ink }, weight = if (on || iso == today) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (selected != null) Pill(Strings.CLEAR_DATE) { onPick(null, null) }
+    }
+}
+
+/**
+ * Hour and minute wheels (owner, 15-11-2026: drag the time, not ±15). A wheel stops on one row after a fling; the
+ * middle row is the value; tapping a row picks it too. Minutes in steps of 5.
+ */
+@Composable
+private fun TimeWheels(hhmm: String, onChange: (String) -> Unit) {
+    val h = hhmm.substringBefore(':').toIntOrNull()?.coerceIn(0, 23) ?: 8
+    val mi = ((hhmm.substringAfter(':', "0").toIntOrNull() ?: 0) / 5).coerceIn(0, 11)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        Wheel((0..23).map { it.toString().padStart(2, '0') }, h, Strings.HOUR) { onChange("${it.toString().padStart(2, '0')}:${(mi * 5).toString().padStart(2, '0')}") }
+        Text(":", Modifier.padding(horizontal = 8.dp), size = 24.sp, weight = FontWeight.Bold)
+        Wheel((0..11).map { (it * 5).toString().padStart(2, '0') }, mi, Strings.MINUTE) { onChange("${h.toString().padStart(2, '0')}:${(it * 5).toString().padStart(2, '0')}") }
+    }
+}
+
+private val WHEEL_ROW = 44.dp
+
+@Composable
+private fun Wheel(values: List<String>, selected: Int, name: String, onSelect: (Int) -> Unit) {
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = selected)
+    val scope = rememberCoroutineScope()
+    // After a drag or fling settles, the row in the middle is the value.
+    LaunchedEffect(state.isScrollInProgress) {
+        if (!state.isScrollInProgress) {
+            val i = (state.firstVisibleItemIndex + if (state.firstVisibleItemScrollOffset > 0) 1 else 0).coerceIn(0, values.lastIndex)
+            if (state.firstVisibleItemScrollOffset != 0) state.animateScrollToItem(i)
+            if (i != selected) onSelect(i)
+        }
+    }
+    Box(Modifier.width(76.dp).height(WHEEL_ROW * 5), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().height(WHEEL_ROW).clip(RoundedCornerShape(10.dp)).background(Palette.Soft))
+        LazyColumn(
+            Modifier.fillMaxSize().semantics { contentDescription = "$name: ${values[selected]}" },
+            state = state, contentPadding = PaddingValues(vertical = WHEEL_ROW * 2),
+            flingBehavior = rememberSnapFlingBehavior(state),
+        ) {
+            items(values.size) { i ->
+                Box(
+                    Modifier.fillMaxWidth().height(WHEEL_ROW).clickable(role = Role.Button) { scope.launch { state.animateScrollToItem(i) }; onSelect(i) }
+                        .semantics { contentDescription = "$name ${values[i]}"; this.selected = i == selected },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(values[i], size = if (i == selected) 22.sp else 17.sp, color = if (i == selected) Palette.Primary else Palette.Muted, weight = if (i == selected) FontWeight.Bold else FontWeight.Normal)
+                }
+            }
         }
     }
 }
@@ -381,20 +524,21 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
 @Composable
 fun PlanBuilderScreen(
     plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, onAdd: () -> Unit, onSave: () -> Unit,
-    measure: suspend (PlanItem, PlanItem) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit, onMap: () -> Unit,
+    measure: suspend (from: PlanItem, to: PlanItem, depart: String, plan: Plan) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit, onMap: () -> Unit,
 ) {
     val notice = LocalNotice.current
     val times = planTimes(plan.start, plan.items)
     val current by rememberUpdatedState(plan)
     // Legs the router could not answer this time: not asked again until the screen is opened again.
     val failed = remember { mutableStateListOf<String>() }
-    fun legKey(items: List<PlanItem>, i: Int) = "${items[i - 1].spot()}>${items[i].spot()}"
-    val pending = staleLegs(plan.items).filter { legKey(plan.items, it) !in failed }
+    val context = plan.legContext()
+    fun legKey(items: List<PlanItem>, i: Int) = "${items[i - 1].spot()}>${items[i].spot()}$context"
+    val pending = staleLegs(plan.items, context).filter { legKey(plan.items, it) !in failed }
     val todo = pending.firstOrNull()?.let { legKey(plan.items, it) }
     LaunchedEffect(plan.id, todo) {
         val i = pending.firstOrNull() ?: return@LaunchedEffect
         val key = todo!!
-        val move = measure(plan.items[i - 1], plan.items[i])
+        val move = measure(plan.items[i - 1], plan.items[i], departTime(plan.start, plan.items, i), plan)
         val now = current // the plan may have changed while the router was working
         if (move == null) failed += key
         else if (i < now.items.size && legKey(now.items, i) == key) onChange(now.copy(items = now.items.mapIndexed { j, it -> if (j == i) it.copy(move = move) else it }))
@@ -419,15 +563,20 @@ fun PlanBuilderScreen(
                     )
                 }
             }
+            // Day, start time and way of travelling: one panel opens under the row at a time.
+            var picking by rememberSaveable { mutableStateOf(0) } // 0 none, 1 day, 2 start, 3 travel
             Row(Modifier.padding(start = 52.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("${plan.date} ▾", "${Strings.START_AT} ${plan.start} ▾", "${plan.mode} ▾").forEach { Pill(it) { notice(Strings.PLAN_OPTIONS_LATER) } }
+                listOf("${plan.date} ▾", "${Strings.START_AT} ${plan.start} ▾", "${plan.mode} ▾").forEachIndexed { k, label ->
+                    Pill(label, selected = picking == k + 1) { picking = if (picking == k + 1) 0 else k + 1 }
+                }
             }
+            if (picking != 0) PlanOptions(plan, picking, onChange) { picking = 0 }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan.items.isEmpty()) Note(Strings.PLAN_EMPTY)
             if (plan.items.count { it.spot() != null } >= 2) {
-                PlanMap(plan.items, proposal, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)))
+                PlanMap(plan.items, proposal, context, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)))
                 Text(Strings.PLAN_MAP_NOTE, size = 11.sp, color = Palette.Muted)
                 Button(Strings.VIEW_ON_MAP, Modifier.fillMaxWidth(), kind = ButtonKind.Outline, icon = KitIcons.map, compact = true, pill = true, onClick = onMap)
                 ReorderPanel(plan, proposal, { proposal = it; open = -1 }, onChange)
@@ -436,7 +585,7 @@ fun PlanBuilderScreen(
             plan.items.forEachIndexed { i, item ->
                 // The way here from the stop before: what the router measured, or why there is no time yet.
                 if (i > 0 && item.spot() != null && plan.items[i - 1].spot() != null) {
-                    val measured = item.move?.takeIf { it.from == plan.items[i - 1].spot() }
+                    val measured = item.move?.takeIf { it.from == legFrom(plan.items[i - 1], context) }
                     Text(
                         measured?.label ?: if (i in pending) Strings.LEG_PENDING else Strings.LEG_UNKNOWN,
                         Modifier.padding(start = 64.dp, top = 2.dp, bottom = 2.dp), size = 12.sp,

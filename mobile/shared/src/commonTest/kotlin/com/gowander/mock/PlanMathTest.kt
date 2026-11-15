@@ -58,6 +58,26 @@ class PlanMathTest {
     }
 
     @Test
+    fun legsAreMeasuredAgainWhenTheDayOrTheWayOfTravellingChanges() {
+        val a = PlanItem("A", "", 30, null, 10.0, 106.0)
+        val plan = Plan("p", "P", "", "08:00", "", emptyList(), PlanStatus.Draft, day = "2026-11-21", travel = "Bus")
+        val b = PlanItem("B", "", 30, Move("Buýt · 9 phút", MoveKind.Bus, 9, 100, legFrom(a, plan.legContext())), 10.01, 106.0)
+        assertEquals(emptyList(), staleLegs(listOf(a, b), plan.legContext()))
+        assertEquals(listOf(1), staleLegs(listOf(a, b), plan.copy(travel = "Walk").legContext()))
+        assertEquals(listOf(1), staleLegs(listOf(a, b), plan.copy(day = "2026-11-22").legContext()))
+    }
+
+    @Test
+    fun departureAndShiftedTimes() {
+        val items = listOf(PlanItem("A", "", 30), PlanItem("B", "", 45, walk), PlanItem("C", "", 20, walk))
+        assertEquals("08:30", departTime("08:00", items, 1)) // arrive A 08:00, stay 30
+        assertEquals("09:25", departTime("08:00", items, 2)) // arrive B 08:40, stay 45
+        assertEquals("08:15", shiftClock("08:00", 15))
+        assertEquals("00:00", shiftClock("00:10", -15))
+        assertEquals("23:45", shiftClock("23:50", 30))
+    }
+
+    @Test
     fun badStartFallsBackToEight() = assertEquals(listOf("08:00"), planTimes("??", listOf(PlanItem("A", "", 0))))
 
     @Test

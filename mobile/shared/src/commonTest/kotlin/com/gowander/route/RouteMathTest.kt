@@ -51,4 +51,21 @@ class DistanceLabelTest {
         kotlin.test.assertEquals("120 m", distanceLabel(118.0))
         kotlin.test.assertEquals("1,5 km", com.gowander.ui.Strings.meters(1_560.0))
     }
+
+    @Test
+    fun pilotDayAndWeekday() {
+        val sat = 1_763_683_200_000L // 2025-11-21T00:00Z = 07:00 in TP.HCM, a Friday
+        kotlin.test.assertEquals("2025-11-21" to 5, pilotDay(sat, 0))
+        kotlin.test.assertEquals("2025-11-23" to 0, pilotDay(sat, 2))
+        kotlin.test.assertEquals("2025-12-01" to 1, pilotDay(sat, 10))
+    }
+
+    @Test
+    fun calendarMath() {
+        kotlin.test.assertEquals(0L, daysFromCivil(1970, 1, 1))
+        kotlin.test.assertEquals(6, weekdayOf(2026, 11, 21)) // a Saturday
+        kotlin.test.assertEquals(29, daysInMonth(2028, 2))
+        kotlin.test.assertEquals(28, daysInMonth(2026, 2))
+        kotlin.test.assertEquals(31, daysInMonth(2026, 12))
+    }
 }

@@ -94,6 +94,8 @@ object MockPortfolio {
 @Serializable data class Plan(val id: String, val name: String, val date: String, val start: String, val mode: String, val items: List<PlanItem>, val status: PlanStatus, val routing: Boolean = true,
     /** Progress when the plan is being followed: stops before [next] are done; [going] = the user is on the way to the next one. */
     val next: Int = 0, val going: Boolean = false,
+    /** The day of the trip ("yyyy-MM-dd", pilot time zone) and how the user travels ([com.gowander.route.TravelMode] name). */
+    val day: String? = null, val travel: String = "Bus",
 )
 
 val MOCK_PLANS = listOf(

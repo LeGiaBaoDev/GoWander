@@ -30,9 +30,23 @@ fun planEnd(start: String, items: List<PlanItem>): String =
 /** Where a stop is, as the key a measured leg remembers; null when the stop has no coordinates. */
 fun PlanItem.spot(): String? = if (lat != null && lon != null) "$lat,$lon" else null
 
-/** Stops whose travel time from the stop before must be measured (again): both have a position and the leg was not measured from that stop. */
-fun staleLegs(items: List<PlanItem>): List<Int> =
-    items.indices.filter { i -> i > 0 && items[i].spot() != null && items[i - 1].spot() != null && items[i].move?.from != items[i - 1].spot() }
+/** What a measured leg depends on besides its start stop: the way of travelling and the day (timetables differ). */
+fun Plan.legContext(): String = "|$travel|${day.orEmpty()}"
+
+/** The key a leg measured from [prev] in [context] carries in [Move.from]. */
+fun legFrom(prev: PlanItem, context: String): String? = prev.spot()?.let { it + context }
+
+/** Stops whose travel time from the stop before must be measured (again): both have a position and the leg was not
+ * measured from that stop, with this way of travelling, on this day. */
+fun staleLegs(items: List<PlanItem>, context: String = ""): List<Int> =
+    items.indices.filter { i -> i > 0 && items[i].spot() != null && items[i - 1].spot() != null && items[i].move?.from != legFrom(items[i - 1], context) }
+
+/** "HH:MM" when the user leaves stop [i] - 1 for stop [i]: its arrival time plus its stay. */
+fun departTime(start: String, items: List<PlanItem>, i: Int): String =
+    clockOf(minutesOf(planTimes(start, items)[i - 1]) + items[i - 1].stayMin)
+
+/** [hhmm] moved by [minutes], kept within the same day. */
+fun shiftClock(hhmm: String, minutes: Int): String = clockOf((minutesOf(hhmm) + minutes).coerceIn(0, 23 * 60 + 45))
 
 /** One line of the plan for a route the router found from [from]: how, how long, how much walking. */
 fun moveOf(route: Route, from: String): Move {
