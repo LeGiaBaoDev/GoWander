@@ -185,7 +185,7 @@ Every dataset shown in the pilot has a register row with source, licence and sta
 - **Owner decisions, 15-11-2026:**
   - **Travel guide:** no new "Cẩm nang" module or extra Discover sections. The region guide (screen 14), dishes, suggested trips and the planner are the guide; what is missing is content. Order: (1) make the drawn screens real: TP.HCM guide content, 3–5 edited trips, plans stored on the device (P5); (2) pilot with that scope; (3) after the pilot: more countries, user reviews, Story Mode, Journey Memory.
   - **Sign-in:** never required to open the app, see the map, search, find a route, navigate or read Discover ("người dùng thường xảy ra đột ngột"). Sign-in is asked only at the moment a feature needs an account (posting a review or photo, a public portfolio, sharing, sync between devices). Which features exactly, and the auth method, are decided in the accounts ADR (COM-1 / M07); plans and saved places work on the device without an account.
-6. **P6 Usability test** with 3–5 people.
+6. **P6 Usability test** with 3–5 people. **Dropped by the owner 16-11-2026** ("không có người 3-5 người nên không cần làm").
 - **Mock data rule (owner, 14-11-2026: "cái nào chưa có thì cứ mockup data nha, nhưng nhớ ghi trong pipeline là có dữ liệu mockup"):** every canvas screen is built in full now. Where real data or a backend does not exist yet (reviews, region portfolios, food/sight photos, trip plans, user portfolio, satellite imagery…), the screen uses **mock data** from one place per feature (a file named `Mock*.kt` in `commonMain`, each item marked as sample). The **mock data register** below lists every mock; replacing a mock with real data removes its row. The pilot (M10) may not ship a row still marked `MOCK` unless the owner accepts it in writing.
 
   | Screen / feature | Mock source | Replace with | Status |
@@ -198,12 +198,16 @@ Every dataset shown in the pilot has a register row with source, licence and sta
   | Map of Vietnam (screen 13) | real map since 15-11-2026 (OpenFreeMap / OSM tiles, regions at real coordinates, Hoàng Sa and Trường Sa labelled by the app); basemap labels prefer Vietnamese names ("Biển Đông") through the bundled style `composeResources/files/map_style.json`; the regions screen shows Vietnam's land only (`files/vn_mask.json`, owner 15-11-2026) and drops basemap text; **later phase: more countries, one mask per country** | none for the map itself; the bundled style is a frozen copy of OpenFreeMap "liberty", refresh it if their sprite or font paths change | REAL |
   | Portfolio: name, stats, about, featured trip, contributions, moments, section visibility | `MockPortfolio` | user account data (COM-1) | MOCK |
   | Plans: sample upcoming/draft/done plans and planner suggestions | `MOCK_PLANS`, `MOCK_PLAN_SUGGESTIONS`; user-made plans and saved places are **stored on the device since 15-11-2026** (`home/AppStore.kt`, ADR-036); the three sample plans still seed a first run. Since 15-11-2026 travel time between stops comes from the real router and a plan can be followed stop by stop (progress stored with it); no costs are shown (no verified fare or ticket data). Plans are listed in the Journey tab, "Của tôi" (ADR-034 item 10 amended) | sync with an account (COM-1); remove the sample plans when real suggested trips exist | PARTLY REAL |
-  | Buttons that only explain themselves: Chia sẻ, Viết đánh giá, Video 1:30, plan date / time / mode, portfolio Lưu | short notice via `LocalNotice` | COM-1 / P5 / CONTENT | MOCK (UI only) |
+  | Buttons that only explain themselves: Chia sẻ, Viết đánh giá, Video 1:30, portfolio Lưu (plan date / time / mode are real since 15-11-2026) | short notice via `LocalNotice` | COM-1 / P5 / CONTENT | MOCK (UI only) |
 
 - Out of UX-2: **COM-1** (accounts, reviews R2, community photos, public portfolio; needs ADR-022 + M07) and **CONTENT** (region guides, stories, trips, videos, country boundary; part of DATA-1).
 
 ### Gate
 All plan §14 test cases for the shipped phases pass on Android emulator and iOS simulator; screenshots of every new screen on both platforms; no "coming soon" controls; accessibility checks (labels, 48 dp targets, contrast, list alternative to map content) pass; owner signs off after P6.
+
+**Owner decision 16-11-2026 (gate amended):** UX-2 closes without the remaining checks ("bỏ qua kiểm tra cho cái này tạm đi"), keeps the controls that only explain themselves ("nút sắp có vẫn giữ") and skips P6. What was verified and what was not is listed in `docs/changes/change-16-11-2026.md`; the open items move to the backlog below and are not a reason to keep the branch open.
+
+**UX-2 backlog (after the merge):** iOS screenshots of the inner screens (needs a scripted iOS UI test or the owner driving the simulator); the two E2E steps for the plan calendar and time wheels; an E2E run in daytime (bus results need running buses); list of the area on the map tab; real reviews (COM-1); licensed photos for the guide.
 
 ## 6. M02 — OpenTripPlanner routing PoC
 
