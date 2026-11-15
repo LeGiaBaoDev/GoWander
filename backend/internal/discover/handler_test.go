@@ -19,6 +19,8 @@ type fakeStore struct {
 	err     error
 	list    ListQuery
 	nearby  NearbyQuery
+	bounds  MapQuery
+	grid    ClusterQuery
 	placeID string
 	next    *Cursor
 	places  []PlaceSummary
@@ -34,6 +36,14 @@ func (f *fakeStore) ListPlaces(_ context.Context, q ListQuery) ([]PlaceSummary, 
 func (f *fakeStore) Nearby(_ context.Context, q NearbyQuery) ([]PlaceSummary, error) {
 	f.nearby = q
 	return f.places, f.err
+}
+func (f *fakeStore) InBounds(_ context.Context, q MapQuery) ([]PlaceSummary, error) {
+	f.bounds = q
+	return f.places, f.err
+}
+func (f *fakeStore) Clusters(_ context.Context, q ClusterQuery) ([]Cluster, error) {
+	f.grid = q
+	return []Cluster{{Lat: 10.77, Lon: 106.7, Count: 12}}, f.err
 }
 func (f *fakeStore) Place(_ context.Context, id string) (PlaceDetail, error) {
 	f.placeID = id
@@ -115,6 +125,61 @@ func TestNearby(t *testing.T) {
 	get(t, s, "/api/v1/places/nearby?lat=10&lon=106&radiusM=5000&category=food&limit=5")
 	if s.nearby.RadiusM != 5000 || s.nearby.Category != "food" || s.nearby.Limit != 5 {
 		t.Fatalf("%+v", s.nearby)
+	}
+}
+
+func TestInBounds(t *testing.T) {
+	s := &fakeStore{places: []PlaceSummary{{ID: placeID}}}
+	status, body := get(t, s, "/api/v1/places/map?south=10.76&west=106.69&north=10.78&east=106.71")
+	if status != 200 || len(body["places"].([]any)) != 1 || s.bounds.South != 10.76 || s.bounds.West != 106.69 || s.bounds.North != 10.78 ||
+		s.bounds.East != 106.71 || s.bounds.Categories != nil || s.bounds.Limit != 50 {
+		t.Fatalf("%d %+v", status, s.bounds)
+	}
+	get(t, s, "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,%20cafe&limit=100")
+	if strings.Join(s.bounds.Categories, "|") != "food|cafe" || s.bounds.Limit != 100 {
+		t.Fatalf("%+v", s.bounds)
+	}
+	for _, target := range []string{
+		"/api/v1/places/map?south=10&west=106&north=11", "/api/v1/places/map?south=11&west=106&north=10&east=107",
+		"/api/v1/places/map?south=10&west=107&north=11&east=106", "/api/v1/places/map?south=10&west=106&north=91&east=107",
+		"/api/v1/places/map?south=10&west=106&north=11&east=107&limit=101", "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,,cafe",
+		"/api/v1/places/map?south=10&west=106&north=11&east=107&categories=" + strings.Repeat("a,", 10) + "a",
+		"/api/v1/places/map?south=-30&west=100&north=0&east=110", "/api/v1/places/map/clusters?south=-90&west=-180&north=90&east=180",
+		"/api/v1/places/map?south=NaN&west=106&north=11&east=107",
+	} {
+		if status, _ := get(t, s, target); status != 400 {
+			t.Errorf("%s: got %d, want 400", target, status)
+		}
+	}
+}
+
+func TestClusters(t *testing.T) {
+	s := &fakeStore{}
+	status, body := get(t, s, "/api/v1/places/map/clusters?south=10&west=106&north=11&east=107&categories=food")
+	c := body["clusters"].([]any)[0].(map[string]any)
+	if status != 200 || c["count"] != 12.0 || s.grid.Cols != 4 || s.grid.Rows != 6 || s.grid.South != 10 || strings.Join(s.grid.Categories, "|") != "food" {
+		t.Fatalf("%d %v %+v", status, c, s.grid)
+	}
+	get(t, s, "/api/v1/places/map/clusters?south=10&west=106&north=11&east=107&cols=3&rows=12")
+	if s.grid.Cols != 3 || s.grid.Rows != 12 {
+		t.Fatalf("%+v", s.grid)
+	}
+	for _, target := range []string{
+		"/api/v1/places/map/clusters?south=10&west=106&north=11", "/api/v1/places/map/clusters?south=10&west=106&north=11&east=107&cols=0",
+		"/api/v1/places/map/clusters?south=10&west=106&north=11&east=107&rows=13",
+	} {
+		if status, _ := get(t, s, target); status != 400 {
+			t.Errorf("%s: got %d, want 400", target, status)
+		}
+	}
+}
+
+func TestMiddleHalf(t *testing.T) {
+	// cell 2 of size 1 from origin 10 spans 11..12; its middle half is 11.25..11.75
+	for in, want := range map[float64]float64{11.0: 11.25, 11.5: 11.5, 11.99: 11.75} {
+		if got := middleHalf(in, 10, 1, 2); got != want {
+			t.Errorf("middleHalf(%v) = %v, want %v", in, got, want)
+		}
 	}
 }
 

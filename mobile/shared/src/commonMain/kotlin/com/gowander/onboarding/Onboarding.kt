@@ -22,14 +22,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,14 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.gowander.resources.Res
 import com.gowander.resources.logo_full
 import com.gowander.resources.logo_icon
-import com.gowander.ui.Badge
 import com.gowander.ui.Button
-import com.gowander.ui.ButtonKind
-import com.gowander.ui.Chip
-import com.gowander.ui.KitIcons
-import com.gowander.ui.Note
 import com.gowander.ui.Palette
-import com.gowander.ui.SectionTitle
 import com.gowander.ui.Strings
 import com.gowander.ui.Text
 import org.jetbrains.compose.resources.imageResource
@@ -73,31 +62,6 @@ fun WelcomeScreen(onStart: () -> Unit) {
         Text(Strings.TAGLINE, size = 16.sp, color = Palette.Muted, weight = FontWeight.Medium)
         Spacer(Modifier.weight(1.2f))
         Button(Strings.START, Modifier.fillMaxWidth(), onClick = onStart)
-    }
-}
-
-/** Kit S1 "Lần đầu": language, then why location helps; both buttons lead into the app, nothing is forced. */
-@Composable
-fun FirstRunScreen(onAllowLocation: () -> Unit, onLater: () -> Unit) {
-    var englishNote by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        val logo = imageResource(Res.drawable.logo_full) // icon + GoWander name
-        Image(logo, Strings.APP_NAME, Modifier.width(200.dp).aspectRatio(logo.width.toFloat() / logo.height).align(Alignment.CenterHorizontally), filterQuality = FilterQuality.High)
-        SectionTitle(Strings.CHOOSE_LANGUAGE)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip(Strings.VIETNAMESE, selected = true) { englishNote = false }
-            Chip(Strings.ENGLISH) { englishNote = true }
-        }
-        Note(if (englishNote) Strings.ENGLISH_SOON else Strings.MORE_LANGUAGES_LATER)
-        Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { Badge(KitIcons.locate, Palette.Soft, Palette.Primary, 80.dp) }
-        Text(Strings.LOCATION_QUESTION, size = 20.sp, weight = FontWeight.SemiBold)
-        Text(Strings.LOCATION_WHY, color = Palette.Muted)
-        Spacer(Modifier.height(8.dp))
-        Button(Strings.CONTINUE, Modifier.fillMaxWidth(), onClick = onAllowLocation)
-        Button(Strings.LATER_TYPE_ORIGIN, Modifier.fillMaxWidth(), kind = ButtonKind.Secondary, onClick = onLater)
     }
 }
 

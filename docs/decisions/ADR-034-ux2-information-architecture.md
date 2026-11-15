@@ -38,7 +38,7 @@
    - **Điểm đến Việt Nam**: bản đồ cả nước, có Hoàng Sa và Trường Sa, các vùng nổi lên, bấm vào mở **portfolio vùng** (giới thiệu, nổi bật, ẩm thực, văn hóa, ảnh cộng đồng, lên chuyến, video).
    - Bấm ảnh thì xem chi tiết, kèm nút Xem trên bản đồ và Thêm vào kế hoạch.
 9. **Hành trình:** chuyến gợi ý do biên tập viên soạn; **tự lên kế hoạch thủ công**.
-10. **Hồ sơ có 3 thẻ: Portfolio · Kế hoạch · Đã lưu.**
+10. **Hồ sơ có 2 thẻ: Portfolio · Đã lưu.** (Sửa 15-11-2026, chủ dự án đồng ý: Kế hoạch chuyển sang tab Hành trình, thẻ "Của tôi", đứng trước "Gợi ý"; kế hoạch đang đi nằm trên cùng. Lý do: kế hoạch là thứ dùng lúc đang đi, để trong Hồ sơ phải bấm ba lần mới tới. Bản gốc ghi 3 thẻ: Portfolio · Kế hoạch · Đã lưu.)
     - Portfolio do người dùng thiết kế (mẫu, màu, mục); mặc định riêng tư, riêng tư theo từng mục; không xếp hạng người dùng.
 11. **Một font Be Vietnam Pro** cho toàn bộ app.
 12. **Ẩn tính năng chưa xong**, không hiện "Sắp có". Xin quyền vị trí khi cần, bỏ màn Lần đầu.

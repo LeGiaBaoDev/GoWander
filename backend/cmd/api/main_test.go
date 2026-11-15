@@ -28,6 +28,12 @@ func (s stubStore) ListPlaces(context.Context, discover.ListQuery) ([]discover.P
 func (s stubStore) Nearby(context.Context, discover.NearbyQuery) ([]discover.PlaceSummary, error) {
 	return nil, nil
 }
+func (s stubStore) InBounds(context.Context, discover.MapQuery) ([]discover.PlaceSummary, error) {
+	return nil, nil
+}
+func (s stubStore) Clusters(context.Context, discover.ClusterQuery) ([]discover.Cluster, error) {
+	return nil, nil
+}
 func (s stubStore) Place(context.Context, string) (discover.PlaceDetail, error) {
 	return discover.PlaceDetail{}, discover.ErrNotFound
 }

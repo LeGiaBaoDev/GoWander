@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
 	"math"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ type Cached struct {
 	max     int
 	mu      sync.Mutex
 	entries map[string]cacheEntry
+	flight  singleflight.Group // concurrent misses for one spot share one upstream call
 }
 
 type cacheEntry struct {
@@ -41,7 +43,8 @@ func (c *Cached) Nearest(ctx context.Context, lat, lon float64) (*Image, error) 
 		return e.img, e.err
 	}
 	c.mu.Unlock()
-	img, err := c.next.Nearest(ctx, lat, lon)
+	v, err, _ := c.flight.Do(key, func() (any, error) { return c.next.Nearest(ctx, lat, lon) })
+	img, _ := v.(*Image)
 	if err == nil || errors.Is(err, ErrNotFound) {
 		c.mu.Lock()
 		if len(c.entries) >= c.max { // shortcut: drop everything when full instead of LRU; fine at pilot scale

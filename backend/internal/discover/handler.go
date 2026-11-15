@@ -1,14 +1,17 @@
 package discover
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -26,6 +29,8 @@ func (h Handler) Mount(r chi.Router) {
 	r.Get("/api/v1/place-categories", h.categories)
 	r.Get("/api/v1/places", h.list)
 	r.Get("/api/v1/places/nearby", h.nearby)
+	r.Get("/api/v1/places/map", h.inBounds)
+	r.Get("/api/v1/places/map/clusters", h.clusters)
 	r.Get("/api/v1/places/{id}", h.place)
 }
 
@@ -94,6 +99,89 @@ func (h Handler) nearby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"places": nonNil(places)})
+}
+
+// mapBox reads the viewport and category filter shared by the map endpoints.
+const maxBoxDeg = 20 // Vietnam is about 15 degrees tall
+
+// mapQueryTimeout bounds one map query so a burst of requests cannot hold every pool connection.
+const mapQueryTimeout = 3 * time.Second
+
+func mapBox(v url.Values) (MapQuery, error) {
+	var q MapQuery
+	var err error
+	for _, p := range []struct {
+		dst  *float64
+		name string
+		max  float64
+	}{{&q.South, "south", 90}, {&q.North, "north", 90}, {&q.West, "west", 180}, {&q.East, "east", 180}} {
+		if err == nil {
+			*p.dst, err = floatParam(v.Get(p.name), p.name, -p.max, p.max)
+		}
+	}
+	if err == nil && (q.South >= q.North || q.West >= q.East) {
+		err = badRequest("south phải nhỏ hơn north và west phải nhỏ hơn east.")
+	}
+	if s := v.Get("categories"); err == nil && s != "" {
+		if q.Categories = strings.Split(s, ","); len(q.Categories) > 10 {
+			err = badRequest("categories có tối đa 10 mục, cách nhau bằng dấu phẩy.")
+		}
+		for i, c := range q.Categories {
+			q.Categories[i] = strings.TrimSpace(c) // "food, cafe" means food and cafe
+			if err == nil {
+				err = textParam(q.Categories[i], "categories", 1, 100)
+			}
+		}
+	}
+	// A box larger than this is a whole region, not a map screen: refuse it rather than scan everything (review 15-11-2026).
+	if err == nil && (q.North-q.South > maxBoxDeg || q.East-q.West > maxBoxDeg) {
+		err = badRequest("Khung bản đồ quá lớn: mỗi chiều tối đa " + strconv.Itoa(maxBoxDeg) + " độ.")
+	}
+	return q, err
+}
+
+func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	q, err := mapBox(v)
+	if err == nil {
+		q.Limit, err = intParam(v.Get("limit"), "limit", 50, 1, 100)
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), mapQueryTimeout)
+	defer cancel()
+	places, err := h.Store.InBounds(ctx, q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"places": nonNil(places)})
+}
+
+func (h Handler) clusters(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	box, err := mapBox(v)
+	q := ClusterQuery{MapQuery: box}
+	if err == nil {
+		q.Cols, err = intParam(v.Get("cols"), "cols", 4, 1, 12)
+	}
+	if err == nil {
+		q.Rows, err = intParam(v.Get("rows"), "rows", 6, 1, 12)
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), mapQueryTimeout)
+	defer cancel()
+	cs, err := h.Store.Clusters(ctx, q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"clusters": nonNil(cs)})
 }
 
 func (h Handler) place(w http.ResponseWriter, r *http.Request) {

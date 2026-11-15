@@ -1,5 +1,11 @@
 package com.gowander.ui
 
+import com.gowander.Prefs
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import com.gowander.nav.Tab
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,23 +59,54 @@ import com.gowander.resources.bevietnampro_regular
 import com.gowander.resources.bevietnampro_semibold
 import org.jetbrains.compose.resources.Font
 
-/** "ui" theme of GoWander-Design-Kit-v4 (ADR-030). */
+/** Light or dark look (owner, 15-11-2026), kept on the device. Every [Palette] colour reads it, so a change redraws the app. */
+object Theme {
+    private const val KEY = "theme.dark"
+    var dark by mutableStateOf(Prefs.getBool(KEY))
+        private set
+
+    fun set(value: Boolean) {
+        dark = value
+        Prefs.setBool(KEY, value)
+    }
+}
+
+/**
+ * "ui" theme of GoWander-Design-Kit-v4 (ADR-030), with a dark counterpart for each colour. Colours that carry text
+ * flip so that text stays readable (ContrastTest checks both looks).
+ */
 object Palette {
-    val Bg = Color(0xFFFFFFFF)
-    val Subtle = Color(0xFFF6FAFA)
-    val Line = Color(0xFFE5F2F1)
-    val Ink = Color(0xFF123C48)
-    val Muted = Color(0xFF52717A)
-    val Primary = Color(0xFF047A7D)
-    val OnPrimary = Color(0xFFFFFFFF)
-    val Soft = Color(0xFFDDF7F0)
-    val Warn = Color(0xFFFFF4D6)
-    val Accent = Color(0xFFC8234F)
-    val AccentSoft = Color(0xFFFDE7EC)
-    val Metro = Color(0xFF0079B8)
-    val Bus = Color(0xFF08805F)
-    val Surface = Bg
-    val Pin = Accent
+    private fun pick(light: Long, dark: Long) = Color(if (Theme.dark) dark else light)
+    // Dark look: slate-navy surfaces in the family of the dark map style, lighter lines so cards stand off the page.
+    val Bg get() = pick(0xFFFFFFFF, 0xFF121A26)
+    val Subtle get() = pick(0xFFF6FAFA, 0xFF1B2534)
+    val Raised get() = pick(0xFFFFFFFF, 0xFF2C394C) // the chosen item inside a Subtle track: lighter than the track in both looks
+    val Line get() = pick(0xFFE5F2F1, 0xFF344257)
+    val Ink get() = pick(0xFF123C48, 0xFFE8EEF5)
+    val Muted get() = pick(0xFF52717A, 0xFFA6B3C4)
+    val Primary get() = pick(0xFF047A7D, 0xFF45BDB9)
+    val OnPrimary get() = pick(0xFFFFFFFF, 0xFF0C1620)
+    val Soft get() = pick(0xFFDDF7F0, 0xFF15343B)
+    val Warn get() = pick(0xFFFFF4D6, 0xFF3B3420)
+    val Accent get() = pick(0xFFC8234F, 0xFFFF7A99)
+    val AccentSoft get() = pick(0xFFFDE7EC, 0xFF3E2331)
+    val Metro get() = pick(0xFF0079B8, 0xFF6BBEF2)
+    val Bus get() = pick(0xFF08805F, 0xFF5AD3A6)
+    val Surface get() = Bg
+    val Pin get() = Accent
+    // UX-2 canvas colours (screens 1-17): star rating, guide sections, profile theme.
+    val Amber get() = pick(0xFF7A4E0E, 0xFFF2B95C)
+    val Sky get() = pick(0xFFDCEFF3, 0xFF1F3147)
+    val Body get() = pick(0xFF3D4F57, 0xFFC6D0DC)
+    val Violet get() = pick(0xFF6B4FBB, 0xFFA18BE6)
+    val VioletDark get() = pick(0xFF5A3FA8, 0xFFBBA8F5) // violet as text and icons
+    val VioletSoft get() = pick(0xFFF1ECFB, 0xFF2C2947)
+    val Green get() = pick(0xFFD6F0DF, 0xFF1F3A30)
+    // Backgrounds that carry white text in both looks.
+    val Deep get() = pick(0xFF123C48, 0xFF1A2B3F)
+    val Night get() = pick(0xFF2A5563, 0xFF26384F)
+    val VioletFill = Color(0xFF5A3FA8)
+    val Gold = Color(0xFFFFD167)
 }
 
 private val LocalKitFont = staticCompositionLocalOf<FontFamily> { FontFamily.Default }
@@ -122,18 +160,22 @@ fun Icon(icon: ImageVector, size: Dp = 24.dp, tint: Color = Palette.Ink, modifie
 fun Modifier.kitShadow(shape: Shape): Modifier =
     shadow(10.dp, shape, ambientColor = Palette.Ink.copy(alpha = 0.14f), spotColor = Palette.Ink.copy(alpha = 0.14f))
 
-enum class ButtonKind { Primary, Secondary, Soft, Accent }
+enum class ButtonKind { Primary, Secondary, Soft, Accent, Outline, Violet, VioletOutline }
 
 /** Kit button: radius 14, padding 15/18, label 15 SemiBold, optional leading icon; 48 dp minimum touch target. */
 @Composable
-fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, onClick: () -> Unit) {
+fun Button(label: String, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Primary, icon: ImageVector? = null, compact: Boolean = false, pill: Boolean = false, onClick: () -> Unit) {
     val (bg, fg, border) = when (kind) {
         ButtonKind.Primary -> Triple(Palette.Primary, Palette.OnPrimary, null)
         ButtonKind.Secondary -> Triple(Palette.Bg, Palette.Ink, Palette.Line)
         ButtonKind.Soft -> Triple(Palette.Soft, Palette.Primary, null)
         ButtonKind.Accent -> Triple(Palette.Accent, Palette.OnPrimary, null)
+        ButtonKind.Outline -> Triple(Palette.Bg, Palette.Primary, Palette.Primary)
+        ButtonKind.Violet -> Triple(Palette.VioletFill, Color.White, null) // profile screens (canvas 11, 12, 17)
+        ButtonKind.VioletOutline -> Triple(Palette.Bg, Palette.Ink, Palette.Violet)
     }
-    val shape = RoundedCornerShape(14.dp)
+    // pill: the round-ended buttons of the UX-2 route screens (design screens 5-7).
+    val shape = RoundedCornerShape(if (pill) 999.dp else 14.dp)
     Row(
         modifier.sizeIn(minHeight = 48.dp).clip(shape).background(bg, shape)
             .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)
@@ -183,7 +225,7 @@ fun ModeTabs(items: List<Pair<ImageVector, String>>, selected: Int, modifier: Mo
             val on = i == selected
             Column(
                 Modifier.weight(1f).sizeIn(minHeight = 56.dp).clip(RoundedCornerShape(12.dp))
-                    .background(if (on) Palette.Bg else Palette.Subtle)
+                    .background(if (on) Palette.Raised else Palette.Subtle)
                     .semantics { this.selected = on }
                     .clickable(role = Role.Tab) { onSelect(i) }.padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
@@ -340,49 +382,52 @@ fun PhotoTile(icon: ImageVector = KitIcons.landmark, size: Dp = 56.dp, radius: D
         Icon(icon, (size / 3).coerceIn(14.dp, 28.dp), Palette.Primary)
     }
 
-enum class Tab { Map, Discover, Plan }
-
-/** Kit bottom navigation with the three tabs that exist (ADR-030): Map, raised round "Tìm tuyến", Discover. */
+/**
+ * Kit bottom navigation, UX-2 (ADR-034): Bản đồ · Khám phá · raised "Đi đâu?" · Hành trình · Hồ sơ.
+ * The centre is an action (opens the destination search), not a tab, so it has the button role and no selected state.
+ * Five equal slots: fits a 320 dp screen without cutting labels (iOS UI test).
+ */
 @Composable
-fun BottomNav(active: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
+fun BottomNav(active: Tab, modifier: Modifier = Modifier, onGo: () -> Unit, onSelect: (Tab) -> Unit) {
     Box(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(top = 32.dp).background(Palette.Bg).border(1.dp, Palette.Line).padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            Modifier.fillMaxWidth().padding(top = 32.dp).background(Palette.Bg).border(1.dp, Palette.Line).padding(bottom = 8.dp),
         ) {
             NavItem(Tab.Map, KitIcons.map, Strings.TAB_MAP, active, onSelect)
-            Spacer(Modifier.width(72.dp))
             NavItem(Tab.Discover, KitIcons.compass, Strings.TAB_DISCOVER, active, onSelect)
+            Spacer(Modifier.weight(1f))
+            NavItem(Tab.Journey, KitIcons.book, Strings.TAB_JOURNEY, active, onSelect)
+            NavItem(Tab.Profile, KitIcons.user, Strings.TAB_PROFILE, active, onSelect)
         }
         // Centre action: 64 dp primary circle with a 6 dp white ring, raised above the bar like the kit.
         // The whole column (circle + label) is one tap target: tapping the label must work too (found in E2E).
         Column(
-            Modifier.align(Alignment.TopCenter).semantics(mergeDescendants = true) { selected = active == Tab.Plan }
-                .clickable(role = Role.Tab) { onSelect(Tab.Plan) },
+            Modifier.align(Alignment.TopCenter).semantics(mergeDescendants = true) {}.clickable(role = Role.Button, onClick = onGo),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
                 Modifier.size(76.dp).clip(CircleShape).background(Palette.Bg).padding(6.dp).clip(CircleShape).background(Palette.Primary),
                 contentAlignment = Alignment.Center,
             ) { Icon(KitIcons.route, 28.dp, Palette.OnPrimary) }
-            Text(Strings.TAB_PLAN, Modifier.offset(y = (-2).dp), size = 12.sp, color = if (active == Tab.Plan) Palette.Primary else Palette.Muted, weight = FontWeight.SemiBold)
+            Text(Strings.TAB_GO, Modifier.offset(y = (-2).dp), size = 12.sp, color = Palette.Ink, weight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
 
 @Composable
-private fun NavItem(tab: Tab, icon: ImageVector, label: String, active: Tab, onSelect: (Tab) -> Unit) {
+private fun RowScope.NavItem(tab: Tab, icon: ImageVector, label: String, active: Tab, onSelect: (Tab) -> Unit) {
     val on = tab == active
     Column(
-        Modifier.sizeIn(minWidth = 72.dp, minHeight = 48.dp).semantics { selected = on }
-            .clickable(role = Role.Tab) { onSelect(tab) }.padding(vertical = 4.dp),
+        Modifier.weight(1f).sizeIn(minHeight = 48.dp).semantics { selected = on }
+            .clickable(role = Role.Tab) { onSelect(tab) }.padding(bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Active indicator bar (kit: 24x3 primary) plus colour: two cues, not colour alone.
-        Box(Modifier.size(24.dp, 3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Palette.Primary else Color.Transparent))
-        Spacer(Modifier.size(6.dp))
+        // Active indicator plus colour: two cues, not colour alone. It sits on the bar's top edge and is half the tab
+        // wide, so it scales with the screen (owner, 15-11-2026).
+        Box(Modifier.fillMaxWidth(0.5f).height(3.dp).clip(RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp)).background(if (on) Palette.Primary else Color.Transparent))
+        Spacer(Modifier.size(18.dp))
         Icon(icon, 24.dp, if (on) Palette.Primary else Palette.Muted)
-        Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium)
+        Text(label, size = 12.sp, color = if (on) Palette.Primary else Palette.Muted, weight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }
 

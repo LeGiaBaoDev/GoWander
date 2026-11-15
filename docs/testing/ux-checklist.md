@@ -19,16 +19,17 @@ Không có gì được biến mất mà không có đường quay lại rõ rà
 
 | Phần tử | Bấm thì ẩn gì | Hiện lại thế nào |
 |---|---|---|
-| Nút "Loại bản đồ" | Mở bảng 2D/3D/Vệ tinh | Bảng tự đóng sau khi chọn; bấm ra ngoài, bấm ✕ hoặc bấm lại nút cũng đóng |
+| Nút "Loại bản đồ" | Mở bảng 2D/3D (Vệ tinh ẩn tới khi có nhà cung cấp, ADR-034) | Bảng tự đóng sau khi chọn; bấm ra ngoài, bấm ✕ hoặc bấm lại nút cũng đóng |
 | "Gợi ý gần bạn" (bản đồ chính) | Bấm tiêu đề thì thu gọn thành một dòng | Bấm lại dòng tiêu đề (▴) |
 | Thẻ Chi tiết tuyến | Bấm phần đầu thẻ thì mở rộng hoặc thu gọn danh sách chặng | Bấm lại (▾/▴); thẻ không bao giờ biến mất hẳn |
 | Mở màn con (Chi tiết, Dẫn đường, Xem trước) | Thanh tab dưới ẩn | Back về màn tab thì thanh tab hiện lại |
 | Kéo bản đồ khi dẫn đường | Camera ngừng đi theo | Nút "Căn giữa lại" |
 | Xem trước (mở từ Đường đi) | — | Back về Đường đi; "Quay lại tuyến đường" về màn dẫn đường |
 | Thoát dẫn đường | Màn dẫn đường | Về Chi tiết tuyến, tuyến vẫn còn, bấm Bắt đầu lại được |
-| Chọn Vệ tinh (chưa có nhà cung cấp) | Không chuyển sang bản đồ trống | Hiện ghi chú "Sắp có" |
-| Nút "VI ▾" | Menu thả xuống nổi trên bản đồ (Tiếng Việt, English, 中文, 한국어, 日本語) | Chọn Tiếng Việt hoặc bấm ra ngoài thì đóng; ngôn ngữ khác báo "sắp có" |
-| Bấm một địa điểm (gợi ý, tìm kiếm, Discover) | Vào thẳng màn tuyến, không vào trang mô tả | Dòng "Thông tin về …" trên màn tuyến mở trang mô tả |
+| Bấm một địa điểm (gợi ý trên bản đồ, Khám phá) | Mở trang địa điểm (UX-2) | "Chỉ đường" vào danh sách tuyến; Back về đúng trang địa điểm |
+| Chọn điểm đến trong "Đi đâu?" (địa điểm, địa chỉ, trên bản đồ) | Vào thẳng danh sách tuyến | Back về nơi bắt đầu (không về ô tìm kiếm) |
+| Thanh dưới 5 mục (Bản đồ · Khám phá · Đi đâu? · Hành trình · Hồ sơ) | Đổi tab giữ nguyên màn đang mở ở tab kia; bấm lại tab đang chọn thì về gốc tab | Back ở gốc tab khác về tab Bản đồ |
+| Tìm tuyến khi chưa có điểm đi | Hỏi quyền vị trí một lần, nếu bị từ chối thì có nút "Dùng vị trí của tôi" / "Chọn điểm đi trên bản đồ" | Không hỏi quyền lặp lại |
 | Xem trước: ︿ / ﹀ trên mặt đường (**chỉ ở chế độ Vệ tinh**, màn chia đôi) | Nhích 20 m tới/lùi dọc tuyến | 2D/3D không có mũi tên; Trước / Sau nhảy theo chỉ dẫn; ▶▶ tự chạy, bấm lại để dừng |
 | Màn chào (lần đầu) | — | Chỉ hiện ở lần mở app đầu tiên; mở lại app thì vào thẳng bản đồ |
 
@@ -46,6 +47,7 @@ Kiểm tra tự động: `mobile/tools/e2e_ux.py` (từng dòng ở trên là m�
 - Màu chữ/nền đạt WCAG AA ≥ 4,5:1 (`ContrastTest`, chạy cả Android và iOS).
 - Bản đồ không dùng nút có sẵn của MapLibre (la bàn không nhãn, thanh ghi công bung ra giữa bản đồ trên iOS); ghi công OSM/OpenMapTiles là dòng chữ nhỏ góc dưới phải. Nút nổi trên bản đồ phải tránh tai thỏ/Dynamic Island (`WindowInsets.safeDrawing`).
 - Kết quả Buýt/Metro ghi "Đi bộ tổng … phút" (đi bộ ra/vào trạm); Ô tô, Xe đạp là phương tiện độc lập, không có chặng đi bộ.
+- **Không có nút "Sắp có".** Tính năng chưa xong thì ẩn (ADR-034). Không có hai nhãn giống hệt nhau trên cùng một màn (trình đọc màn hình và E2E đều nhầm, 14-11-2026: "Bản đồ" ở Hồ sơ đổi thành "Bản đồ nền").
 - **Thử cả hai nền tảng.** Màn iPhone hẹp hơn emulator Android: lỗi xuống hàng chỉ thấy trên iOS (chủ dự án phát hiện 14-11-2026).
 - Mỗi test UX mới phải được chứng minh **fail trên giao diện lỗi** trước khi tin nó đạt.
 - Kiểm tra số chính xác (bước +1), không chỉ "có thay đổi": kiểm tra "khác nhau" đã để lọt lỗi vuốt sang bước kế mà lại lùi 2 bước.

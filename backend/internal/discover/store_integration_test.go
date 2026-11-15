@@ -169,6 +169,72 @@ func TestStore(t *testing.T) {
 		}
 	})
 
+	t.Run("in bounds returns published places inside the box only, filtered by any of the categories", func(t *testing.T) {
+		box := MapQuery{South: 10.765, West: 106.695, North: 10.775, East: 106.705, Limit: 10}
+		ps, err := s.InBounds(ctx, box)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, p := range ps {
+			got[p.Name] = true
+		}
+		if len(ps) != 3 || !got["Chợ Bến Thành"] || !got["Bảo tàng Mỹ thuật"] || !got["Phở 100% bò"] {
+			t.Fatalf("got %s", names(ps))
+		}
+		box.Categories = []string{"museum", "food"} // the market is also linked to food
+		if ps, _ = s.InBounds(ctx, box); len(ps) != 3 {
+			t.Fatalf("categories: %s", names(ps))
+		}
+		box.Categories = []string{"museum", "hidden-cat"}
+		if ps, _ = s.InBounds(ctx, box); names(ps) != "Bảo tàng Mỹ thuật" {
+			t.Fatalf("category: %s", names(ps))
+		}
+		box.Categories, box.Limit = nil, 2
+		first, _ := s.InBounds(ctx, box)
+		again, _ := s.InBounds(ctx, box)
+		if len(first) != 2 || names(first) != names(again) {
+			t.Fatalf("limit / stable order: %s vs %s", names(first), names(again))
+		}
+	})
+
+	t.Run("clusters count published places per grid cell and keep the filter", func(t *testing.T) {
+		// 2 x 2 grid over the market area: market (+ draft and hidden, not counted) and the museum fall in different rows.
+		q := ClusterQuery{MapQuery: MapQuery{South: 10.765, West: 106.695, North: 10.775, East: 106.705}, Cols: 2, Rows: 2}
+		cs, err := s.Clusters(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total := 0
+		for _, c := range cs {
+			total += c.Count
+			if c.Lat < q.South || c.Lat > q.North || c.Lon < q.West || c.Lon > q.East {
+				t.Fatalf("cluster outside the box: %+v", c)
+			}
+		}
+		if total != 3 || len(cs) < 2 {
+			t.Fatalf("total %d in %d clusters: %+v", total, len(cs), cs)
+		}
+		q.Categories = []string{"museum"}
+		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 1 {
+			t.Fatalf("category: %+v", cs)
+		}
+		// A place exactly on the north-east corner (the market) falls in the extra bucket and must fold into the last cell.
+		edge := ClusterQuery{MapQuery: MapQuery{South: 10.765, West: 106.69, North: 10.77253, East: 106.69805}, Cols: 2, Rows: 2}
+		if cs, err = s.Clusters(ctx, edge); err != nil || len(cs) == 0 {
+			t.Fatalf("edge: %v %+v", err, cs)
+		}
+		for _, c := range cs {
+			if c.Lat > edge.North || c.Lon > edge.East {
+				t.Fatalf("edge place drawn outside the box: %+v", c)
+			}
+		}
+		q.Categories, q.Cols, q.Rows = nil, 1, 1
+		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 3 {
+			t.Fatalf("one cell: %+v", cs)
+		}
+	})
+
 	t.Run("detail has categories, ordered media, published foods only", func(t *testing.T) {
 		d, err := s.Place(ctx, "0190f0c2-0000-7000-8000-000000000001")
 		if err != nil {

@@ -41,6 +41,28 @@ fun pilotIso(epochMillis: Long): String {
     return "${date}T${pad(h)}:${pad(m)}:${pad(s)}+07:00"
 }
 
+/** "yyyy-MM-dd" of the day [daysAhead] after the day of [epochMillis], and its weekday (0 = Sunday), pilot time zone. */
+fun pilotDay(epochMillis: Long, daysAhead: Int): Pair<String, Int> {
+    val millis = epochMillis + daysAhead * 86_400_000L
+    val days = (millis.floorDiv(1000L) + PILOT_OFFSET_SECONDS).floorDiv(86_400L)
+    return pilotParts(millis).date to ((days + 4).mod(7L)).toInt() // 1970-01-01 was a Thursday
+}
+
+/** Days since 1970-01-01 of a civil date (H. Hinnant's algorithm, the inverse of the one in [pilotParts]). */
+fun daysFromCivil(y: Int, m: Int, d: Int): Long {
+    val yy = (if (m <= 2) y - 1 else y).toLong()
+    val era = yy.floorDiv(400L)
+    val yoe = yy - era * 400
+    val doy = (153 * (if (m > 2) m - 3 else m + 9) + 2) / 5 + d - 1
+    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era * 146_097 + doe - 719_468
+}
+
+/** Weekday of a civil date, 0 = Sunday. */
+fun weekdayOf(y: Int, m: Int, d: Int): Int = ((daysFromCivil(y, m, d) + 4).mod(7L)).toInt()
+
+fun daysInMonth(y: Int, m: Int): Int = (daysFromCivil(if (m == 12) y + 1 else y, if (m == 12) 1 else m + 1, 1) - daysFromCivil(y, m, 1)).toInt()
+
 /** "HH:MM" in the pilot time zone. */
 fun pilotClock(epochMillis: Long): String = pilotParts(epochMillis).let { "${pad(it.h)}:${pad(it.m)}" }
 

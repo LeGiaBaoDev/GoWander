@@ -14,4 +14,6 @@ actual object Prefs {
     // Before init (previews/tests) flags read as false and writes are dropped: the app still works, it just shows onboarding.
     actual fun getBool(key: String): Boolean = prefs?.getBoolean(key, false) ?: false
     actual fun setBool(key: String, value: Boolean) { prefs?.edit()?.putBoolean(key, value)?.apply() }
+    actual fun getString(key: String): String? = prefs?.getString(key, null)
+    actual fun setString(key: String, value: String) { prefs?.edit()?.putString(key, value)?.apply() }
 }

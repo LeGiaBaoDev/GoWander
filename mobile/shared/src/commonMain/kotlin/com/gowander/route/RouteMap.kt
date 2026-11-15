@@ -1,5 +1,6 @@
 package com.gowander.route
 
+import com.gowander.ui.Theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
@@ -43,6 +44,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.gowander.ui.IconButton
 import com.gowander.ui.KitIcons
+import org.maplibre.compose.overlay.MapOverlayScope
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import com.gowander.ui.Note
 import com.gowander.ui.Strings
 import com.gowander.ui.kitShadow
@@ -54,12 +58,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gowander.api.Route
+import com.gowander.resources.Res
 import kotlin.coroutines.cancellation.CancellationException
 import org.maplibre.compose.camera.CameraFit
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.LocationIndicatorLayer
 import org.maplibre.compose.location.BearingUpdate
@@ -77,8 +83,15 @@ import org.maplibre.compose.util.DpPadding
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Position
 
-// ADR-025: OpenFreeMap, no API key.
-private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+// ADR-025: OpenFreeMap, no API key. The bundled style is OpenFreeMap "liberty" with every name label preferring
+// name:vi ("Biển Đông", "Trung Quốc"); the stock style prints English names. Owner, 15-11-2026.
+// shortcut: a frozen copy of the style, re-download and re-patch it if OpenFreeMap retires its sprite or font paths.
+private val STYLE_URL = Res.getUri("files/map_style.json")
+private val STYLE_DARK_URL = Res.getUri("files/map_style_dark.json") // OpenFreeMap "fiord", patched the same way
+
+// Light: the water colour of the bundled style, so the coast is seamless. Dark: darker than the style's water, whose
+// colour is too close to the land for the country to stand out.
+private val MASK_COLOR get() = if (Theme.dark) Color(0x1B, 0x25, 0x34) else Color(158, 189, 255)
 
 private val STREET_LEVEL = CameraConstraints { maxZoom = 21.0; maxPitch = 65.0 }
 
@@ -114,6 +127,15 @@ fun RouteMap(
     viewSwitch: Boolean = false, // show the 2D / 3D / satellite button on this map
     insets: PaddingValues = PaddingValues(0.dp), // area covered by cards: logo, attribution and camera centre avoid it
     streetLevel: Boolean = false, // preview top half: allow eye-level zoom and tilt beyond MapLibre's defaults (20, 60°)
+    followZoom: Double = 17.5, // UX-2 split navigation: street view on top follows closer than the 2D map below
+    followPitch: Double? = null, // null: from the user's 2D / 3D choice
+    credit: String = Strings.MAP_CREDIT, // the licence line; a screen that also shows street photos adds their credit
+    style: BaseStyle? = null, // the country map passes the same style without its text labels; null = the bundled style of the current look
+    lines: String? = null, // plan map: routes the router measured between stops (GeoJSON lines, solid)
+    sketch: String? = null, // plan map: stops joined by straight lines where no route is known yet, or a proposed order (dashed)
+    fit: List<Pair<Double, Double>> = emptyList(), // points to frame when there is no route or endpoint (plan stops)
+    maskJson: String? = null, // GeoJSON polygon painted over the basemap in the sea colour: hides what is outside one country
+    markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
     val viewState = LocalMapView.current
     val view = viewState.value
@@ -125,10 +147,13 @@ fun RouteMap(
     val highlightJson = remember(highlight) { pointGeoJson(highlight?.let { Endpoint(it.first, it.second, "") }) }
 
     val mapState = rememberMapState(
-        baseStyle = BaseStyle.Uri(STYLE_URL),
+        baseStyle = style ?: BaseStyle.Uri(if (Theme.dark) STYLE_DARK_URL else STYLE_URL),
         initialCameraPosition = CameraPosition(center = Position(latitude = 10.785, longitude = 106.715), zoom = 12.0),
     ) {
+        if (maskJson != null) FillLayer(id = "mask", source = rememberGeoJsonSource(GeoJsonData.JsonString(maskJson)), color = const(MASK_COLOR))
         // GeoJsonSource is immutable in maplibre-compose 0.20.0: key() recreates source + layer when the data changes.
+        if (sketch != null) key(sketch) { LineLayer(id = "plan-sketch", source = rememberGeoJsonSource(GeoJsonData.JsonString(sketch)), color = const(Palette.Muted), width = const(3.dp), dasharray = const(listOf(2, 2))) }
+        if (lines != null) key(lines) { LineLayer(id = "plan-lines", source = rememberGeoJsonSource(GeoJsonData.JsonString(lines)), color = const(Palette.Primary), width = const(5.dp)) }
         key(walkJson) { LineLayer(id = "route-walk", source = rememberGeoJsonSource(GeoJsonData.JsonString(walkJson)), color = const(Palette.Ink), width = const(4.dp), dasharray = const(listOf(1, 1.5))) }
         key(transitJson) { LineLayer(id = "route-transit", source = rememberGeoJsonSource(GeoJsonData.JsonString(transitJson)), color = const(Palette.Metro), width = const(6.dp)) }
         key(originJson) { CircleLayer(id = "origin", source = rememberGeoJsonSource(GeoJsonData.JsonString(originJson)), color = const(Palette.Primary), radius = const(8.dp), strokeColor = const(Color.White), strokeWidth = const(3.dp)) }
@@ -141,7 +166,7 @@ fun RouteMap(
     if (follow && location != null) {
         val reason = mapState.cameraMoveReason
         LaunchedEffect(reason) { if (reason == CameraMoveReason.Gesture) following = false }
-        LaunchedEffect(view, following) { if (following) mapState.animateCamera(CameraUpdate(zoom = 17.5, pitch = if (view == MapView.Flat) 0.0 else 55.0)) }
+        LaunchedEffect(view, following) { if (following) mapState.animateCamera(CameraUpdate(zoom = followZoom, pitch = followPitch ?: if (view == MapView.Flat) 0.0 else 55.0)) }
         // Bearing from course or compass, whichever is more accurate.
         LocationTrackingEffect(locationState = location, enabled = following) { updateCamera(mapState, updateBearing = BearingUpdate.TrackAutomatic) }
     }
@@ -150,7 +175,7 @@ fun RouteMap(
     }
     if (stateOut != null) stateOut.value = mapState
 
-    val frame = remember(route, origin, destination) { framePoints(route, origin, destination) }
+    val frame = remember(route, origin, destination, fit) { framePoints(route, origin, destination).ifEmpty { fit } }
     LaunchedEffect(frame) {
         if (frame.isEmpty() || follow || focus != null) return@LaunchedEffect
         try {
@@ -178,12 +203,12 @@ fun RouteMap(
         // "Loại bản đồ" button when the map rotates in navigation (UX audit T2/T3, 14-11-2026); "Căn giữa lại" covers it.
         // No built-in controls: the default compass sat unlabeled on our button, and the expanding attribution bar
         // opened across the middle of the map on iOS (14-11-2026). The licence credit is drawn below instead.
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = { },
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = markers,
             cameraConstraints = if (streetLevel) STREET_LEVEL else CameraConstraints.Standard,
         )
         // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
         Text(
-            Strings.MAP_CREDIT,
+            credit,
             Modifier.align(Alignment.BottomEnd).padding(insets).padding(end = 8.dp, bottom = 4.dp)
                 .clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
             size = 10.sp, color = Palette.Muted,
@@ -238,9 +263,10 @@ fun MapViewSwitch(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ViewTile(KitIcons.map, Strings.VIEW_2D, null, view == MapView.Flat, Modifier.weight(1f)) { onChange(MapView.Flat); onOpenChange(false) }
                     ViewTile(ExtraIcons.cube, Strings.VIEW_3D, null, view == MapView.Tilted, Modifier.weight(1f)) { onChange(MapView.Tilted); onOpenChange(false) }
-                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, Strings.SOON, view == MapView.Satellite, Modifier.weight(1f)) { satelliteNote = true }
+                    // Owner, 14-11-2026: show the satellite choice now; it only explains until a provider is chosen (PIPELINE mock register).
+                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, null, false, Modifier.weight(1f)) { satelliteNote = true }
                 }
-                if (satelliteNote) Note(Strings.SATELLITE_PENDING)
+                if (satelliteNote) Note(Strings.SATELLITE_PENDING, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
     }

@@ -61,11 +61,16 @@ class UxComponentTest {
         assertEquals(2, clicks)
     }
 
-    /** iPhone SE (375 pt) minus the sheet margins: the three route actions must each stay on one line. */
+    /** iPhone SE (375 pt) minus the sheet margins: "Bắt đầu" and "Xem từng bước" (UX-2 screen 5) each stay on one line. */
     @Test
     fun routeActionsStayOnOneLineOnSmallIphones() = runComposeUiTest {
-        setContent { Box(Modifier.width(319.dp)) { RouteActions({}, {}, {}) } }
-        for (label in listOf(Strings.START, Strings.PREVIEW, Strings.STEPS)) {
+        var started = 0
+        var stepped = 0
+        setContent { Box(Modifier.width(319.dp)) { RouteActions({ started++ }, { stepped++ }) } }
+        onNodeWithText(Strings.PREVIEW).assertDoesNotExist() // one step-by-step screen, no separate "Xem trước"
+        onNodeWithText(Strings.STEP_BY_STEP).performClick()
+        assertEquals(0 to 1, started to stepped)
+        for (label in listOf(Strings.START, Strings.STEP_BY_STEP)) {
             // Labels are maxLines = 1, so a label that does not fit is cut, not wrapped: check the text layout itself.
             val layouts = mutableListOf<TextLayoutResult>()
             onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
@@ -103,19 +108,38 @@ class UxComponentTest {
         onNodeWithText(Strings.ENGLISH).assertDoesNotExist()
     }
 
-    /** Owner 14-11-2026: the welcome logo must be big, and the first-run screen shows the full logo (with the name). */
+    /** Owner 14-11-2026: the welcome logo must be big (the first-run form is gone in UX-2, ADR-034). */
     @Test
-    fun onboardingLogosAreLarge() = runComposeUiTest {
-        var step by mutableStateOf(0)
+    fun welcomeLogoIsLarge() = runComposeUiTest {
         // Real iPhone density (3x): at density 1 the PNG's pixel height looked big enough and hid the bug.
         setContent {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(3f)) {
-                Box(Modifier.requiredSize(402.dp, 874.dp)) { if (step == 0) com.gowander.onboarding.WelcomeScreen {} else com.gowander.onboarding.FirstRunScreen({}, {}) }
+                Box(Modifier.requiredSize(402.dp, 874.dp)) { com.gowander.onboarding.WelcomeScreen {} }
             }
         }
         onNodeWithContentDescription(Strings.APP_NAME).assertWidthIsAtLeast(300.dp).assertHeightIsAtLeast(190.dp) // 350x233 logo keeps its ratio
-        step = 1
-        onNodeWithContentDescription(Strings.APP_NAME).assertWidthIsAtLeast(200.dp).assertHeightIsAtLeast(130.dp)
+    }
+
+    /** UX-2 (ADR-034): five slots on a 320 dp iPhone, labels on one line, tabs expose selection, the centre is an action. */
+    @Test
+    fun bottomNavFiveSlotsFitOnSmallIphones() = runComposeUiTest {
+        var tab by mutableStateOf(com.gowander.nav.Tab.Map)
+        var went = 0
+        setContent { Box(Modifier.width(320.dp)) { BottomNav(tab, onGo = { went++ }) { tab = it } } }
+        for (label in listOf(Strings.TAB_MAP, Strings.TAB_DISCOVER, Strings.TAB_GO, Strings.TAB_JOURNEY, Strings.TAB_PROFILE)) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            onNodeWithText(label, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(layouts)
+            val layout = layouts.single()
+            assertTrue(layout.multiParagraph.intrinsics.maxIntrinsicWidth <= layout.size.width + 0.5f && layout.lineCount == 1, "$label is cut")
+            onNodeWithText(label).assertHeightIsAtLeast(48.dp)
+        }
+        onNodeWithText(Strings.TAB_MAP).assertIsSelected()
+        onNodeWithText(Strings.TAB_JOURNEY).assertIsNotSelected().performClick()
+        assertEquals(com.gowander.nav.Tab.Journey, tab)
+        onNodeWithText(Strings.TAB_JOURNEY).assertIsSelected()
+        onNodeWithText(Strings.TAB_GO).performClick()
+        assertEquals(1, went)
+        assertEquals(com.gowander.nav.Tab.Journey, tab) // the centre action does not switch tabs
     }
 
     @Test
@@ -142,9 +166,10 @@ class UxComponentTest {
         onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()
 
         onNodeWithContentDescription(Strings.MAP_VIEW).performClick()
-        onNodeWithText(Strings.VIEW_SATELLITE).performClick()
-        onNodeWithText(Strings.SATELLITE_PENDING).assertExists() // explains instead of failing silently
-        assertEquals(MapView.Tilted, view) // nothing switched to an empty satellite map
+        // Owner, 14-11-2026: satellite is shown now but only explains itself; the map view does not change.
+        onNodeWithText(Strings.VIEW_SATELLITE).assertHeightIsAtLeast(48.dp).performClick()
+        onNodeWithText(Strings.SATELLITE_PENDING).assertExists()
+        assertEquals(MapView.Tilted, view)
 
         onNodeWithContentDescription(Strings.MAP_VIEW).performClick() // the same button closes it again
         onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()
