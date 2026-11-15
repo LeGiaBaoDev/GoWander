@@ -79,7 +79,7 @@ Trang quản trị nằm trong cùng binary, đường dẫn `/admin/` (Go `html
 
 - **Bật:** `ADMIN_DATABASE_URL` (role `gowander_admin`, ghi được bảng admin; API công khai vẫn dùng `gowander_app` chỉ đọc). Volume Postgres cũ: `infrastructure/postgres/db.sh admin-role` một lần, rồi `go run ./cmd/migrate up`.
 - **Đăng nhập Google:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth client loại *Web application*, Authorized redirect URI `<ADMIN_BASE_URL>/admin/auth/callback`), `ADMIN_BASE_URL` (mặc định `http://localhost:8090`). Thiếu hai biến Google thì trang đăng nhập báo chưa bật.
-- **Người đầu tiên:** `ADMIN_BOOTSTRAP_EMAIL` thành SYSTEM_ADMIN khi chưa ai có vai trò; sau đó cấp vai trò ở `/admin/users`. Không gộp tài khoản theo email: email đã liên kết một tài khoản Google thì tài khoản Google khác cùng email bị từ chối.
+- **Người đầu tiên:** `ADMIN_BOOTSTRAP_EMAIL` thành SYSTEM_ADMIN khi chưa ai có vai trò. Hiện chỉ có một quản trị viên: trang cấp vai trò đã gỡ, phần vai trò trong database giữ lại cho lúc phân quyền. Không gộp tài khoản theo email: email đã liên kết một tài khoản Google thì tài khoản Google khác cùng email bị từ chối.
 - **An toàn:** phiên lưu ở server (cookie `HttpOnly`, `SameSite=Lax`, `Secure` khi https; database chỉ giữ SHA-256 của cookie), CSRF cho mọi thao tác ghi, kiểm vai trò ở server cho từng request, nhật ký `admin_audit_logs` chỉ thêm (role admin không sửa hay xoá được). Không ghi email vào log.
 - **Test:** `go test ./internal/admin/` (handler, store giả); `go test -tags integration -p 1 ./internal/admin/` (database `gowander_test`, cần `ADMIN_DATABASE_URL`).
 

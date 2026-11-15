@@ -81,7 +81,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "users", "audit", "message"} {
+	for _, name := range []string{"login", "home", "audit", "message"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -107,9 +107,6 @@ func (h Handler) Mount(r chi.Router) {
 			r.Post("/logout", h.logout)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin))
-				r.Get("/users", h.users)
-				r.Post("/users/grant", h.grant)
-				r.Post("/users/revoke", h.revoke)
 				r.Get("/audit", h.audit)
 			})
 		})
@@ -286,38 +283,6 @@ func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.render(w, r, http.StatusOK, "home", map[string]any{"Recent": recent})
-}
-
-func (h Handler) users(w http.ResponseWriter, r *http.Request) {
-	ops, err := h.Store.Operators(r.Context())
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	h.render(w, r, http.StatusOK, "users", map[string]any{"Operators": ops, "Roles": AllRoles, "Notice": r.URL.Query().Get("n")})
-}
-
-func (h Handler) grant(w http.ResponseWriter, r *http.Request) {
-	err := h.Store.Grant(r.Context(), current(r).UserID, r.PostFormValue("email"), r.PostFormValue("role"), httpx.RequestID(r))
-	h.afterRoleChange(w, r, err, "granted")
-}
-
-func (h Handler) revoke(w http.ResponseWriter, r *http.Request) {
-	err := h.Store.Revoke(r.Context(), current(r).UserID, r.PostFormValue("user"), r.PostFormValue("role"), httpx.RequestID(r))
-	h.afterRoleChange(w, r, err, "revoked")
-}
-
-func (h Handler) afterRoleChange(w http.ResponseWriter, r *http.Request, err error, ok string) {
-	switch {
-	case errors.Is(err, ErrBadInput):
-		http.Redirect(w, r, "/admin/users?n=bad", http.StatusSeeOther)
-	case errors.Is(err, ErrLastSystemAdmin):
-		http.Redirect(w, r, "/admin/users?n=last", http.StatusSeeOther)
-	case err != nil:
-		h.fail(w, r, err)
-	default:
-		http.Redirect(w, r, "/admin/users?n="+ok, http.StatusSeeOther)
-	}
 }
 
 func (h Handler) audit(w http.ResponseWriter, r *http.Request) {

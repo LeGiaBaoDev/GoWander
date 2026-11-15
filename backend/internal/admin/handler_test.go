@@ -115,7 +115,7 @@ func TestNotConfigured(t *testing.T) {
 
 func TestPagesNeedASession(t *testing.T) {
 	h := server(newFake(), nil)
-	for _, target := range []string{"/admin/", "/admin/users", "/admin/audit"} {
+	for _, target := range []string{"/admin/", "/admin/audit"} {
 		w := do(h, "GET", target, "", nil, nil)
 		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/login" {
 			t.Errorf("%s: %d %s", target, w.Code, w.Header().Get("Location"))
@@ -127,49 +127,33 @@ func TestPagesNeedASession(t *testing.T) {
 }
 
 func TestRolesAreCheckedOnTheServer(t *testing.T) {
-	store := newFake()
-	h := server(store, nil)
-	// A content editor: the people page and a grant are refused by the server, even with a valid CSRF token.
-	if w := do(h, "GET", "/admin/users", "editor", nil, nil); w.Code != http.StatusForbidden {
-		t.Fatalf("editor GET users: %d", w.Code)
+	h := server(newFake(), nil)
+	// The audit log needs SYSTEM_ADMIN: a content editor is refused by the server.
+	if w := do(h, "GET", "/admin/audit", "editor", nil, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("editor GET audit: %d", w.Code)
 	}
-	form := url.Values{"csrf": {"csrf-e"}, "email": {"x@example.vn"}, "role": {RoleSystemAdmin}}
-	if w := do(h, "POST", "/admin/users/grant", "editor", form, nil); w.Code != http.StatusForbidden || len(store.granted) != 0 {
-		t.Fatalf("editor grant: %d %v", w.Code, store.granted)
-	}
-	// System admin with its own CSRF token: allowed.
-	form.Set("csrf", "csrf-s")
-	if w := do(h, "POST", "/admin/users/grant", "sys", form, nil); w.Code != http.StatusSeeOther || len(store.granted) != 1 {
-		t.Fatalf("sys grant: %d %v", w.Code, store.granted)
+	if w := do(h, "GET", "/admin/audit", "sys", nil, nil); w.Code != http.StatusOK {
+		t.Fatalf("sys GET audit: %d", w.Code)
 	}
 }
 
 func TestWritesNeedTheCSRFToken(t *testing.T) {
 	store := newFake()
 	h := server(store, nil)
-	for name, form := range map[string]url.Values{
-		"missing":       {"email": {"x@example.vn"}, "role": {RoleModerator}},
-		"other session": {"csrf": {"csrf-e"}, "email": {"x@example.vn"}, "role": {RoleModerator}},
-	} {
-		if w := do(h, "POST", "/admin/users/grant", "sys", form, nil); w.Code != http.StatusForbidden {
+	for name, form := range map[string]url.Values{"missing": {}, "other session": {"csrf": {"csrf-e"}}} {
+		if w := do(h, "POST", "/admin/logout", "sys", form, nil); w.Code != http.StatusForbidden {
 			t.Errorf("%s: %d", name, w.Code)
 		}
 	}
-	if len(store.granted) != 0 {
-		t.Fatalf("granted without a valid token: %v", store.granted)
+	if _, ok := store.sessions["sys"]; !ok {
+		t.Fatal("signed out without a valid token")
 	}
 	// htmx sends the token in a header.
-	if w := do(h, "POST", "/admin/users/grant", "sys", url.Values{"email": {"x@example.vn"}, "role": {RoleModerator}}, map[string]string{"X-CSRF-Token": "csrf-s"}); w.Code != http.StatusSeeOther {
+	if w := do(h, "POST", "/admin/logout", "sys", url.Values{}, map[string]string{"X-CSRF-Token": "csrf-s"}); w.Code != http.StatusSeeOther {
 		t.Fatalf("header token: %d", w.Code)
 	}
-}
-
-func TestLastSystemAdminIsKept(t *testing.T) {
-	store := newFake()
-	store.revokeErr = ErrLastSystemAdmin
-	w := do(server(store, nil), "POST", "/admin/users/revoke", "sys", url.Values{"csrf": {"csrf-s"}, "user": {"s"}, "role": {RoleSystemAdmin}}, nil)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/users?n=last" {
-		t.Fatalf("%d %s", w.Code, w.Header().Get("Location"))
+	if _, ok := store.sessions["sys"]; ok {
+		t.Fatal("session kept after sign-out")
 	}
 }
 
