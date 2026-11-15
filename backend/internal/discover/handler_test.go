@@ -135,7 +135,7 @@ func TestInBounds(t *testing.T) {
 		s.bounds.East != 106.71 || s.bounds.Categories != nil || s.bounds.Limit != 50 {
 		t.Fatalf("%d %+v", status, s.bounds)
 	}
-	get(t, s, "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,cafe&limit=100")
+	get(t, s, "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,%20cafe&limit=100")
 	if strings.Join(s.bounds.Categories, "|") != "food|cafe" || s.bounds.Limit != 100 {
 		t.Fatalf("%+v", s.bounds)
 	}
@@ -144,6 +144,8 @@ func TestInBounds(t *testing.T) {
 		"/api/v1/places/map?south=10&west=107&north=11&east=106", "/api/v1/places/map?south=10&west=106&north=91&east=107",
 		"/api/v1/places/map?south=10&west=106&north=11&east=107&limit=101", "/api/v1/places/map?south=10&west=106&north=11&east=107&categories=food,,cafe",
 		"/api/v1/places/map?south=10&west=106&north=11&east=107&categories=" + strings.Repeat("a,", 10) + "a",
+		"/api/v1/places/map?south=-30&west=100&north=0&east=110", "/api/v1/places/map/clusters?south=-90&west=-180&north=90&east=180",
+		"/api/v1/places/map?south=NaN&west=106&north=11&east=107",
 	} {
 		if status, _ := get(t, s, target); status != 400 {
 			t.Errorf("%s: got %d, want 400", target, status)

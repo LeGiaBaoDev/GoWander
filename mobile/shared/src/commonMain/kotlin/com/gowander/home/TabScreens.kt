@@ -216,6 +216,8 @@ private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> 
 @Composable
 internal fun ReorderPanel(plan: Plan, proposal: List<PlanItem>?, onProposal: (List<PlanItem>?) -> Unit, onChange: (Plan) -> Unit) {
     val notice = LocalNotice.current
+    // While the plan is being followed, a new order would throw away which stops are done: no reordering then.
+    if (plan.next > 0 || plan.going) return
     if (proposal == null) Button(Strings.REORDER, kind = ButtonKind.Soft, compact = true, pill = true) {
         val better = reorderNearest(plan.items)
         if (better == plan.items || straightTotalM(better) >= straightTotalM(plan.items) - 50) notice(Strings.ORDER_ALREADY_SHORT) else onProposal(better)
@@ -287,7 +289,8 @@ private fun PlanMap(items: List<PlanItem>, proposal: List<PlanItem>?, modifier: 
  */
 @Composable
 fun PlanMapScreen(plan: Plan, onBack: () -> Unit, onChange: (Plan) -> Unit, onGo: (Plan) -> Unit) {
-    var proposal by remember(plan.id) { mutableStateOf<List<PlanItem>?>(null) }
+    // A proposal is for the stops it was made from: any change to them (a stop added or removed) drops it.
+    var proposal by remember(plan.id, plan.items.map { it.title to it.spot() }) { mutableStateOf<List<PlanItem>?>(null) }
     Box(Modifier.fillMaxSize().background(Palette.Bg)) {
         PlanMap(plan.items, proposal, Modifier.fillMaxSize(), full = true, insets = PaddingValues(top = 72.dp, bottom = 230.dp))
         Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header(plan.name, floating = true, onBack = onBack) }
@@ -399,7 +402,8 @@ fun PlanBuilderScreen(
     var open by rememberSaveable { mutableStateOf(-1) }
     // "Sắp xếp lại" only proposes: the new order is drawn on the map and the user decides (the shortest way is not
     // always what they want).
-    var proposal by remember(plan.id) { mutableStateOf<List<PlanItem>?>(null) }
+    // A proposal is for the stops it was made from: any change to them (a stop added or removed) drops it.
+    var proposal by remember(plan.id, plan.items.map { it.title to it.spot() }) { mutableStateOf<List<PlanItem>?>(null) }
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Column(
             Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),

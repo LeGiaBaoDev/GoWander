@@ -152,6 +152,9 @@ fun MapHome(
     var clusters by remember { mutableStateOf<List<PlaceCluster>>(emptyList()) }
     // A dot the user tapped: the map centres on it and it gets a card (it stays even if the next server answer leaves it out).
     var picked by remember { mutableStateOf<PlaceSummary?>(null) }
+    LaunchedEffect(filter) { picked = null } // a place of another category must not keep its card
+    // Zoomed far out: bubbles only, even when the server has none here or its answer failed (no stale cards).
+    var zoomedOut by remember { mutableStateOf(false) }
     LaunchedEffect(camera, filter) {
         var region = mapRef.value?.getVisibleRegion()
         do { delay(400); region = mapRef.value?.getVisibleRegion() } while (region == null) // wait for the map to rest / attach
@@ -162,15 +165,17 @@ fun MapHome(
         val east = corners.maxOf { it.longitude }.coerceIn(-180.0, 180.0)
         if (south >= north || west >= east) return@LaunchedEffect
         // Below this zoom a screen holds hundreds of places: show counts per area; tapping one zooms in.
-        if ((mapRef.value?.cameraPosition?.zoom ?: CLUSTER_BELOW_ZOOM) < CLUSTER_BELOW_ZOOM) {
-            loadClusters(south, west, north, east, MAP_FILTERS[filter].second)?.let { clusters = it; picked = null }
+        zoomedOut = (mapRef.value?.cameraPosition?.zoom ?: CLUSTER_BELOW_ZOOM) < CLUSTER_BELOW_ZOOM
+        if (zoomedOut) {
+            picked = null
+            clusters = loadClusters(south, west, north, east, MAP_FILTERS[filter].second).orEmpty()
         } else {
             clusters = emptyList()
             loadPlaces(south, west, north, east, MAP_FILTERS[filter].second)?.let { inView = filter to it }
         }
     }
-    val shown = remember(nearby, inView, filter, clusters) {
-        if (clusters.isNotEmpty()) return@remember emptyList()
+    val shown = remember(nearby, inView, filter, zoomedOut) {
+        if (zoomedOut) return@remember emptyList()
         val slugs = MAP_FILTERS[filter].second
         if (inView?.first == filter) inView!!.second else (inView?.second ?: nearby).filter { slugs == null || it.category?.slug in slugs }
     }
@@ -181,8 +186,8 @@ fun MapHome(
         val height = maxHeight
         fun at(p: PlaceSummary) = mapRef.value?.screenLocationFromPosition(Position(latitude = p.lat, longitude = p.lon))
         // Cards and dots are sized in dp, so the room they need in metres depends on the zoom.
-        val (cards, dots) = remember(shown, picked, clusters, camera, width, height) {
-            if (clusters.isNotEmpty()) return@remember emptyList<PlaceSummary>() to emptyList()
+        val (cards, dots) = remember(shown, picked, zoomedOut, camera, width, height) {
+            if (zoomedOut) return@remember emptyList<PlaceSummary>() to emptyList()
             val all = picked?.takeIf { pick -> shown.none { it.id == pick.id } }?.let { shown + it } ?: shown
             val mPerDp = all.firstOrNull()?.let { mapRef.value?.metersPerDpAtLatitude(it.lat) } ?: M_PER_DP_HOME
             fun cardFits(p: PlaceSummary): Boolean {

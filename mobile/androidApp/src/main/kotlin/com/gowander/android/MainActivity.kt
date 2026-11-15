@@ -21,6 +21,8 @@ class MainActivity : ComponentActivity() {
             SideEffect {
                 val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+                // No grey scrim over the 3-button navigation bar: the app draws its own bar there.
+                if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
             }
             App()
         }

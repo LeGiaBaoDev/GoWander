@@ -1,6 +1,7 @@
 package discover
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -100,6 +102,11 @@ func (h Handler) nearby(w http.ResponseWriter, r *http.Request) {
 }
 
 // mapBox reads the viewport and category filter shared by the map endpoints.
+const maxBoxDeg = 20 // Vietnam is about 15 degrees tall
+
+// mapQueryTimeout bounds one map query so a burst of requests cannot hold every pool connection.
+const mapQueryTimeout = 3 * time.Second
+
 func mapBox(v url.Values) (MapQuery, error) {
 	var q MapQuery
 	var err error
@@ -119,11 +126,16 @@ func mapBox(v url.Values) (MapQuery, error) {
 		if q.Categories = strings.Split(s, ","); len(q.Categories) > 10 {
 			err = badRequest("categories có tối đa 10 mục, cách nhau bằng dấu phẩy.")
 		}
-		for _, c := range q.Categories {
+		for i, c := range q.Categories {
+			q.Categories[i] = strings.TrimSpace(c) // "food, cafe" means food and cafe
 			if err == nil {
-				err = textParam(c, "categories", 1, 100)
+				err = textParam(q.Categories[i], "categories", 1, 100)
 			}
 		}
+	}
+	// A box larger than this is a whole region, not a map screen: refuse it rather than scan everything (review 15-11-2026).
+	if err == nil && (q.North-q.South > maxBoxDeg || q.East-q.West > maxBoxDeg) {
+		err = badRequest("Khung bản đồ quá lớn: mỗi chiều tối đa " + strconv.Itoa(maxBoxDeg) + " độ.")
 	}
 	return q, err
 }
@@ -138,7 +150,9 @@ func (h Handler) inBounds(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	places, err := h.Store.InBounds(r.Context(), q)
+	ctx, cancel := context.WithTimeout(r.Context(), mapQueryTimeout)
+	defer cancel()
+	places, err := h.Store.InBounds(ctx, q)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -160,7 +174,9 @@ func (h Handler) clusters(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	cs, err := h.Store.Clusters(r.Context(), q)
+	ctx, cancel := context.WithTimeout(r.Context(), mapQueryTimeout)
+	defer cancel()
+	cs, err := h.Store.Clusters(ctx, q)
 	if err != nil {
 		h.fail(w, r, err)
 		return

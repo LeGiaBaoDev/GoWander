@@ -146,7 +146,7 @@ private fun AppContent() {
     val route by routeVm.state.collectAsState()
     var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(AppNav()) }
     val placesListState = rememberLazyListState()
-    val store = remember { AppStore(Prefs.getString(STORE_KEY)) { Prefs.setString(STORE_KEY, it) } }
+    val store = remember { AppStore(Prefs.getString(STORE_KEY), persist = { Prefs.setString(STORE_KEY, it) }, keepUnreadable = { Prefs.setString("$STORE_KEY.unreadable", it) }) }
     val scope = rememberCoroutineScope()
     var noticeText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(noticeText) { if (noticeText != null) { delay(3500); noticeText = null } }

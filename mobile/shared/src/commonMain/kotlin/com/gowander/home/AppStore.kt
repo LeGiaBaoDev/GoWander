@@ -15,16 +15,21 @@ data class SavedPlace(val id: String, val name: String, val category: String?)
 @Serializable
 private data class Stored(val plans: List<Plan> = emptyList(), val saved: List<SavedPlace> = emptyList())
 
-private val storeJson = Json { ignoreUnknownKeys = true }
+private val storeJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
 /**
  * What the user makes: plans and saved places, kept on the device as one JSON string (ADR-036, no account needed).
  * [stored] is what was saved last time; [persist] is called with the new string after every change.
  * First run, or data this version cannot read: the sample plans, so the Plans tab is not empty.
  */
-class AppStore(stored: String? = null, private val persist: (String) -> Unit = {}) {
+class AppStore(stored: String? = null, private val persist: (String) -> Unit = {}, keepUnreadable: (String) -> Unit = {}) {
     private val loaded = stored?.let {
-        try { storeJson.decodeFromString<Stored>(it) } catch (e: Exception) { println("GoWander: saved plans unreadable, starting from samples: ${e.message}"); null }
+        try { storeJson.decodeFromString<Stored>(it) } catch (e: Exception) {
+            // The next save overwrites the stored string: keep the unreadable copy first so a fix can still recover it.
+            keepUnreadable(it)
+            println("GoWander: saved plans unreadable (copy kept), starting from samples: ${e.message}")
+            null
+        }
     }
     val plans = mutableStateListOf<Plan>().apply { addAll(loaded?.plans ?: MOCK_PLANS) }
     val saved = mutableStateListOf<SavedPlace>().apply { addAll(loaded?.saved.orEmpty()) }
@@ -37,7 +42,8 @@ class AppStore(stored: String? = null, private val persist: (String) -> Unit = {
         save()
     }
 
-    fun newPlan(): Plan = Plan("p${plans.size + 1}-${plans.sumOf { it.items.size }}", "Kế hoạch mới", "Chưa chọn ngày", "08:00", "Buýt + đi bộ", emptyList(), PlanStatus.Draft)
+    // Random id: unique even once plans can be deleted (a count-based id could repeat).
+    fun newPlan(): Plan = Plan("p${kotlin.random.Random.nextLong().toULong().toString(36)}", "Kế hoạch mới", "Chưa chọn ngày", "08:00", "Buýt + đi bộ", emptyList(), PlanStatus.Draft)
 
     fun toggleSaved(p: SavedPlace) {
         if (saved.any { it.id == p.id }) saved.removeAll { it.id == p.id } else saved.add(0, p)

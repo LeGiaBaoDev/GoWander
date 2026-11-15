@@ -55,13 +55,12 @@ SELECT ` + summaryColumns + `, ST_Distance(p.location, here.g)
 
 	// A dense viewport holds far more places than a screen can show: md5(id) picks an even, stable sample, so a place
 	// does not come and go while the map is panned. For points the bbox test is exact.
-	// shortcut: no index serves location::geometry, so this scans the table; add a GIST index on (location::geometry)
-	// when places grow past a few tens of thousands.
+	// The bbox test runs on the geography column, so places_location_gix serves it (review 15-11-2026).
 	qInBounds = `
 SELECT ` + summaryColumns + `
   FROM places p LEFT JOIN place_categories c ON c.id = p.primary_category_id
  WHERE p.status = 'PUBLISHED'
-   AND p.location::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+   AND p.location && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
    AND (coalesce(cardinality($5::text[]), 0) = 0 OR EXISTS (
 	SELECT 1 FROM place_category_links l JOIN place_categories lc ON lc.id = l.category_id
 	WHERE l.place_id = p.id AND lc.slug = ANY($5) AND lc.is_active))
@@ -75,7 +74,7 @@ SELECT width_bucket(ST_X(g), $1, $3, $6), width_bucket(ST_Y(g), $2, $4, $7), cou
   FROM (SELECT p.location::geometry AS g
           FROM places p
          WHERE p.status = 'PUBLISHED'
-           AND p.location::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+           AND p.location && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
            AND (coalesce(cardinality($5::text[]), 0) = 0 OR EXISTS (
 	SELECT 1 FROM place_category_links l JOIN place_categories lc ON lc.id = l.category_id
 	WHERE l.place_id = p.id AND lc.slug = ANY($5) AND lc.is_active))) t

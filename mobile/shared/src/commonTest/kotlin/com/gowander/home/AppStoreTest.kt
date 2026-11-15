@@ -10,7 +10,7 @@ class AppStoreTest {
     @Test
     fun plansAndSavedPlacesSurviveARestart() {
         var disk: String? = null
-        val first = AppStore(disk) { disk = it }
+        val first = AppStore(disk, persist = { disk = it })
         assertEquals(MOCK_PLANS.map { it.id }, first.plans.map { it.id }) // first run: the samples
         assertNull(disk) // nothing written until the user changes something
         val mine = first.newPlan().copy(name = "Chủ nhật đi Quận 5", items = MOCK_PLANS.first().items.take(2))
@@ -28,7 +28,9 @@ class AppStoreTest {
 
     @Test
     fun unreadableOrOlderDataDoesNotCrash() {
-        assertEquals(MOCK_PLANS.map { it.id }, AppStore("not json").plans.map { it.id })
+        var kept: String? = null
+        assertEquals(MOCK_PLANS.map { it.id }, AppStore("not json", keepUnreadable = { kept = it }).plans.map { it.id })
+        assertEquals("not json", kept) // the unreadable data is kept before anything can overwrite it
         val older = AppStore("""{"plans":[],"saved":[{"id":"a","name":"Chợ","category":null,"addedIn":"a later version"}]}""")
         assertTrue(older.plans.isEmpty()) // the user deleted nothing here: an empty stored list stays empty, no samples forced back
         assertEquals("Chợ", older.saved.single().name)

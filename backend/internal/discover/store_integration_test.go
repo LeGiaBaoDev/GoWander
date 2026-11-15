@@ -219,6 +219,16 @@ func TestStore(t *testing.T) {
 		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 1 {
 			t.Fatalf("category: %+v", cs)
 		}
+		// A place exactly on the north-east corner (the market) falls in the extra bucket and must fold into the last cell.
+		edge := ClusterQuery{MapQuery: MapQuery{South: 10.765, West: 106.69, North: 10.77253, East: 106.69805}, Cols: 2, Rows: 2}
+		if cs, err = s.Clusters(ctx, edge); err != nil || len(cs) == 0 {
+			t.Fatalf("edge: %v %+v", err, cs)
+		}
+		for _, c := range cs {
+			if c.Lat > edge.North || c.Lon > edge.East {
+				t.Fatalf("edge place drawn outside the box: %+v", c)
+			}
+		}
 		q.Categories, q.Cols, q.Rows = nil, 1, 1
 		if cs, _ = s.Clusters(ctx, q); len(cs) != 1 || cs[0].Count != 3 {
 			t.Fatalf("one cell: %+v", cs)
