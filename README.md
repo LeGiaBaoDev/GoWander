@@ -2,14 +2,14 @@
 
 **Move Smart. Explore More.** Ứng dụng Android/iOS đồng hành cùng du khách tại TP.HCM: tìm tuyến bus / metro / đi bộ và khám phá địa điểm, món ăn, câu chuyện lịch sử, kèm một Admin Web để vận hành.
 
-> **Trạng thái:** đang ở giai đoạn khởi tạo repository (M00). Chưa có ứng dụng, API hay dữ liệu nào chạy được. Tiến độ thật nằm ở [`PIPELINE.md`](./PIPELINE.md) mục 3.
+> **Trạng thái:** đã có app Android/iOS, Go API, Admin và tài khoản app; đang triển khai M09 (CI + observability). Dữ liệu transit còn giả định và M08 backup/PITR còn bị chặn, chưa đạt cổng production pilot. Tiến độ và giới hạn kiểm chứng nằm ở [`PIPELINE.md`](./PIPELINE.md) mục 3.
 
 ## Kiến trúc dự kiến
 
 ```text
 Android / iOS (Kotlin Multiplatform + Compose)  ─┐
                                                  ├─ HTTPS ─ Go API (modular monolith) ─ PostgreSQL + PostGIS
-Admin Web (framework chưa chọn)                 ─┘                  │
+Admin Web (Go templates + htmx)                 ─┘                  │
                                                                     └─ OpenTripPlanner (GTFS + OSM)
 ```
 
@@ -21,13 +21,13 @@ Mobile và Admin chỉ nói chuyện với Go API; không gọi thẳng OpenTrip
 |---|---|
 | `mobile/` | Ứng dụng Android/iOS (KMP) |
 | `backend/` | Go API và business logic |
-| `admin/` | Admin Web |
+| `backend/internal/admin/` | Admin Web, nhúng trong Go API |
 | `infrastructure/` | Docker, OTP, PostgreSQL, backup, monitoring |
 | `data/` | Danh mục nguồn dữ liệu transit và test case (dữ liệu thô không commit) |
 | `docs/` | Thiết kế, quyết định (ADR), nghiên cứu, runbook, nhật ký thay đổi |
 | `scripts/` | Công cụ hỗ trợ phát triển |
 
-Các thư mục code hiện còn trống và sẽ được lấp dần theo milestone.
+Lệnh chạy từng thành phần nằm trong README của `backend/`, `mobile/` và `infrastructure/`.
 
 ## Yêu cầu công cụ
 
@@ -35,7 +35,7 @@ Các thư mục code hiện còn trống và sẽ được lấp dần theo mile
 |---|---|---|
 | Git | Quản lý mã nguồn | M00 |
 | Docker + Docker Compose | PostgreSQL/PostGIS, OpenTripPlanner | M02 |
-| JDK 21 | Toolchain Kotlin/Android | M03 |
+| JDK 25 | Toolchain Kotlin/Android hiện tại | M03 |
 | Android Studio + Android SDK | Build và chạy Android | M03 |
 | Xcode | Build và chạy iOS | M03 |
 | Go | Backend | M04 |
@@ -51,7 +51,7 @@ cd GoWander
 cp .env.example .env    # chỉnh giá trị cho máy của bạn; không commit .env
 ```
 
-Hiện chưa có lệnh chạy, build hay test nào vì chưa có code. Mục này sẽ được cập nhật khi từng milestone tạo ra thứ chạy được.
+Xem [backend](backend/README.md), [mobile](mobile/README.md) và [PostgreSQL](infrastructure/postgres/README.md) để chạy local. Quy trình CI, database test cách ly và phạm vi kiểm chứng: [runbook CI](docs/runbooks/ci.md).
 
 ## Tài liệu
 

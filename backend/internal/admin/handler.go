@@ -142,10 +142,10 @@ var pages = func() map[string]*template.Template {
 			}
 			return part * 100 / whole
 		},
-		"num":         groupDigits,
+		"num":           groupDigits,
 		"statusName":    func(s string) string { return statusNames[s] },
 		"appStatusName": func(s string) string { return cmpOr(appStatusNames[s], s) },
-		"missingName": func(s string) string { return missingNames[s] },
+		"missingName":   func(s string) string { return missingNames[s] },
 		"photoForm": func(action, csrf string, licenses []string, button string) map[string]any {
 			return map[string]any{"Action": action, "CSRF": csrf, "Licenses": licenses, "Button": button}
 		},

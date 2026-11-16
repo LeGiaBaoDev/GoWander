@@ -3,11 +3,11 @@ package config
 
 import (
 	"errors"
-	"slices"
 	"fmt"
 	"net/mail"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"

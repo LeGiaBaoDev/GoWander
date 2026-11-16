@@ -1,0 +1,174 @@
+name: CI baseline
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main, infra/ci-observability]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Format, module checks and vet
+        run: |
+          unformatted=$(gofmt -l .)
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on:\n%s\n' "$unformatted"
+            exit 1
+          fi
+          go mod verify
+          go vet ./...
+      - name: Unit, race and OpenAPI contract tests
+        run: |
+          mkdir -p tmp/ci
+          go test -race -count=1 -coverprofile=tmp/ci/coverage.out -json ./... | tee tmp/ci/unit.jsonl
+      - name: Build versioned backend artifacts
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p tmp/ci/bin
+          go build -trimpath -o tmp/ci/bin/ ./cmd/...
+          {
+            printf 'commit=%s\n' "$BUILD_SHA"
+            go version
+            printf 'migrations_sha256:\n'
+            sha256sum migrations/*.sql
+            printf 'binary_build_info:\n'
+            go version -m tmp/ci/bin/*
+          } > tmp/ci/build-manifest.txt
+          sha256sum tmp/ci/bin/* > tmp/ci/SHA256SUMS
+      - name: Preserve test reports and build artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend/tmp/ci/
+          if-no-files-found: warn
+          retention-days: 14
+
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Migrations, database permissions, accounts and SMTP
+        run: bash scripts/ci/integration.sh
+      - name: Preserve integration report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: database-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend/tmp/ci/integration.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+
+  # Kotlin shared tests (AUTH-2 and the rest of the app). The Android SDK on the runner may lag behind compileSdk, so
+  # the platform is installed explicitly before Gradle asks for it.
+  mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+      - name: Install the Android platform the app compiles against
+        run: sdkmanager "platforms;android-37" > /dev/null
+      - name: Shared Kotlin tests on the Android host
+        run: ./gradlew :shared:testAndroidHostTest --no-daemon --console=plain
+      - name: Preserve test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mobile-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: mobile/shared/build/reports/tests/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The iOS app needs Xcode and a macOS runner (10x minutes): built on main and on demand, not on every pull request.
+  # The shared iOS tests stay a local gate for now (they need a booted simulator).
+  mobile-ios:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+      - name: Build the iOS app for the simulator
+        working-directory: mobile/iosApp
+        run: |
+          xcodebuild -project iosApp.xcodeproj -scheme iosApp -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build build
+
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s scripts/tests -v
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Scan reachable Go vulnerabilities
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

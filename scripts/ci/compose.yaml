@@ -1,0 +1,34 @@
+# Disposable CI dependencies. Never use the development Compose file or its volume.
+services:
+  postgres:
+    image: postgis/postgis:18-3.6@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: gowander_ci
+      POSTGRES_PASSWORD: ci-postgres-only
+      GOWANDER_OWNER_PASSWORD: ci-owner-only
+      GOWANDER_APP_PASSWORD: ci-app-only
+      GOWANDER_ADMIN_PASSWORD: ci-admin-only
+    ports:
+      - "127.0.0.1:${CI_DB_PORT:-55432}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - ../../infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gowander_ci"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+  mailpit:
+    image: axllent/mailpit:v1.27@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+    ports:
+      # The existing SMTP integration test deliberately uses localhost:1025.
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

@@ -30,9 +30,9 @@ type GoogleVerifier struct {
 	// Audiences are the app's own OAuth clients (Web, Android, iOS). Google mints the token for the client that asked,
 	// so all of them are ours to accept; a token for a client of another project is refused.
 	Audiences []string
-	URL      string
-	HTTP     *http.Client
-	Now      func() time.Time
+	URL       string
+	HTTP      *http.Client
+	Now       func() time.Time
 
 	mu      sync.Mutex
 	keys    map[string]*rsa.PublicKey
