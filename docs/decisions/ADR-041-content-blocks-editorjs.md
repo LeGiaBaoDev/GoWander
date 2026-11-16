@@ -1,6 +1,6 @@
 # ADR-041 — Nội dung do Admin soạn: Editor.js, lưu block JSON, app render native
 
-- **Trạng thái:** Accepted (hướng đi, chủ dự án 16-11-2026) · **chưa triển khai** · quyết định này chỉ chốt định dạng, code ở phase CONTENT-EDITOR sau AUTH.
+- **Trạng thái:** Accepted (hướng đi, chủ dự án 16-11-2026) · **phần 1 đã triển khai 17-11-2026**: câu chuyện (`historical_stories.blocks`) có Editor.js trong Admin (chữ: đoạn, tiêu đề, danh sách, trích dẫn, phân cách), API trả `blocks`, app render native; khối ảnh + seed builder còn lại (xem mục 1 của `docs/changes/change-17-11-2026.md`).
 - **Liên quan:** ADR-035 (ảnh: R2, nén lại, bắt credit + licence), ADR-037 (Admin Go server-rendered + htmx), ADR-030 (Design Kit v4), `docs/plans/AUTH-tai-khoan-nguoi-dung.md` §7 (portfolio dùng lại định dạng này).
 
 ## Bối cảnh

@@ -20,9 +20,12 @@ import (
 type GuideItem struct {
 	ID, Slug, Title, NameEN, Summary, Body, Extra, Sources, SourceURL, Status string
 	ImageKey, ImageCredit, ImageLicense                                       string
-	SortOrder                                                                 int
-	UpdatedAt                                                                 time.Time
-	EditedAt                                                                  *time.Time
+	// Blocks is the Editor.js document of a story (ADR-041), stored as JSONB; empty for dishes and for stories written
+	// before the editor existed (Body is then the text the app shows).
+	Blocks    string
+	SortOrder int
+	UpdatedAt time.Time
+	EditedAt  *time.Time
 }
 
 // GuideRow is one line of a guide list.
@@ -62,15 +65,16 @@ var GuideKinds = map[string]guideKind{
 		list: `SELECT id::text, coalesce(slug, ''), title, status, sort_order, updated_at FROM historical_stories WHERE language_code = 'vi' ORDER BY sort_order, title`,
 		get: `SELECT id::text, coalesce(slug, ''), title, '', coalesce(summary, ''), content, coalesce(try_this, ''), coalesce(sources, ''),
 			coalesce(source_url, ''), status, sort_order, updated_at, edited_at,
-			coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '') FROM historical_stories WHERE id::text = $1 AND language_code = 'vi'`,
+			coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, ''), coalesce(blocks::text, '') FROM historical_stories WHERE id::text = $1 AND language_code = 'vi'`,
 		// A story is published with a date (database CHECK): set it the first time, keep it afterwards.
-		insert: `INSERT INTO historical_stories (slug, title, summary, content, try_this, sources, source_url, status, sort_order, language_code, published_at, edited_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8::varchar, $9, 'vi', CASE WHEN $8::varchar = 'PUBLISHED' THEN now() END, now()) RETURNING id::text`,
+		insert: `INSERT INTO historical_stories (slug, title, summary, content, try_this, sources, source_url, status, sort_order, language_code, published_at, edited_at, blocks)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8::varchar, $9, 'vi', CASE WHEN $8::varchar = 'PUBLISHED' THEN now() END, now(), $10::jsonb) RETURNING id::text`,
 		update: `UPDATE historical_stories SET title = $2, summary = $3, content = $4, try_this = $5, sources = $6, source_url = $7, status = $8::varchar,
-			sort_order = $9, published_at = CASE WHEN $8::varchar = 'PUBLISHED' THEN coalesce(published_at, now()) ELSE published_at END,
+			sort_order = $9, blocks = $10::jsonb,
+			published_at = CASE WHEN $8::varchar = 'PUBLISHED' THEN coalesce(published_at, now()) ELSE published_at END,
 			edited_at = now(), updated_at = now() WHERE id::text = $1`,
 		args: func(g GuideItem) []any {
-			return []any{g.Title, orNull(g.Summary), g.Body, orNull(g.Extra), orNull(g.Sources), orNull(g.SourceURL), g.Status, g.SortOrder}
+			return []any{g.Title, orNull(g.Summary), g.Body, orNull(g.Extra), orNull(g.Sources), orNull(g.SourceURL), g.Status, g.SortOrder, orNull(g.Blocks)}
 		},
 	},
 }
@@ -78,7 +82,7 @@ var GuideKinds = map[string]guideKind{
 // editable keeps only the fields the form changes, to tell whether a save changed anything.
 func (g GuideItem) editable() GuideItem {
 	return GuideItem{Title: g.Title, NameEN: g.NameEN, Summary: g.Summary, Body: g.Body, Extra: g.Extra, Sources: g.Sources,
-		SourceURL: g.SourceURL, Status: g.Status, SortOrder: g.SortOrder}
+		SourceURL: g.SourceURL, Status: g.Status, SortOrder: g.SortOrder, Blocks: g.Blocks}
 }
 
 func bad(format string, a ...any) error {
@@ -124,10 +128,17 @@ func (s *PG) GuideItems(ctx context.Context, kind string) ([]GuideRow, error) {
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[GuideRow])
 }
 
-func scanGuide(row pgx.Row) (GuideItem, error) {
+// scanGuide reads one row; stories carry the Editor.js blocks column, dishes do not.
+func scanGuide(row pgx.Row, withBlocks bool) (GuideItem, error) {
 	var g GuideItem
-	err := row.Scan(&g.ID, &g.Slug, &g.Title, &g.NameEN, &g.Summary, &g.Body, &g.Extra, &g.Sources, &g.SourceURL, &g.Status, &g.SortOrder, &g.UpdatedAt, &g.EditedAt,
-		&g.ImageKey, &g.ImageCredit, &g.ImageLicense)
+	var err error
+	if withBlocks {
+		err = row.Scan(&g.ID, &g.Slug, &g.Title, &g.NameEN, &g.Summary, &g.Body, &g.Extra, &g.Sources, &g.SourceURL, &g.Status, &g.SortOrder, &g.UpdatedAt, &g.EditedAt,
+			&g.ImageKey, &g.ImageCredit, &g.ImageLicense, &g.Blocks)
+	} else {
+		err = row.Scan(&g.ID, &g.Slug, &g.Title, &g.NameEN, &g.Summary, &g.Body, &g.Extra, &g.Sources, &g.SourceURL, &g.Status, &g.SortOrder, &g.UpdatedAt, &g.EditedAt,
+			&g.ImageKey, &g.ImageCredit, &g.ImageLicense)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return g, ErrNotFound
 	}
@@ -135,7 +146,7 @@ func scanGuide(row pgx.Row) (GuideItem, error) {
 }
 
 func (s *PG) GuideItem(ctx context.Context, kind, id string) (GuideItem, error) {
-	return scanGuide(s.Pool.QueryRow(ctx, GuideKinds[kind].get, id))
+	return scanGuide(s.Pool.QueryRow(ctx, GuideKinds[kind].get, id), kind == "stories")
 }
 
 // SaveGuideItem creates (empty ID) or updates a dish or story, marks it edited (the guide seed then leaves it alone)
@@ -160,7 +171,7 @@ func (s *PG) SaveGuideItem(ctx context.Context, actorID, kind string, g GuideIte
 				return fmt.Errorf("insert %s: %w", kind, err)
 			}
 		} else {
-			old, err := scanGuide(tx.QueryRow(ctx, k.get+" FOR UPDATE", g.ID))
+			old, err := scanGuide(tx.QueryRow(ctx, k.get+" FOR UPDATE", g.ID), kind == "stories")
 			if err != nil {
 				return err
 			}

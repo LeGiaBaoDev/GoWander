@@ -53,6 +53,7 @@ import com.gowander.home.LocalNotice
 import com.gowander.mock.MOCK_OTHER_REGION_INTRO
 import com.gowander.mock.MOCK_REGIONS
 import com.gowander.content.*
+import com.gowander.content.StoryBody
 import com.gowander.mock.Region
 import com.gowander.mock.CardSide
 import com.gowander.route.RouteMap
@@ -339,7 +340,7 @@ fun RegionGuideScreen(
                     }
                     Text(story.summary, size = 13.sp, color = Palette.Body)
                     if (open) {
-                        story.paragraphs.forEach { Text(it, size = 14.sp, color = Palette.Body) }
+                        StoryBody(story.blocks, story.paragraphs)
                         Text("${Strings.TRY_THIS}: ${story.tryThis}", size = 13.sp, color = Palette.Ink, weight = FontWeight.SemiBold)
                         Text("${Strings.SOURCE}: ${story.sources}", size = 11.sp, color = Palette.Muted)
                     }

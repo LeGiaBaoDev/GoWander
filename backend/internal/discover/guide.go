@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/content"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
@@ -42,9 +43,12 @@ type Story struct {
 	Title      string   `json:"title"`
 	Summary    string   `json:"summary"`
 	Paragraphs []string `json:"paragraphs"`
-	TryThis    string   `json:"tryThis"`
-	Sources    string   `json:"sources"`
-	Photo      *Photo   `json:"photo,omitempty"`
+	// Blocks is the Editor.js document when the story was written with the rich editor (ADR-041). The app renders it when
+	// present and falls back to Paragraphs, which the Admin keeps deriving from the same text.
+	Blocks  []content.Block `json:"blocks,omitempty"`
+	TryThis string          `json:"tryThis"`
+	Sources string          `json:"sources"`
+	Photo   *Photo          `json:"photo,omitempty"`
 }
 
 type Guide struct {
@@ -102,20 +106,27 @@ func (s *PG) Guide(ctx context.Context) (Guide, error) {
 	}
 	// Stories without a slug (made outside the Admin) are left out: the app needs a stable id.
 	rows, err = s.Pool.Query(ctx, `SELECT slug, title, coalesce(summary, ''), content, coalesce(try_this, ''),
-		coalesce(nullif(btrim(sources), ''), source_url, ''), coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '')
+		coalesce(nullif(btrim(sources), ''), source_url, ''), coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, ''),
+		coalesce(blocks::text, '')
 		FROM historical_stories WHERE status = 'PUBLISHED' AND language_code = 'vi' AND slug IS NOT NULL ORDER BY sort_order, title`)
 	if err != nil {
 		return g, fmt.Errorf("guide stories: %w", err)
 	}
 	for rows.Next() {
 		var st Story
-		var content string
+		var body, blocks string
 		var ph Photo
-		if err := rows.Scan(&st.ID, &st.Title, &st.Summary, &content, &st.TryThis, &st.Sources, &ph.key, &ph.Credit, &ph.License); err != nil {
+		if err := rows.Scan(&st.ID, &st.Title, &st.Summary, &body, &st.TryThis, &st.Sources, &ph.key, &ph.Credit, &ph.License, &blocks); err != nil {
 			rows.Close()
 			return g, fmt.Errorf("guide stories: %w", err)
 		}
-		st.Paragraphs = Paragraphs(content)
+		st.Paragraphs = Paragraphs(body)
+		if blocks != "" {
+			// Validated when saved; a malformed row is shown as plain text rather than breaking the whole guide.
+			if doc, err := content.Parse(blocks); err == nil {
+				st.Blocks = doc.Blocks
+			}
+		}
 		if ph.key != "" {
 			st.Photo = &ph
 		}

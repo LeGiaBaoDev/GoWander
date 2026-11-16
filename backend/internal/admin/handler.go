@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/content"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/feedback"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
@@ -284,7 +285,7 @@ func (h Handler) securityHeaders(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'self'; img-src "+img+"; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		hd.Set("Content-Security-Policy", "default-src 'self'; img-src "+img+"; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
 		hd.Set("Cache-Control", "no-store")
@@ -968,6 +969,29 @@ func (h Handler) saveGuide(kind string) http.HandlerFunc {
 		g := GuideItem{ID: chi.URLParam(r, "id"), Title: r.PostFormValue("title"), NameEN: r.PostFormValue("name_en"), Summary: r.PostFormValue("summary"),
 			Body: r.PostFormValue("body"), Extra: r.PostFormValue("extra"), Sources: r.PostFormValue("sources"), SourceURL: r.PostFormValue("source_url"),
 			Status: r.PostFormValue("status"), SortOrder: order}
+		// Stories carry Editor.js blocks (ADR-041). The server is the authority: unknown block types, empty paragraphs and
+		// runaway lengths are refused, and the plain text is derived from the blocks so search and older app versions keep
+		// working. Dishes stay plain text.
+		if kind == "stories" {
+			raw := r.PostFormValue("blocks")
+			doc, perr := content.Parse(raw)
+			if perr != nil {
+				g.Blocks = raw
+				if g.ID != "" {
+					if stored, lookupErr := h.Store.GuideItem(r.Context(), kind, g.ID); lookupErr == nil {
+						g.Slug, g.UpdatedAt, g.EditedAt = stored.Slug, stored.UpdatedAt, stored.EditedAt
+					}
+				}
+				h.renderGuide(w, r, http.StatusUnprocessableEntity, k, g, strings.TrimPrefix(perr.Error(), "blocks: "), false)
+				return
+			}
+			if len(doc.Blocks) > 0 {
+				g.Blocks = doc.JSON()
+				g.Body = doc.Text()
+			} else {
+				g.Blocks = ""
+			}
+		}
 		id, err := h.Store.SaveGuideItem(r.Context(), current(r).UserID, kind, g, httpx.RequestID(r))
 		switch {
 		case errors.Is(err, ErrBadInput):

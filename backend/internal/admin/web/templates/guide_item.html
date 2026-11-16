@@ -15,8 +15,19 @@
     {{if $food}}<label>Tên tiếng Anh <span class="muted small">(không bắt buộc)</span><input name="name_en" value="{{.G.NameEN}}" maxlength="150"></label>{{end}}
     <label>Tóm tắt <span class="muted small">(một câu hiện dưới tên, tối đa {{.K.SummaryMax}} ký tự)</span>
       <textarea name="summary" rows="2" maxlength="{{.K.SummaryMax}}">{{.G.Summary}}</textarea></label>
-    <label>{{if $food}}Mô tả{{else}}Nội dung <span class="muted small">(để một dòng trống giữa hai đoạn)</span>{{end}}
-      <textarea name="body" rows="{{if $food}}6{{else}}14{{end}}" maxlength="{{.K.BodyMax}}"{{if not $food}} required{{end}}>{{.G.Body}}</textarea></label>
+    <label>{{if $food}}Mô tả{{else}}Nội dung <span class="muted small">(đoạn văn, tiêu đề mục, danh sách, trích dẫn)</span>{{end}}
+      <textarea name="body" id="{{if not $food}}story-body{{end}}" rows="{{if $food}}6{{else}}14{{end}}" maxlength="{{.K.BodyMax}}">{{.G.Body}}</textarea></label>
+    {{if not $food}}
+    <input type="hidden" name="blocks" id="story-blocks" value="{{.G.Blocks}}">
+    <div id="story-editor" class="story-editor" aria-label="Nội dung câu chuyện"></div>
+    <p class="muted small">Trình soạn thảo lưu có cấu trúc, nên app hiển thị tiêu đề mục, danh sách và trích dẫn đúng kiểu. Đoạn văn chỉ nhận chữ; in đậm/link trong đoạn được đổi thành chữ thường.</p>
+    <script src="/admin/static/editorjs/editorjs.js" defer></script>
+    <script src="/admin/static/editorjs/header.js" defer></script>
+    <script src="/admin/static/editorjs/list.js" defer></script>
+    <script src="/admin/static/editorjs/quote.js" defer></script>
+    <script src="/admin/static/editorjs/delimiter.js" defer></script>
+    <script src="/admin/static/editor-story.js" defer></script>
+    {{end}}
     <label>{{if $food}}Quán gợi ý <span class="muted small">(mỗi dòng một quán: Tên | Địa chỉ)</span>{{else}}Gợi ý "Thử làm" <span class="muted small">(một việc người đọc có thể làm tại chỗ)</span>{{end}}
       <textarea name="extra" rows="{{if $food}}4{{else}}2{{end}}" maxlength="2000"{{if $food}} placeholder="Bánh mì Huỳnh Hoa | 26 Lê Thị Riêng"{{end}}>{{.G.Extra}}</textarea></label>
     <label>Nguồn <span class="muted small">(tên nơi lấy thông tin; bắt buộc trước khi hiển thị)</span><input name="sources" value="{{.G.Sources}}" maxlength="500"></label>

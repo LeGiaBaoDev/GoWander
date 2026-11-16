@@ -946,7 +946,9 @@ func TestBell(t *testing.T) {
 }
 
 func TestNoticesGroupRepeats(t *testing.T) {
-	now := time.Now()
+	// Fixed at midday: with time.Now() this test failed shortly after midnight, where five notices a minute apart fall on
+	// two days and are correctly not grouped.
+	now := time.Date(2026, 11, 16, 12, 0, 0, 0, hcm)
 	fail := Notice{Action: "admin.login_failed", Object: "Bảo", Bad: true}
 	rows := []Notice{fail, fail, fail, fail, {Action: "admin.password_reset_requested", Object: "Bảo"}, fail}
 	for i := range rows {
