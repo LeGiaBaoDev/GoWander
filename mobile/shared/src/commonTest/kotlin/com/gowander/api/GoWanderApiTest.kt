@@ -48,6 +48,28 @@ class GoWanderApiTest {
     }
 
     @Test
+    fun guideParsesTheServerDishesAndStories() = runTest {
+        // Shape of GET /api/v1/guide/hcm (backend discover.Guide); unknown fields are ignored.
+        val body = """{"dishes":[{"id":"hcm-food-pho","name":"Phở","summary":"S","description":"D","shops":[{"name":"Quán A","address":"1 Lê Lợi"}],"sources":"Nguồn A","extra":1}],
+            "stories":[{"id":"hcm-story-x","title":"T","summary":"S","paragraphs":["Một.","Hai."],"tryThis":"Thử","sources":"Nguồn B"}]}"""
+        val g = api(HttpStatusCode.OK, body).guide()
+        assertEquals("/api/v1/guide/hcm", requests.single().url.encodedPath)
+        assertEquals("1 Lê Lợi", g.dishes.single().shops.single().address)
+        assertEquals("Nguồn A", g.dishes.single().sources)
+        assertEquals(listOf("Một.", "Hai."), g.stories.single().paragraphs)
+    }
+
+    @Test
+    fun recordOpenPostsNothingButTheRequest() = runTest {
+        api { respond("", HttpStatusCode.NoContent) }.recordOpen()
+        val req = requests.single()
+        assertEquals("/api/v1/usage/open", req.url.encodedPath)
+        assertEquals("POST", req.method.value)
+        assertEquals("", req.url.encodedQuery)
+        assertEquals(0L, req.body.contentLength ?: 0L)
+    }
+
+    @Test
     fun planRouteSendsCarMode() = runTest {
         api(HttpStatusCode.OK, Fixtures.ROUTE_OK).planRoute(PlanRequest(origin, destination, modes = listOf("CAR")))
         val sent = Json.parseToJsonElement((requests.single().body as OutgoingContent.ByteArrayContent).bytes().decodeToString()).jsonObject

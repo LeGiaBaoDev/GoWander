@@ -1,0 +1,27 @@
+{{define "title"}}{{.K.Nouns}} · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head row">
+  <div>
+    <h1>{{.K.Nouns}}</h1>
+    <p class="muted">{{if eq .K.Path "foods"}}Món ăn trong cẩm nang TP.HCM của app (mục "Ẩm thực"){{else}}Câu chuyện trong cẩm nang TP.HCM của app (mục "Con người & văn hoá"){{end}}. App hiện các mục "Đang hiển thị" theo thứ tự bên dưới.</p>
+  </div>
+  <a class="button" href="/admin/{{.K.Path}}/new">Thêm {{.K.Noun}}</a>
+</header>
+{{if .List}}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Tên</th><th>Trạng thái</th><th>Thứ tự</th><th>Cập nhật</th></tr></thead>
+  <tbody>
+  {{range .List}}<tr>
+    <td><a class="strong" href="/admin/{{$.K.Path}}/{{.ID}}">{{.Title}}</a></td>
+    <td><span class="state s-{{.Status}}">{{statusName .Status}}</span></td>
+    <td>{{.SortOrder}}</td>
+    <td class="muted">{{at .UpdatedAt}}</td>
+  </tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<section class="card empty"><h2>Chưa có {{.K.Noun}} nào</h2><p class="muted">Bấm "Thêm {{.K.Noun}}" để viết mục đầu tiên.</p></section>
+{{end}}
+{{end}}

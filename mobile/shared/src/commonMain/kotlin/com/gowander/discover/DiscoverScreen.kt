@@ -20,7 +20,7 @@ import androidx.compose.ui.semantics.selected
 import com.gowander.home.LocalNotice
 import com.gowander.mock.MOCK_RATING_SPLIT
 import com.gowander.mock.MOCK_REVIEWS
-import com.gowander.content.GUIDE_STORIES
+import com.gowander.content.Guide
 import com.gowander.content.GUIDE_TRIPS
 import com.gowander.mock.mockRating
 import com.gowander.mock.mockReviewCount
@@ -226,15 +226,16 @@ private fun PlaceList(
                 s.nextCursor != null -> Button(Strings.LOAD_MORE, Modifier.fillMaxWidth().padding(vertical = 8.dp), ButtonKind.Secondary, onClick = vm::loadMore)
             }
         }
-        if (browsing) item {
+        val story = Guide.stories.firstOrNull()
+        if (browsing && story != null) item {
             // First story of the guide; the full text is read in the region guide.
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(Strings.STORIES, Modifier.semantics { heading() }, size = 17.sp, weight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp))) {
-                    MockPhoto(GUIDE_STORIES.first().id, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
+                    MockPhoto(story.id, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        Text(GUIDE_STORIES.first().title, size = 15.sp, weight = FontWeight.Bold)
-                        Text(Strings.readMinutes(GUIDE_STORIES.first().minutes), size = 12.sp, color = Palette.Muted)
+                        Text(story.title, size = 15.sp, weight = FontWeight.Bold)
+                        Text(Strings.readMinutes(story.minutes), size = 12.sp, color = Palette.Muted)
                     }
                 }
             }

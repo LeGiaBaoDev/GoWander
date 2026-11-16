@@ -115,5 +115,6 @@ type Store interface {
 	InBounds(ctx context.Context, q MapQuery) ([]PlaceSummary, error)
 	Clusters(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	Place(ctx context.Context, id string) (PlaceDetail, error)
+	Guide(ctx context.Context) (Guide, error) // published dishes and stories of the TP.HCM guide
 	Ready(ctx context.Context) error
 }

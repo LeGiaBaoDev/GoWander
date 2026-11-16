@@ -35,3 +35,12 @@ Vị trí xuất phát và điểm đến là **dữ liệu cá nhân** (Luật 
 - Đổi định nghĩa bộ đếm thì số liệu cũ không tính lại được (không có sự kiện thô). Thêm chỉ số mới chỉ có số từ ngày bắt đầu đếm.
 - Trước pilot gần như chỉ có chủ dự án dùng app: trang ghi "chưa đủ dữ liệu", không hiện số 0 gây hiểu nhầm.
 - Ranh giới phường lấy từ OSM có thể lệch với văn bản chính thức; nạp lại bằng `scripts/build_area_seed.py` khi OSM cập nhật.
+
+## Sửa đổi 16-11-2026 (chủ dự án)
+
+Chủ dự án xem trang đầu tiên và sửa: "khu vực là theo thành phố á, và khách truy cập, điểm đến yêu thích hay gì đó dùng cho trang tổng quan mà".
+
+- **Khu vực là tỉnh, thành** (cấp tỉnh sau sáp nhập 7-2025), không phải phường. `admin_areas` giờ chứa tỉnh, thành của Việt Nam từ OSM (`data/areas/vn-provinces.sql`, `scripts/build_area_seed.py`). OSM đang dở việc cập nhật sáp nhập: tỉnh cũ ghi "cũ" bị bỏ, tỉnh cũ nằm trong tỉnh mới bị xoá khi nạp, và khi một điểm thuộc nhiều vùng thì chọn vùng lớn nhất. Còn 33/34: Khánh Hòa chưa có ranh giới cấp tỉnh trong bản OSM đang dùng (việc của DATA-1).
+- **Số liệu nằm ở trang Tổng quan**, phần "Khách dùng app", lọc theo khoảng ngày và tỉnh, thành xuất phát; trang "Lượt sử dụng" riêng bị bỏ. Mọi vai trò Admin xem được (chỉ là số gộp).
+- **Lượt mở app** (khách truy cập, tính theo lượt): app gửi `POST /api/v1/usage/open` mỗi lần khởi động, không kèm mã, vị trí hay nội dung gì; server cộng 1 vào `usage_app_opens` của ngày. Không phân theo tỉnh vì không có vị trí. Đây là số lượt, không phải số người khác nhau. Ai cũng gọi được endpoint này nên số có thể bị thổi phồng; chấp nhận ở giai đoạn pilot.
+- Điểm đến được tìm nhiều nhất hiện kèm loại địa điểm (chợ, quán ăn, bảo tàng...).

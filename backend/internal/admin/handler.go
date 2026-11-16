@@ -25,20 +25,19 @@ var webFS embed.FS
 
 const (
 	sessionCookie = "gw_admin"
-	oauthCookie   = "gw_admin_oauth"
 	sessionTTL    = 12 * time.Hour
 )
 
-// Handler serves /admin. Store is nil when ADMIN_DATABASE_URL is not set, Auth is nil without a Google client: the
-// pages then say what is missing instead of failing.
+// Handler serves /admin. Store is nil when ADMIN_DATABASE_URL is not set, Mailer is nil without SMTP: the pages then
+// say what is missing instead of failing.
 type Handler struct {
-	Store          Store
-	Auth           Authenticator
-	BootstrapEmail string
-	SecureCookies  bool // https deployments; false only for http://localhost development
-	Health         []Health
-	DataStatus     string // ROUTING_DATA_STATUS (ADR-027)
-	Log            *slog.Logger
+	Store         Store
+	Mailer        Mailer // "quên mật khẩu" emails (ADR-039)
+	BaseURL       string // ADMIN_BASE_URL, for the link in that email
+	SecureCookies bool   // https deployments; false only for http://localhost development
+	Health        []Health
+	DataStatus    string // ROUTING_DATA_STATUS (ADR-027)
+	Log           *slog.Logger
 }
 
 type ctxKey struct{}
@@ -54,13 +53,23 @@ var missingNames = map[string]string{"photo": "Chưa có ảnh", "description": 
 
 // actionNames shows audit actions in Vietnamese; unknown codes are shown as they are.
 var actionNames = map[string]string{
-	"admin.bootstrap": "Tạo quản trị viên đầu tiên",
-	"admin.login":     "Đăng nhập",
-	"admin.logout":    "Đăng xuất",
-	"role.grant":      "Cấp vai trò",
-	"role.revoke":     "Thu hồi vai trò",
-	"place.update":    "Sửa địa điểm",
-	"category.update": "Sửa loại địa điểm",
+	"admin.bootstrap":                "Tạo quản trị viên đầu tiên",
+	"admin.login":                    "Đăng nhập",
+	"admin.login_failed":             "Đăng nhập sai",
+	"admin.logout":                   "Đăng xuất",
+	"admin.password_change":          "Đổi mật khẩu",
+	"admin.password_reset_requested": "Yêu cầu đặt lại mật khẩu",
+	"admin.password_reset":           "Đặt lại mật khẩu",
+	"account.create":                 "Tạo tài khoản",
+	"account.temporary_password":     "Cấp mật khẩu tạm",
+	"role.grant":                     "Cấp vai trò",
+	"role.revoke":                    "Thu hồi vai trò",
+	"place.update":                   "Sửa địa điểm",
+	"food.create":                    "Thêm món ăn",
+	"food.update":                    "Sửa món ăn",
+	"story.create":                   "Thêm câu chuyện",
+	"story.update":                   "Sửa câu chuyện",
+	"category.update":                "Sửa loại địa điểm",
 }
 
 // scaleBar is a bar's height: values 1-4 all get the height of 5 (capped at the top), so the bar does not show them.
@@ -127,6 +136,7 @@ var pages = func() map[string]*template.Template {
 		},
 		"scale": scaleBar,
 		"sub":   func(a, b int) int { return a - b },
+		"add":   func(a, b int) int { return a + b },
 		"mul":   func(a, b int) int { return a * b },
 		"at":    func(t time.Time) string { return t.Local().Format("02-01-2006 15:04:05") },
 		"in": func(list []string, v string) bool {
@@ -139,7 +149,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "places", "place", "categories", "usage", "audit", "message"} {
+	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -156,13 +166,22 @@ func (h Handler) Mount(r chi.Router) {
 			})
 			return
 		}
-		r.Get("/login", h.loginPage)
-		r.Get("/auth/start", h.authStart)
-		r.Get("/auth/callback", h.authCallback)
+		r.Group(func(r chi.Router) { // no session yet, so no CSRF token: refuse cross-site posts instead
+			r.Use(sameOrigin)
+			r.Get("/login", h.loginPage)
+			r.Post("/login", h.login)
+			r.Get("/forgot", h.forgotPage)
+			r.Post("/forgot", h.forgot)
+			r.Get("/reset", h.resetPage)
+			r.Post("/reset", h.reset)
+		})
 		r.Group(func(r chi.Router) {
 			r.Use(h.requireSession, h.requireCSRF)
 			r.Get("/", h.home)
+			r.Get("/reports", h.reports)
 			r.Post("/logout", h.logout)
+			r.Get("/password", h.passwordPage)
+			r.Post("/password", h.changePassword)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin, RoleContentEditor))
 				r.Get("/places", h.places)
@@ -170,11 +189,17 @@ func (h Handler) Mount(r chi.Router) {
 				r.Post("/places/{id}", h.savePlace)
 				r.Get("/categories", h.categories)
 				r.Post("/categories/{id}", h.saveCategory)
+				for kind := range GuideKinds {
+					r.Get("/"+kind, h.guideList(kind))
+					r.Get("/"+kind+"/new", h.guideForm(kind))
+					r.Post("/"+kind+"/new", h.saveGuide(kind))
+					r.Get("/"+kind+"/{id}", h.guideForm(kind))
+					r.Post("/"+kind+"/{id}", h.saveGuide(kind))
+				}
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin))
 				r.Get("/audit", h.audit)
-				r.Get("/usage", h.usage)
 			})
 		})
 	})
@@ -227,6 +252,11 @@ func (h Handler) requireSession(next http.Handler) http.Handler {
 			h.fail(w, r, err)
 			return
 		}
+		// A temporary password opens only the change-password page (and sign-out).
+		if s.MustChange && r.URL.Path != "/admin/password" && r.URL.Path != "/admin/logout" {
+			http.Redirect(w, r, "/admin/password", http.StatusSeeOther)
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, s)))
 	})
 }
@@ -266,51 +296,31 @@ func requireRole(roles ...string) func(http.Handler) http.Handler {
 	}
 }
 
+// sameOrigin refuses a POST whose Origin header names another site (login CSRF); browsers send Origin on POST.
+func sameOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if o := r.Header.Get("Origin"); r.Method == http.MethodPost && o != "" {
+			if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+				http.Error(w, "cross-site request refused", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h Handler) loginPage(w http.ResponseWriter, r *http.Request) {
-	msg := map[string]string{
-		"denied":  "Tài khoản Google này chưa được cấp quyền quản trị. Nhờ quản trị hệ thống cấp vai trò cho email của bạn.",
-		"expired": "Phiên đăng nhập Google đã hết hạn. Bấm đăng nhập lại.",
-	}[r.URL.Query().Get("e")]
-	h.render(w, r, http.StatusOK, "login", map[string]any{"Error": msg, "GoogleReady": h.Auth != nil})
+	notice := map[string]string{"reset": "Đã đặt mật khẩu mới. Đăng nhập bằng mật khẩu mới."}[r.URL.Query().Get("n")]
+	h.render(w, r, http.StatusOK, "login", map[string]any{"Notice": notice, "MailReady": h.Mailer != nil})
 }
 
-func (h Handler) authStart(w http.ResponseWriter, r *http.Request) {
-	if h.Auth == nil {
-		h.render(w, r, http.StatusServiceUnavailable, "message", map[string]any{"Title": "Chưa bật đăng nhập Google", "Text": "Đặt GOOGLE_CLIENT_ID và GOOGLE_CLIENT_SECRET (OAuth client loại Web) rồi khởi động lại API."})
-		return
-	}
-	state, nonce, verifier := randomToken(), randomToken(), randomToken()
-	url, err := h.Auth.AuthURL(r.Context(), state, nonce, verifier)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	// Short-lived, sent back only to the callback; holds no secret beyond this one sign-in.
-	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: state + "." + nonce + "." + verifier, Path: "/admin/auth",
-		MaxAge: 600, HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, url, http.StatusSeeOther)
-}
-
-func (h Handler) authCallback(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie(oauthCookie)
-	h.clearCookie(w, oauthCookie, "/admin/auth")
-	parts := []string{}
-	if err == nil {
-		parts = strings.Split(c.Value, ".")
-	}
-	if len(parts) != 3 || subtle.ConstantTimeCompare([]byte(parts[0]), []byte(r.URL.Query().Get("state"))) != 1 || r.URL.Query().Get("code") == "" {
-		http.Redirect(w, r, "/admin/login?e=expired", http.StatusSeeOther)
-		return
-	}
-	id, err := h.Auth.Exchange(r.Context(), r.URL.Query().Get("code"), parts[2], parts[1])
-	if err != nil {
-		h.Log.Info("admin sign-in rejected", "requestId", httpx.RequestID(r), "err", err) // no email logged
-		http.Redirect(w, r, "/admin/login?e=expired", http.StatusSeeOther)
-		return
-	}
-	userID, err := h.Store.Login(r.Context(), id, h.BootstrapEmail, httpx.RequestID(r))
+func (h Handler) login(w http.ResponseWriter, r *http.Request) {
+	login := r.PostFormValue("login")
+	userID, err := h.Store.PasswordLogin(r.Context(), login, r.PostFormValue("password"), httpx.RequestID(r))
 	if errors.Is(err, ErrNotAllowed) {
-		http.Redirect(w, r, "/admin/login?e=denied", http.StatusSeeOther)
+		h.Log.Info("admin sign-in refused", "requestId", httpx.RequestID(r)) // no login, no password in logs
+		h.render(w, r, http.StatusUnauthorized, "login", map[string]any{"Login": login, "MailReady": h.Mailer != nil,
+			"Error": "Sai mã tài khoản hoặc mật khẩu. Sai 5 lần liên tiếp thì tài khoản bị khoá 15 phút."})
 		return
 	}
 	if err != nil {
@@ -324,7 +334,84 @@ func (h Handler) authCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/admin", MaxAge: int(sessionTTL.Seconds()),
 		HttpOnly: true, Secure: h.SecureCookies, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, "/admin/", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/", http.StatusSeeOther) // requireSession sends a temporary password on to /admin/password
+}
+
+func (h Handler) passwordPage(w http.ResponseWriter, r *http.Request) {
+	h.render(w, r, http.StatusOK, "password", map[string]any{"Saved": r.URL.Query().Get("saved") == "1"})
+}
+
+func (h Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	if r.PostFormValue("new") != r.PostFormValue("confirm") {
+		h.render(w, r, http.StatusUnprocessableEntity, "password", map[string]any{"Problem": "hai lần nhập mật khẩu mới không giống nhau"})
+		return
+	}
+	c, _ := r.Cookie(sessionCookie) // present: requireSession passed
+	err := h.Store.ChangePassword(r.Context(), current(r).UserID, r.PostFormValue("current"), r.PostFormValue("new"), c.Value, httpx.RequestID(r))
+	if errors.Is(err, ErrBadInput) {
+		h.render(w, r, http.StatusUnprocessableEntity, "password", map[string]any{"Problem": strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": ")})
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/password?saved=1", http.StatusSeeOther)
+}
+
+func (h Handler) forgotPage(w http.ResponseWriter, r *http.Request) {
+	h.render(w, r, http.StatusOK, "forgot", map[string]any{"MailReady": h.Mailer != nil})
+}
+
+// forgot answers the same whether the login exists or not; the email goes out in the background so the response time
+// does not tell either.
+func (h Handler) forgot(w http.ResponseWriter, r *http.Request) {
+	if h.Mailer == nil {
+		h.render(w, r, http.StatusServiceUnavailable, "forgot", map[string]any{"MailReady": false})
+		return
+	}
+	email, token, err := h.Store.StartPasswordReset(r.Context(), r.PostFormValue("login"), httpx.RequestID(r))
+	switch {
+	case err == nil:
+		link := h.BaseURL + "/admin/reset?t=" + url.QueryEscape(token)
+		body := "Có người (có thể là bạn) yêu cầu đặt lại mật khẩu trang quản trị GoWander.\n\n" +
+			"Mở link sau trong 30 phút để đặt mật khẩu mới (chỉ dùng được một lần):\n" + link + "\n\n" +
+			"Nếu bạn không yêu cầu, hãy bỏ qua email này; mật khẩu hiện tại vẫn giữ nguyên.\n"
+		requestID := httpx.RequestID(r)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := h.Mailer.Send(ctx, email, "Đặt lại mật khẩu GoWander Admin", body); err != nil {
+				h.Log.Warn("password reset email failed", "requestId", requestID, "err", err) // no address, no link
+			}
+		}()
+	case !errors.Is(err, ErrNotFound):
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, "forgot", map[string]any{"MailReady": true, "Sent": true})
+}
+
+func (h Handler) resetPage(w http.ResponseWriter, r *http.Request) {
+	h.render(w, r, http.StatusOK, "reset", map[string]any{"Token": r.URL.Query().Get("t")})
+}
+
+func (h Handler) reset(w http.ResponseWriter, r *http.Request) {
+	token := r.PostFormValue("t")
+	if r.PostFormValue("new") != r.PostFormValue("confirm") {
+		h.render(w, r, http.StatusUnprocessableEntity, "reset", map[string]any{"Token": token, "Problem": "hai lần nhập mật khẩu mới không giống nhau"})
+		return
+	}
+	err := h.Store.ResetPassword(r.Context(), token, r.PostFormValue("new"), httpx.RequestID(r))
+	if errors.Is(err, ErrBadInput) {
+		h.render(w, r, http.StatusUnprocessableEntity, "reset", map[string]any{"Token": token, "Problem": strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": ")})
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/login?n=reset", http.StatusSeeOther)
 }
 
 func (h Handler) clearCookie(w http.ResponseWriter, name, path string) {
@@ -343,23 +430,21 @@ func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
-func (h Handler) home(w http.ResponseWriter, r *http.Request) {
-	o, err := h.Store.Overview(r.Context())
-	if err != nil {
-		h.fail(w, r, err)
-		return
+// usageQuery reads the period (and, on the reports page, the departure province) from the query string.
+func usageQuery(r *http.Request, withArea bool) UsageQuery {
+	q := UsageQuery{}
+	q.Days, _ = strconv.Atoi(r.URL.Query().Get("days"))
+	if !slices.Contains(UsageDays, q.Days) {
+		q.Days = UsageDays[0]
 	}
-	recent, err := h.Store.AuditLog(r.Context(), 5)
-	if err != nil {
-		h.fail(w, r, err)
-		return
+	if withArea {
+		q.Area = r.URL.Query().Get("area")
 	}
-	type state struct {
-		Name string
-		OK   bool
-	}
-	var health []state
-	var down []string
+	return q
+}
+
+// health runs each dependency check with a 1 s budget.
+func (h Handler) health(r *http.Request) (states []map[string]any, down []string) {
 	for _, c := range h.Health {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		err := c.Ready(ctx)
@@ -368,11 +453,61 @@ func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 			h.Log.Warn("admin health check failed", "dependency", c.Name, "requestId", httpx.RequestID(r), "err", err)
 			down = append(down, c.Name)
 		}
-		health = append(health, state{c.Name, err == nil})
+		states = append(states, map[string]any{"Name": c.Name, "OK": err == nil})
+	}
+	return states, down
+}
+
+// home is the overview: customers and revenue at a glance (owner, 16-11-2026); details live on /admin/reports.
+func (h Handler) home(w http.ResponseWriter, r *http.Request) {
+	u, err := h.Store.Usage(r.Context(), usageQuery(r, false))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	_, down := h.health(r)
+	var top []bar
+	if len(u.Places) > 5 {
+		top = u.Places[:5]
+	} else {
+		top = u.Places
 	}
 	h.render(w, r, http.StatusOK, "home", map[string]any{
-		"O": o, "Recent": recent, "Health": health, "Official": h.DataStatus == "OFFICIAL", "Attention": attention(o, down, h.DataStatus),
+		"U": u, "DaysOptions": UsageDays, "MinShown": MinShown, "Down": down, "Greeting": greeting(time.Now()),
+		"OpensChange": delta(u.Opens, u.PrevOpens), "SearchChange": delta(u.Total, u.PrevTotal),
+		"Opens": areaPaths(u.OpensDaily, u.OpensMax, 600, 160), "Modes": donut(u.Modes, u.Total), "TopPlaces": top,
 	})
+}
+
+// reports is "Báo cáo thống kê": how the app is used (filters, rankings) and the state of the content.
+func (h Handler) reports(w http.ResponseWriter, r *http.Request) {
+	tab := r.URL.Query().Get("tab")
+	data := map[string]any{"Tab": tab, "DaysOptions": UsageDays, "MinShown": MinShown}
+	if tab == "noi-dung" {
+		o, err := h.Store.Overview(r.Context())
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		recent, err := h.Store.AuditLog(r.Context(), 5)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		states, down := h.health(r)
+		data["O"], data["Recent"], data["Health"], data["Official"] = o, recent, states, h.DataStatus == "OFFICIAL"
+		data["Attention"] = attention(o, down, h.DataStatus)
+	} else {
+		data["Tab"] = "khach"
+		u, err := h.Store.Usage(r.Context(), usageQuery(r, true))
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		data["U"], data["Searches"] = u, areaPaths(u.Daily, u.DailyMax, 600, 160)
+		data["SearchChange"] = delta(u.Total, u.PrevTotal)
+	}
+	h.render(w, r, http.StatusOK, "reports", data)
 }
 
 func (h Handler) places(w http.ResponseWriter, r *http.Request) {
@@ -495,18 +630,67 @@ func (h Handler) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h Handler) usage(w http.ResponseWriter, r *http.Request) {
-	q := UsageQuery{Area: r.URL.Query().Get("area")}
-	q.Days, _ = strconv.Atoi(r.URL.Query().Get("days"))
-	if !slices.Contains(UsageDays, q.Days) {
-		q.Days = UsageDays[0]
+func (h Handler) guideList(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := h.Store.GuideItems(r.Context(), kind)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		h.render(w, r, http.StatusOK, "guide_list", map[string]any{"K": GuideKinds[kind], "List": list})
 	}
-	u, err := h.Store.Usage(r.Context(), q)
-	if err != nil {
-		h.fail(w, r, err)
-		return
+}
+
+func (h Handler) notFound(w http.ResponseWriter, r *http.Request, k guideKind) {
+	h.render(w, r, http.StatusNotFound, "message", map[string]any{"Title": "Không có " + k.Noun + " này", "Text": "Mục không tồn tại hoặc đường dẫn sai."})
+}
+
+func (h Handler) guideForm(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		k := GuideKinds[kind]
+		g := GuideItem{Status: "DRAFT"}
+		if id := chi.URLParam(r, "id"); id != "" {
+			var err error
+			if g, err = h.Store.GuideItem(r.Context(), kind, id); errors.Is(err, ErrNotFound) {
+				h.notFound(w, r, k)
+				return
+			} else if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+		}
+		h.renderGuide(w, r, http.StatusOK, k, g, "", r.URL.Query().Get("saved") == "1")
 	}
-	h.render(w, r, http.StatusOK, "usage", map[string]any{"U": u, "DaysOptions": UsageDays, "MinShown": MinShown})
+}
+
+func (h Handler) renderGuide(w http.ResponseWriter, r *http.Request, status int, k guideKind, g GuideItem, problem string, saved bool) {
+	h.render(w, r, status, "guide_item", map[string]any{"K": k, "G": g, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved})
+}
+
+func (h Handler) saveGuide(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		k := GuideKinds[kind]
+		order, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("sort_order")))
+		g := GuideItem{ID: chi.URLParam(r, "id"), Title: r.PostFormValue("title"), NameEN: r.PostFormValue("name_en"), Summary: r.PostFormValue("summary"),
+			Body: r.PostFormValue("body"), Extra: r.PostFormValue("extra"), Sources: r.PostFormValue("sources"), SourceURL: r.PostFormValue("source_url"),
+			Status: r.PostFormValue("status"), SortOrder: order}
+		id, err := h.Store.SaveGuideItem(r.Context(), current(r).UserID, kind, g, httpx.RequestID(r))
+		switch {
+		case errors.Is(err, ErrBadInput):
+			if g.ID != "" { // keep what the editor typed, with the stored slug and dates
+				if stored, lookupErr := h.Store.GuideItem(r.Context(), kind, g.ID); lookupErr == nil {
+					g.Slug, g.UpdatedAt, g.EditedAt = stored.Slug, stored.UpdatedAt, stored.EditedAt
+				}
+			}
+			h.renderGuide(w, r, http.StatusUnprocessableEntity, k, g, strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), false)
+		case errors.Is(err, ErrNotFound):
+			h.notFound(w, r, k)
+		case err != nil:
+			h.fail(w, r, err)
+		default:
+			http.Redirect(w, r, "/admin/"+kind+"/"+url.PathEscape(id)+"?saved=1", http.StatusSeeOther)
+		}
+	}
 }
 
 func (h Handler) audit(w http.ResponseWriter, r *http.Request) {

@@ -21,10 +21,11 @@ import (
 var discoverTables = []string{"food_items", "historical_stories", "place_categories", "place_category_links", "place_foods", "place_media", "places"}
 
 // adminTables (0002, ADR-037): never readable by the public API role.
-var adminTables = []string{"admin_audit_logs", "admin_sessions", "roles", "user_auth_identities", "user_contacts", "user_roles", "users"}
+// 0008 (ADR-039) replaced user_auth_identities with admin_credentials and admin_password_resets.
+var adminTables = []string{"admin_audit_logs", "admin_credentials", "admin_password_resets", "admin_sessions", "roles", "user_contacts", "user_roles", "users"}
 
 // usageTables (0005, ADR-038): daily counters the public API writes.
-var usageTables = []string{"usage_bus_lines", "usage_place_routes", "usage_route_plans"}
+var usageTables = []string{"usage_app_opens", "usage_bus_lines", "usage_place_routes", "usage_route_plans"}
 
 func allTables() []string {
 	all := append(append(append([]string{"admin_areas"}, discoverTables...), adminTables...), usageTables...)
@@ -109,13 +110,13 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if audit, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(audit, ",") != "admin_audit_logs:INSERT,admin_audit_logs:SELECT" {
 		t.Fatalf("gowander_admin on admin_audit_logs: %v %v", audit, err)
 	}
-	// 0003: the Admin role reads content for the overview, and cannot change it yet.
+	// 0003: the Admin role reads content; 0006: it adds dishes and stories (column UPDATE grants are not listed here).
 	rows, err = conn.Query(ctx, `SELECT table_name || ':' || privilege_type FROM information_schema.role_table_grants
 		WHERE grantee = 'gowander_admin' AND table_name IN ('places', 'place_categories', 'place_media', 'food_items', 'historical_stories') ORDER BY 1`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(content, ",") != "food_items:SELECT,historical_stories:SELECT,place_categories:SELECT,place_media:SELECT,places:SELECT" {
+	if content, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(content, ",") != "food_items:INSERT,food_items:SELECT,historical_stories:INSERT,historical_stories:SELECT,place_categories:SELECT,place_media:SELECT,places:SELECT" {
 		t.Fatalf("gowander_admin on content: %v %v", content, err)
 	}
 	if v, dirty, err := m.Version(); err != nil || dirty || v == 0 {

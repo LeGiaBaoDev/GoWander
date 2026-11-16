@@ -39,6 +39,7 @@ import com.gowander.api.ApiError
 import com.gowander.api.LatLon
 import com.gowander.api.PlaceSummary
 import com.gowander.api.createGoWanderApi
+import com.gowander.content.Guide
 import com.gowander.discover.DiscoverScreen
 import com.gowander.discover.DiscoverViewModel
 import com.gowander.discover.PlaceScreen
@@ -170,6 +171,11 @@ private fun AppContent() {
         userAskedGps = true
         if (location.permission !is LocationPermission.Granted) location.requestPermission()
     }
+
+    // Guide dishes and stories from the server (M07 slice 3); offline the bundled copy stays.
+    LaunchedEffect(Unit) { try { Guide.use(sharedApi.guide()) } catch (e: ApiError) { /* keep the bundled copy */ } }
+    // One anonymous count of this app start (ADR-038): the request carries nothing; a failure is not the user's concern.
+    LaunchedEffect(Unit) { try { sharedApi.recordOpen() } catch (e: ApiError) { /* not counted */ } }
 
     // M1 "Gợi ý gần bạn": around the GPS fix, else the pilot centre. A failure only hides the sheet.
     var nearby by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }

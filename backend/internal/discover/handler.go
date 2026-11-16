@@ -32,6 +32,7 @@ func (h Handler) Mount(r chi.Router) {
 	r.Get("/api/v1/places/map", h.inBounds)
 	r.Get("/api/v1/places/map/clusters", h.clusters)
 	r.Get("/api/v1/places/{id}", h.place)
+	r.Get("/api/v1/guide/hcm", h.guide)
 }
 
 type badRequest string

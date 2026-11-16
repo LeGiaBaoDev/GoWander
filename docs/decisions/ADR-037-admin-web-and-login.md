@@ -1,6 +1,6 @@
 # ADR-037 — Trang Admin: Go server-rendered + htmx; đăng nhập Google (OIDC) với danh sách email được cấp vai trò
 
-- **Trạng thái:** Accepted · **Ngày:** 16-11-2026
+- **Trạng thái:** Accepted · **Ngày:** 16-11-2026 · §2–§3 (đăng nhập Google, email bootstrap) **được thay bằng ADR-039** cùng ngày
 - **Liên quan:** PIPELINE §11 (M07), `docs/design/04-technical-architecture-v2.1/02-mobile-admin-backend-architecture.md` §5, `03-auth-routing-database.md` §7, `docs/design/05-database-design-v1.2/02-identity-tables.md`, ADR-027 (API Go), ADR-028 (Discover)
 
 ## Bối cảnh

@@ -1,57 +1,75 @@
 {{define "title"}}Tổng quan · GoWander Admin{{end}}
 {{define "main"}}
-<header class="head">
-  <h1>Tổng quan</h1>
-  <p class="muted">Hệ thống có ổn không, và nội dung nào cần làm tiếp. Số liệu đếm thật từ database lúc mở trang.</p>
+{{$u := .U}}
+<header class="head row hello">
+  <div>
+    <p class="hi">{{.Greeting}}{{with .Me.Name}}, {{.}}{{end}} 👋</p>
+    <h1>Tổng quan</h1>
+    <p class="muted">Khách dùng GoWander thế nào và app kiếm được gì, {{$u.Days}} ngày gần nhất.</p>
+  </div>
+  <form class="filters inline" method="get" action="/admin/">
+    <label><span class="sr-only">Khoảng thời gian</span>
+      <select name="days">{{range .DaysOptions}}<option value="{{.}}"{{if eq . $u.Days}} selected{{end}}>{{.}} ngày gần nhất</option>{{end}}</select></label>
+    <button type="submit" class="button ghost">Xem</button>
+  </form>
 </header>
 
-<section class="status" aria-label="Trạng thái hệ thống">
-  {{range .Health}}<span class="pill {{if .OK}}ok{{else}}bad{{end}}"><span class="led" aria-hidden="true"></span>{{.Name}}: {{if .OK}}hoạt động{{else}}không phản hồi{{end}}</span>{{end}}
-  <span class="pill {{if .Official}}ok{{else}}warn{{end}}"><span class="led" aria-hidden="true"></span>Dữ liệu xe buýt: {{if .Official}}chính thức{{else}}giả định{{end}}</span>
+{{with .Down}}<p class="notice bad" role="alert">Đang có dịch vụ không phản hồi: {{range $i, $n := .}}{{if $i}}, {{end}}{{$n}}{{end}}. <a href="/admin/reports?tab=noi-dung">Xem tình trạng hệ thống →</a></p>{{end}}
+
+<section class="kpis" aria-label="Chỉ số chính">
+  <div class="card kpi stat"><span class="icon t1" aria-hidden="true">{{template "icon" "phone"}}</span><div>
+    <span class="label">Lượt mở app</span><strong>{{num $u.Opens}}</strong>
+    <span class="muted">{{with .OpensChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat"><span class="icon t2" aria-hidden="true">{{template "icon" "route"}}</span><div>
+    <span class="label">Lượt tìm đường</span><strong>{{count $u.Total}}</strong>
+    <span class="muted">{{with .SearchChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat"><span class="icon t3" aria-hidden="true">{{template "icon" "coins"}}</span><div>
+    <span class="label">Doanh thu</span><strong class="text">Chưa có</strong>
+    <span class="muted">Chưa bật kênh kiếm tiền (quảng bá quán, affiliate)</span></div></div>
+  <div class="card kpi stat"><span class="icon t4" aria-hidden="true">{{template "icon" "trend"}}</span><div>
+    <span class="label">Lợi nhuận</span><strong class="text">Chưa có</strong>
+    <span class="muted">Tính khi có doanh thu và chi phí thật</span></div></div>
 </section>
 
-<section class="kpis" aria-label="Nội dung đang có">
-  <div class="card kpi"><span class="label">Địa điểm đang hiển thị</span><strong>{{num .O.Published}}</strong><span class="muted">trên {{num .O.Places}} địa điểm{{if .O.Hidden}} · {{num .O.Hidden}} đang ẩn{{end}}</span></div>
-  <div class="card kpi"><span class="label">Loại địa điểm</span><strong>{{num .O.Categories}}</strong><span class="muted">bộ lọc trên bản đồ</span></div>
-  <div class="card kpi"><span class="label">Món ăn</span><strong>{{num .O.Foods}}</strong><span class="muted">trên server</span></div>
-  <div class="card kpi"><span class="label">Câu chuyện</span><strong>{{num .O.Stories}}</strong><span class="muted">trên server</span></div>
-</section>
-
-<div class="cols">
+<div class="cols wide-first">
   <section class="card">
-    <h2>Cần chú ý</h2>
-    <ul class="todo">
-    {{range .Attention}}<li class="{{if .Bad}}bad{{end}}">{{if .Count}}<strong>{{num .Count}}</strong> {{end}}{{.Text}}{{with .Link}} <a href="{{.}}">Xem danh sách →</a>{{end}}</li>
-    {{else}}<li class="done">Không có việc gì cần làm.</li>{{end}}
-    </ul>
+    <div class="row"><h2>Lượt mở app theo ngày</h2><span class="muted small">cả nước</span></div>
+    <svg class="area" viewBox="0 0 600 160" preserveAspectRatio="none" role="img" aria-label="Lượt mở app theo ngày, tổng {{num $u.Opens}}, cao nhất {{num $u.OpensMax}} một ngày">
+      <defs><linearGradient id="fill-o" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="g-top"/><stop offset="1" class="g-bottom"/></linearGradient></defs>
+      <path d="{{.Opens.Area}}" fill="url(#fill-o)"/><path d="{{.Opens.Line}}" class="line"/>
+    </svg>
+    {{$n := len $u.OpensDaily}}{{if $n}}<div class="row muted small"><span>{{(index $u.OpensDaily 0).Label}}</span><span>Cao nhất {{num $u.OpensMax}} lượt/ngày</span><span>{{(index $u.OpensDaily (sub $n 1)).Label}}</span></div>{{end}}
   </section>
   <section class="card">
-    <h2>Độ đầy đủ của địa điểm</h2>
-    <p class="muted small">Thông tin người dùng thấy khi mở một địa điểm.</p>
-    {{$n := .O.Places}}
-    {{range $row := list "Có loại" .O.WithCategory "Có địa chỉ" .O.WithAddress "Có mô tả ngắn" .O.WithDescription "Có ảnh" .O.WithPhoto}}
-    <div class="bar"><span>{{$row.Label}}</span><span class="muted">{{num $row.Value}}/{{num $n}} · {{pct $row.Value $n}}%</span>
-      <progress max="{{$n}}" value="{{$row.Value}}" aria-label="{{$row.Label}}: {{pct $row.Value $n}}%"></progress></div>
-    {{end}}
-    {{with .O.LastPlaceUpdate}}<p class="muted small">Dữ liệu địa điểm cập nhật lần cuối: {{at .}}</p>{{end}}
+    <h2>Phương tiện được chọn</h2>
+    {{if and .Modes (ge $u.Total .MinShown)}}
+    <div class="donut-wrap">
+      <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Tỉ lệ phương tiện khi tìm đường">
+        <circle class="track" cx="21" cy="21" r="15.915" fill="none" stroke-width="6"/>
+        {{range .Modes}}<circle class="tone{{.Tone}}" cx="21" cy="21" r="15.915" fill="none" stroke-width="6" stroke-dasharray="{{.Dash}}" stroke-dashoffset="{{.Offset}}"><title>{{.Label}}: {{.Pct}}%</title></circle>{{end}}
+        <text x="21" y="21" class="donut-total">{{count $u.Total}}</text><text x="21" y="26.5" class="donut-label">lượt tìm</text>
+      </svg>
+      <ul class="legend">{{range .Modes}}<li><span class="dot tone{{.Tone}}" aria-hidden="true"></span>{{.Label}}<span class="muted">{{.Pct}}%</span></li>{{end}}</ul>
+    </div>
+    {{else}}<p class="muted">Chưa đủ {{.MinShown}} lượt tìm đường để chia theo phương tiện.</p>{{end}}
   </section>
 </div>
 
 <div class="cols">
   <section class="card">
-    <h2>Địa điểm đang hiển thị theo loại</h2>
-    <p class="muted small">Loại ít địa điểm là chỗ bản đồ còn mỏng.</p>
-    {{with .O.ByCategory}}{{$max := (index . 0).Count}}
-    {{range .}}<div class="bar"><span>{{.Name}}</span><span class="muted">{{num .Count}}</span>
-      <progress class="cat" max="{{$max}}" value="{{.Count}}" aria-label="{{.Name}}: {{.Count}}"></progress></div>
-    {{end}}{{else}}<p class="muted">Chưa có loại địa điểm.</p>{{end}}
+    <div class="row"><h2>Điểm đến được tìm nhiều nhất</h2><a href="/admin/reports?days={{$u.Days}}">Xem tất cả →</a></div>
+    {{with .TopPlaces}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $p := .}}
+      <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}}</span>
+        <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
+    {{else}}<p class="muted">Chưa có địa điểm nào được tìm đường tới đủ {{.MinShown}} lần. Danh sách hiện khi nhiều người dùng app hơn.</p>{{end}}
   </section>
   <section class="card">
-    <div class="row"><h2>Hoạt động gần đây</h2><a href="/admin/audit">Xem nhật ký</a></div>
-    <ul class="feed">
-    {{range .Recent}}<li><span class="dot" aria-hidden="true"></span><span><strong>{{action .Action}}</strong> · {{.ActorName}}</span><time>{{at .At}}</time></li>
-    {{else}}<li class="muted">Chưa có hoạt động.</li>{{end}}
-    </ul>
+    <h2>Hành trình của khách</h2>
+    <ol class="funnel">
+      <li><span class="step t1">1</span><div><strong>{{num $u.Opens}}</strong> lượt mở app</div></li>
+      <li><span class="step t2">2</span><div><strong>{{count $u.Total}}</strong> lượt tìm đường{{if and $u.Opens (ge $u.Total .MinShown)}} <span class="muted">· {{pct $u.Total $u.Opens}} lượt mỗi 100 lần mở</span>{{end}}</div></li>
+      <li class="later"><span class="step">3</span><div><strong>Chưa đo</strong> lượt bấm "Bắt đầu" đi theo tuyến <span class="muted">· cần bản app mới</span></div></li>
+    </ol>
   </section>
 </div>
 {{end}}

@@ -1,13 +1,16 @@
 // Package analytics keeps the daily usage counters (ADR-038). It never stores coordinates, IPs or device ids: a search's
-// points are turned into ward codes inside the database and only the per-day counts are written.
+// points are turned into province codes inside the database and only the per-day counts are written.
 package analytics
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
@@ -19,9 +22,10 @@ var hcm = time.FixedZone("ICT", 7*3600)
 // RetentionMonths: counters older than this are deleted (ADR-038 §6).
 const RetentionMonths = 25
 
-// Event is one successful route search, as far as the counters need it.
+// Event is one app start (Open) or one successful route search, as far as the counters need it.
 type Event struct {
 	Day      string // YYYY-MM-DD in Asia/Ho_Chi_Minh
+	Open     bool   // an app start: only the day is counted
 	Mode     string // WALK, TRANSIT, BUS, CAR, BICYCLE
 	From, To mobility.Coordinate
 	LineIDs  []string // transit lines suggested in any of the returned routes, each once
@@ -79,6 +83,23 @@ func (c *Counter) Record(q mobility.Query, routes []mobility.Route) {
 	}
 }
 
+// RecordOpen queues one app start for today.
+func (c *Counter) RecordOpen() {
+	select {
+	case c.queue <- Event{Day: time.Now().In(hcm).Format(time.DateOnly), Open: true}:
+	default:
+		c.Log.Warn("usage counter queue full, app start not counted")
+	}
+}
+
+// Mount serves POST /api/v1/usage/open: the app calls it once per start. No body, nothing stored but the day count.
+func (c *Counter) Mount(r chi.Router) {
+	r.Post("/api/v1/usage/open", func(w http.ResponseWriter, _ *http.Request) {
+		c.RecordOpen()
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
 // Run writes queued events and deletes expired counters once a day, until ctx ends. Events still queued then are lost.
 func (c *Counter) Run(ctx context.Context) {
 	c.expire(ctx)
@@ -102,17 +123,21 @@ func (c *Counter) Run(ctx context.Context) {
 
 func (c *Counter) expire(ctx context.Context) {
 	cutoff := time.Now().In(hcm).AddDate(0, -RetentionMonths, 0).Format(time.DateOnly)
-	for _, table := range []string{"usage_route_plans", "usage_bus_lines", "usage_place_routes"} {
+	for _, table := range []string{"usage_route_plans", "usage_bus_lines", "usage_place_routes", "usage_app_opens"} {
 		if _, err := c.Pool.Exec(ctx, "DELETE FROM "+table+" WHERE day < $1::date", cutoff); err != nil {
 			c.Log.Warn("usage counter expiry failed", "table", table, "err", err)
 		}
 	}
 }
 
-// saveSQL turns the two points into ward codes and a nearby published place, then bumps the counters, in one round trip.
-const saveSQL = `
-WITH f AS (SELECT coalesce((SELECT code FROM admin_areas WHERE ST_Intersects(geom, ST_SetSRID(ST_MakePoint($3, $2), 4326)) LIMIT 1), '') AS code),
-     t AS (SELECT coalesce((SELECT code FROM admin_areas WHERE ST_Intersects(geom, ST_SetSRID(ST_MakePoint($5, $4), 4326)) LIMIT 1), '') AS code),
+// areaOf picks the province containing a point; where OSM still maps an old province inside its merged successor,
+// the largest (the new one) wins.
+const areaOf = `coalesce((SELECT code FROM admin_areas WHERE ST_Intersects(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326)) ORDER BY ST_Area(geom) DESC LIMIT 1), '')`
+
+// saveSQL turns the two points into province codes and a nearby published place, then bumps the counters, in one round trip.
+var saveSQL = `
+WITH f AS (SELECT ` + fmt.Sprintf(areaOf, "$3", "$2") + ` AS code),
+     t AS (SELECT ` + fmt.Sprintf(areaOf, "$5", "$4") + ` AS code),
      plans AS (
        INSERT INTO usage_route_plans AS u (day, mode, side, area_code, plans)
        SELECT $1::date, $6, 'FROM', code, 1 FROM f UNION ALL SELECT $1::date, $6, 'TO', code, 1 FROM t
@@ -129,6 +154,11 @@ ON CONFLICT (day, line_id, area_code) DO UPDATE SET suggested = u.suggested + 1,
 
 // Save counts one event.
 func Save(ctx context.Context, pool *pgxpool.Pool, e Event) error {
+	if e.Open {
+		_, err := pool.Exec(ctx, `INSERT INTO usage_app_opens AS u (day, opens) VALUES ($1::date, 1)
+			ON CONFLICT (day) DO UPDATE SET opens = u.opens + 1`, e.Day)
+		return err
+	}
 	_, err := pool.Exec(ctx, saveSQL, e.Day, e.From.Lat, e.From.Lon, e.To.Lat, e.To.Lon, e.Mode, e.LineIDs, e.Lines)
 	return err
 }

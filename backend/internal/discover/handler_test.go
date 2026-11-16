@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -50,6 +51,9 @@ func (f *fakeStore) Place(_ context.Context, id string) (PlaceDetail, error) {
 	return f.detail, f.err
 }
 func (f *fakeStore) Ready(context.Context) error { return f.err }
+func (f *fakeStore) Guide(context.Context) (Guide, error) {
+	return Guide{Dishes: []Dish{{ID: "hcm-food-pho", Name: "Phở", Shops: []Shop{{"Quán A", "1 Lê Lợi"}}}}, Stories: []Story{}}, f.err
+}
 
 func get(t *testing.T, s Store, target string) (int, map[string]any) {
 	t.Helper()
@@ -233,5 +237,30 @@ func TestCancelledRequestWritesNothing(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/places", nil).WithContext(ctx))
 	if rec.Body.Len() != 0 || rec.Code != 499 { // 499 = client closed request, so logs do not count it as a success
 		t.Fatalf("status %d, wrote %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGuide(t *testing.T) {
+	code, body := get(t, &fakeStore{}, "/api/v1/guide/hcm")
+	dishes, _ := body["dishes"].([]any)
+	if code != 200 || len(dishes) != 1 || dishes[0].(map[string]any)["id"] != "hcm-food-pho" || body["stories"] == nil {
+		t.Fatalf("%d %v", code, body)
+	}
+	if code, _ := get(t, &fakeStore{err: errors.New("db down")}, "/api/v1/guide/hcm"); code != 503 && code != 500 {
+		t.Fatalf("store failure: %d", code)
+	}
+}
+
+func TestParseShopsAndParagraphs(t *testing.T) {
+	got := ParseShops("Quán A | 1 Lê Lợi\n\n  Quán B  \nQuán C|  2 Pasteur | tầng 2 ")
+	want := []Shop{{"Quán A", "1 Lê Lợi"}, {"Quán B", ""}, {"Quán C", "2 Pasteur | tầng 2"}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("shops %v", got)
+	}
+	if p := Paragraphs("Một.\r\n\r\nHai.\n\n\n\nBa.\n"); len(p) != 3 || p[2] != "Ba." {
+		t.Fatalf("paragraphs %q", p)
+	}
+	if ParseShops("") == nil || Paragraphs("  ") == nil {
+		t.Fatal("empty lists must be [] in JSON, not null")
 	}
 }

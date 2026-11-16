@@ -21,19 +21,44 @@ type fakeStore struct {
 	catSaved  []Category
 	sessions  map[string]Session
 	loginErr  error
-	granted   []string
-	revoked   []string
-	revokeErr error
+	changed   []string          // new passwords
+	resets    map[string]string // login -> email, for StartPasswordReset
+	reset     []string          // tokens used
 	audits    []AuditEntry
 	usage     Usage
 	usageQ    []UsageQuery
+	guide     map[string]GuideItem
+	guideSave []GuideItem
 }
 
-func (f *fakeStore) Login(_ context.Context, id Identity, _, _ string) (string, error) {
-	if f.loginErr != nil {
-		return "", f.loginErr
+func (f *fakeStore) PasswordLogin(_ context.Context, login, password, _ string) (string, error) {
+	if f.loginErr != nil || password != "đúng mật khẩu rồi" {
+		return "", ErrNotAllowed
 	}
-	return "u-" + id.Subject, nil
+	return "u-" + login, nil
+}
+func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ string) error {
+	if current != "đúng mật khẩu rồi" {
+		return bad("mật khẩu hiện tại không đúng")
+	}
+	f.changed = append(f.changed, next)
+	return nil
+}
+func (f *fakeStore) StartPasswordReset(_ context.Context, login, _ string) (string, string, error) {
+	if email, ok := f.resets[login]; ok {
+		return email, "tok-" + login, nil
+	}
+	return "", "", ErrNotFound
+}
+func (f *fakeStore) ResetPassword(_ context.Context, token, next, _ string) error {
+	if token != "tok-baole" {
+		return bad("link đặt lại mật khẩu đã dùng hoặc đã hết hạn")
+	}
+	if err := validatePassword("baole", next); err != nil {
+		return err
+	}
+	f.reset = append(f.reset, token)
+	return nil
 }
 func (f *fakeStore) CreateSession(_ context.Context, userID string, _ time.Duration) (string, error) {
 	f.sessions["new-token"] = Session{UserID: userID, CSRF: "c", Roles: []string{RoleContentEditor}}
@@ -47,18 +72,6 @@ func (f *fakeStore) Session(_ context.Context, token string) (Session, error) {
 }
 func (f *fakeStore) DeleteSession(_ context.Context, token string) error {
 	delete(f.sessions, token)
-	return nil
-}
-func (f *fakeStore) Operators(context.Context) ([]Operator, error) { return nil, nil }
-func (f *fakeStore) Grant(_ context.Context, _, email, role, _ string) error {
-	f.granted = append(f.granted, email+":"+role)
-	return nil
-}
-func (f *fakeStore) Revoke(_ context.Context, _, user, role, _ string) error {
-	if f.revokeErr != nil {
-		return f.revokeErr
-	}
-	f.revoked = append(f.revoked, user+":"+role)
 	return nil
 }
 func (f *fakeStore) Audit(_ context.Context, e AuditEntry) error {
@@ -102,6 +115,34 @@ func (f *fakeStore) UpdateCategory(_ context.Context, _ string, c Category, _ st
 	f.catSaved = append(f.catSaved, c)
 	return nil
 }
+func (f *fakeStore) GuideItems(_ context.Context, kind string) ([]GuideRow, error) {
+	var out []GuideRow
+	for _, g := range f.guide {
+		out = append(out, GuideRow{ID: g.ID, Title: g.Title, Status: g.Status})
+	}
+	return out, nil
+}
+
+func (f *fakeStore) GuideItem(_ context.Context, kind, id string) (GuideItem, error) {
+	if g, ok := f.guide[id]; ok {
+		return g, nil
+	}
+	return GuideItem{}, ErrNotFound
+}
+
+func (f *fakeStore) SaveGuideItem(_ context.Context, _, kind string, g GuideItem, _ string) (string, error) {
+	if err := validateGuide(GuideKinds[kind], &g); err != nil {
+		return "", err
+	}
+	if g.ID == "" {
+		g.ID = "new-1"
+	} else if _, ok := f.guide[g.ID]; !ok {
+		return "", ErrNotFound
+	}
+	f.guideSave = append(f.guideSave, g)
+	return g.ID, nil
+}
+
 func (f *fakeStore) Usage(_ context.Context, q UsageQuery) (Usage, error) {
 	f.usageQ = append(f.usageQ, q)
 	u := f.usage
@@ -114,16 +155,17 @@ func (f *fakeStore) Overview(context.Context) (Overview, error) {
 		ByCategory: []CategoryCount{{"Ăn uống", 600}, {"Bảo tàng", 30}}}, nil
 }
 
-type fakeAuth struct{ id Identity }
+// fakeMailer records what would be emailed; sent is buffered so the background send never blocks a test.
+type fakeMailer struct{ sent chan string }
 
-func (a fakeAuth) AuthURL(_ context.Context, state, _, _ string) (string, error) {
-	return "https://accounts.example/auth?state=" + state, nil
+func (m fakeMailer) Send(_ context.Context, to, _, body string) error {
+	m.sent <- to + "\n" + body
+	return nil
 }
-func (a fakeAuth) Exchange(_ context.Context, _, _, _ string) (Identity, error) { return a.id, nil }
 
-func server(store Store, auth Authenticator) http.Handler {
+func server(store Store, mailer Mailer) http.Handler {
 	r := chi.NewRouter()
-	h := Handler{Auth: auth, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := Handler{Mailer: mailer, BaseURL: "https://admin.example.vn", Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	if store != nil {
 		h.Store = store
 	}
@@ -212,38 +254,19 @@ func TestWritesNeedTheCSRFToken(t *testing.T) {
 	}
 }
 
-func TestGoogleSignIn(t *testing.T) {
+func TestPasswordSignIn(t *testing.T) {
 	store := newFake()
-	h := server(store, fakeAuth{id: Identity{Issuer: googleIssuer, Subject: "123", Email: "op@example.vn", EmailVerified: true}})
-
-	start := do(h, "GET", "/admin/auth/start", "", nil, nil)
-	if start.Code != http.StatusSeeOther || !strings.HasPrefix(start.Header().Get("Location"), "https://accounts.example/auth?state=") {
-		t.Fatalf("start: %d %s", start.Code, start.Header().Get("Location"))
+	h := server(store, nil)
+	w := do(h, "POST", "/admin/login", "", url.Values{"login": {"BaoLe"}, "password": {"sai"}}, nil)
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "Sai mã tài khoản hoặc mật khẩu") || !strings.Contains(w.Body.String(), `value="BaoLe"`) {
+		t.Fatalf("wrong password: %d", w.Code)
 	}
-	var oauth *http.Cookie
-	for _, c := range start.Result().Cookies() {
-		if c.Name == oauthCookie {
-			oauth = c
-		}
+	if strings.Contains(w.Body.String(), "sai") && strings.Contains(w.Body.String(), `value="sai"`) {
+		t.Fatal("the password is echoed back")
 	}
-	if oauth == nil || !oauth.HttpOnly || oauth.SameSite != http.SameSiteLaxMode {
-		t.Fatalf("oauth cookie: %+v", oauth)
-	}
-	state := strings.SplitN(oauth.Value, ".", 2)[0]
-
-	callback := func(state string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("GET", "/admin/auth/callback?code=c&state="+url.QueryEscape(state), nil)
-		req.AddCookie(oauth)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, req)
-		return w
-	}
-	if w := callback("forged"); w.Header().Get("Location") != "/admin/login?e=expired" {
-		t.Fatalf("forged state: %s", w.Header().Get("Location"))
-	}
-	w := callback(state)
+	w = do(h, "POST", "/admin/login", "", url.Values{"login": {"baole"}, "password": {"đúng mật khẩu rồi"}}, nil)
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/" {
-		t.Fatalf("callback: %d %s", w.Code, w.Header().Get("Location"))
+		t.Fatalf("sign-in: %d %s", w.Code, w.Header().Get("Location"))
 	}
 	var session *http.Cookie
 	for _, c := range w.Result().Cookies() {
@@ -251,13 +274,78 @@ func TestGoogleSignIn(t *testing.T) {
 			session = c
 		}
 	}
-	if session == nil || session.Value != "new-token" || !session.HttpOnly || session.Path != "/admin" {
+	if session == nil || session.Value != "new-token" || !session.HttpOnly || session.Path != "/admin" || session.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("session cookie: %+v", session)
 	}
+	// A login form posted from another site is refused before any password check.
+	if w := do(h, "POST", "/admin/login", "", url.Values{"login": {"baole"}, "password": {"đúng mật khẩu rồi"}}, map[string]string{"Origin": "https://evil.example"}); w.Code != http.StatusForbidden {
+		t.Fatalf("cross-site login: %d", w.Code)
+	}
+}
 
-	store.loginErr = ErrNotAllowed
-	if w := callback(state); w.Header().Get("Location") != "/admin/login?e=denied" {
-		t.Fatalf("not an operator: %s", w.Header().Get("Location"))
+func TestTemporaryPasswordOpensOnlyThePasswordPage(t *testing.T) {
+	store := newFake()
+	store.sessions["temp"] = Session{UserID: "t", Login: "baole", CSRF: "csrf-t", Roles: []string{RoleSystemAdmin}, MustChange: true}
+	h := server(store, nil)
+	for _, target := range []string{"/admin/", "/admin/places", "/admin/audit"} {
+		if w := do(h, "GET", target, "temp", nil, nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/password" {
+			t.Errorf("%s: %d %s", target, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := do(h, "GET", "/admin/password", "temp", nil, nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "mật khẩu tạm") {
+		t.Fatalf("password page: %d", w.Code)
+	}
+	form := url.Values{"csrf": {"csrf-t"}, "current": {"đúng mật khẩu rồi"}, "new": {"mật khẩu mới dài"}, "confirm": {"khác hẳn luôn nè"}}
+	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusUnprocessableEntity || len(store.changed) != 0 {
+		t.Fatalf("confirmation differs: %d", w.Code)
+	}
+	form.Set("confirm", "mật khẩu mới dài")
+	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusSeeOther || len(store.changed) != 1 {
+		t.Fatalf("change: %d %v", w.Code, store.changed)
+	}
+	form.Set("current", "sai")
+	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "không đúng") {
+		t.Fatalf("wrong current password: %d", w.Code)
+	}
+}
+
+func TestForgotPasswordAnswersTheSameAndEmailsALink(t *testing.T) {
+	store := newFake()
+	store.resets = map[string]string{"baole": "owner@example.vn"}
+	mail := fakeMailer{sent: make(chan string, 4)}
+	h := server(store, mail)
+	known := do(h, "POST", "/admin/forgot", "", url.Values{"login": {"baole"}}, nil)
+	unknown := do(h, "POST", "/admin/forgot", "", url.Values{"login": {"ai-do"}}, nil)
+	if known.Code != http.StatusOK || known.Body.String() != unknown.Body.String() {
+		t.Fatalf("answers differ: %d / %d", known.Code, unknown.Code)
+	}
+	if got := <-mail.sent; !strings.HasPrefix(got, "owner@example.vn\n") || !strings.Contains(got, "https://admin.example.vn/admin/reset?t=tok-baole") {
+		t.Fatalf("email: %q", got)
+	}
+	select {
+	case extra := <-mail.sent:
+		t.Fatalf("an unknown login got an email: %q", extra)
+	default:
+	}
+	// Without SMTP the page says so instead of pretending.
+	if w := do(server(store, nil), "GET", "/admin/forgot", "", nil, nil); !strings.Contains(w.Body.String(), "Chưa bật gửi email") {
+		t.Fatal("no SMTP: page does not say so")
+	}
+}
+
+func TestResetPassword(t *testing.T) {
+	store := newFake()
+	h := server(store, nil)
+	if w := do(h, "GET", "/admin/reset?t=tok-baole", "", nil, nil); !strings.Contains(w.Body.String(), `value="tok-baole"`) {
+		t.Fatal("reset form lacks the token")
+	}
+	form := url.Values{"t": {"tok-other"}, "new": {"mật khẩu mới dài"}, "confirm": {"mật khẩu mới dài"}}
+	if w := do(h, "POST", "/admin/reset", "", form, nil); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "hết hạn") {
+		t.Fatalf("used link: %d", w.Code)
+	}
+	form.Set("t", "tok-baole")
+	if w := do(h, "POST", "/admin/reset", "", form, nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/login?n=reset" || len(store.reset) != 1 {
+		t.Fatalf("reset: %d %s", w.Code, w.Header().Get("Location"))
 	}
 }
 
@@ -266,8 +354,8 @@ func TestSecurityHeaders(t *testing.T) {
 	if !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("%v", w.Header())
 	}
-	if !strings.Contains(w.Body.String(), "chưa được bật") { // no Google client configured: the page says so
-		t.Fatalf("login page: %s", w.Body.String())
+	if body := w.Body.String(); !strings.Contains(body, "Mã tài khoản") || !strings.Contains(body, `autocomplete="current-password"`) || strings.Contains(body, "Google") {
+		t.Fatalf("login page: %s", body)
 	}
 }
 
@@ -279,19 +367,38 @@ func TestNormalizeEmail(t *testing.T) {
 	}
 }
 
-func TestHomeShowsRealCountsAndWhatNeedsAttention(t *testing.T) {
+func TestReportsContentTabShowsRealCountsAndWhatNeedsAttention(t *testing.T) {
 	r := chi.NewRouter()
 	Handler{Store: newFake(), Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DataStatus: "ASSUMED",
 		Health: []Health{{"Tìm đường", func(context.Context) error { return errors.New("down") }}, {"Cơ sở dữ liệu", func(context.Context) error { return nil }}}}.Mount(r)
-	w := do(r, "GET", "/admin/", "sys", nil, nil)
+	w := do(r, "GET", "/admin/reports?tab=noi-dung", "editor", nil, nil)
 	body := w.Body.String()
 	for _, want := range []string{"1.030", "Tìm đường không phản hồi", "620", "chưa có địa chỉ", "giả định", "Ăn uống", "39%"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("home page lacks %q", want)
+			t.Errorf("content report lacks %q", want)
 		}
 	}
 	if w.Code != http.StatusOK {
 		t.Fatalf("%d", w.Code)
+	}
+	// The overview only raises the alarm for a service that is down, with a link to the details.
+	if body := do(r, "GET", "/admin/", "editor", nil, nil).Body.String(); !strings.Contains(body, "không phản hồi: Tìm đường") || strings.Contains(body, "chưa có địa chỉ") {
+		t.Error("overview: alarm missing or content details shown")
+	}
+}
+
+func TestOverviewIsCustomersAndRevenueAtAGlance(t *testing.T) {
+	store := newFake()
+	store.usage = Usage{Opens: 120, PrevOpens: 100, Total: 80, PrevTotal: 100, OpensMax: 9, OpensDaily: []bar{{"15-11", 4}, {"16-11", 9}},
+		Modes: []bar{{"Xe buýt", 60}, {"Đi bộ", 20}}, Places: []bar{{"Chợ Bến Thành · Chợ", 30}, {"Dinh Độc Lập · Di tích", 12}}}
+	body := do(server(store, nil), "GET", "/admin/?days=7", "editor", nil, nil).Body.String()
+	for _, want := range []string{"Lượt mở app", `change up">&#43;20%`, `change down">-20%`, "Doanh thu", "Chưa có", "Lợi nhuận", "Chợ Bến Thành · Chợ", "Xe buýt", "75%", "Hành trình của khách", "Chưa đo", `href="/admin/reports"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("overview lacks %q", want)
+		}
+	}
+	if q := store.usageQ[len(store.usageQ)-1]; q.Days != 7 || q.Area != "" {
+		t.Fatalf("overview query %+v", q)
 	}
 }
 
@@ -386,36 +493,39 @@ func TestValidatePlace(t *testing.T) {
 	}
 }
 
-func TestUsageIsForTheSystemAdmin(t *testing.T) {
+func TestOverviewShowsUsageWithItsFilters(t *testing.T) {
 	store := newFake()
 	h := server(store, nil)
-	for token, want := range map[string]int{"sys": http.StatusOK, "editor": http.StatusForbidden, "mod": http.StatusForbidden} {
-		if w := do(h, "GET", "/admin/usage", token, nil, nil); w.Code != want {
-			t.Errorf("%s: %d, want %d", token, w.Code, want)
-		}
+	// Unknown periods fall back to 30 days; the province code is passed on (reports page; the overview has no area).
+	if w := do(h, "GET", "/admin/reports?days=365&area=r1", "editor", nil, nil); w.Code != http.StatusOK {
+		t.Fatalf("overview: %d", w.Code)
 	}
-	// Unknown periods fall back to 30 days.
-	do(h, "GET", "/admin/usage?days=365&area=r1", "sys", nil, nil)
 	if q := store.usageQ[len(store.usageQ)-1]; q.Days != 30 || q.Area != "r1" {
 		t.Fatalf("query %+v", q)
 	}
+	if w := do(h, "GET", "/admin/usage", "sys", nil, nil); w.Code != http.StatusNotFound {
+		t.Fatalf("the separate usage page is gone: %d", w.Code)
+	}
 }
 
-func TestUsageHidesSmallNumbers(t *testing.T) {
+func TestOverviewUsageHidesSmallNumbers(t *testing.T) {
 	store := newFake()
-	store.usage = Usage{Total: 3, Daily: []bar{{"15-11", 3}}}
-	if body := do(server(store, nil), "GET", "/admin/usage", "sys", nil, nil).Body.String(); !strings.Contains(body, "Chưa đủ dữ liệu") || !strings.Contains(body, "Có dưới 5") {
-		t.Fatalf("too little data must say so:\n%s", body)
+	store.usage = Usage{Opens: 3, Total: 3, Daily: []bar{{"15-11", 3}}, Areas: []Area{{"r1", "Thành phố Hồ Chí Minh"}}}
+	body := do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
+	for _, want := range []string{"Khách dùng app", "Lượt mở app", "Chưa đủ lượt tìm đường", "Thành phố Hồ Chí Minh", "Cả nước"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("too little data: page lacks %q", want)
+		}
 	}
-	store.usage = Usage{Total: 1240, DailyMax: 900, Daily: []bar{{"15-11", 2}, {"16-11", 900}},
-		Modes: []bar{{"Xe buýt", 1238}, {"Xe đạp", 2}}, Lines: []bar{{"19", 600}}, Places: []bar{{"Chợ Bến Thành", 80}}}
-	body := do(server(store, nil), "GET", "/admin/usage", "sys", nil, nil).Body.String()
-	for _, want := range []string{"1.240", "Tuyến 19", "Chợ Bến Thành", "Xe đạp</span><span class=\"muted\">&lt;5", "15-11: &lt;5 lượt"} {
+	store.usage = Usage{Opens: 5000, Total: 1240, DailyMax: 900, Daily: []bar{{"15-11", 2}, {"16-11", 900}},
+		Modes: []bar{{"Xe buýt", 1238}, {"Xe đạp", 2}}, Lines: []bar{{"19", 600}}, Places: []bar{{"Chợ Bến Thành · Chợ và mua sắm", 80}}}
+	body = do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
+	for _, want := range []string{"5.000", "1.240", "Tuyến 19", "Chợ Bến Thành · Chợ và mua sắm", "Xe buýt", "Xe đạp</span><span class=\"muted\">&lt;5"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	if strings.Contains(body, ">2 lượt") || strings.Contains(body, "Xe đạp</span><span class=\"muted\">2") {
+	if strings.Contains(body, "Xe đạp</span><span class=\"muted\">2") {
 		t.Error("a number under 5 is shown as is")
 	}
 }
@@ -424,6 +534,68 @@ func TestScaleNeverRevealsSmallValues(t *testing.T) {
 	for _, c := range []struct{ v, top, want int }{{0, 100, 0}, {1, 100, 5}, {4, 100, 5}, {50, 100, 50}, {3, 3, 100}} {
 		if got := scaleBar(c.v, c.top, 100); got != c.want {
 			t.Errorf("scale(%d,%d) = %d, want %d", c.v, c.top, got, c.want)
+		}
+	}
+}
+
+func TestGuidePagesForContentRoles(t *testing.T) {
+	store := newFake()
+	store.guide = map[string]GuideItem{"f1": {ID: "f1", Slug: "hcm-food-pho", Title: "Phở bò", Status: "PUBLISHED", Sources: "Nguồn"}}
+	h := server(store, nil)
+	for token, want := range map[string]int{"editor": http.StatusOK, "sys": http.StatusOK, "mod": http.StatusForbidden} {
+		for _, path := range []string{"/admin/foods", "/admin/stories", "/admin/foods/new", "/admin/foods/f1"} {
+			if w := do(h, "GET", path, token, nil, nil); w.Code != want {
+				t.Errorf("%s %s: %d, want %d", token, path, w.Code, want)
+			}
+		}
+	}
+	if body := do(h, "GET", "/admin/foods", "editor", nil, nil).Body.String(); !strings.Contains(body, "Phở bò") || !strings.Contains(body, `href="/admin/foods/new"`) {
+		t.Error("list lacks the dish or the add button")
+	}
+	if w := do(h, "GET", "/admin/stories/nope", "editor", nil, nil); w.Code != http.StatusNotFound {
+		t.Errorf("unknown story: %d", w.Code)
+	}
+}
+
+func TestSaveGuideItem(t *testing.T) {
+	store := newFake()
+	store.guide = map[string]GuideItem{}
+	h := server(store, nil)
+	form := url.Values{"csrf": {"csrf-e"}, "title": {" Bánh xèo "}, "summary": {"Giòn"}, "extra": {"Bánh xèo 46A | 46A Đinh Công Tráng"},
+		"sources": {"Cục Du lịch"}, "status": {"PUBLISHED"}, "sort_order": {"50"}}
+	w := do(h, "POST", "/admin/foods/new", "editor", form, nil)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/foods/new-1?saved=1" || store.guideSave[0].Title != "Bánh xèo" {
+		t.Fatalf("create: %d %s %+v", w.Code, w.Header().Get("Location"), store.guideSave)
+	}
+	// Published without a source: refused, the form keeps what was typed.
+	form.Set("sources", "")
+	w = do(h, "POST", "/admin/foods/new", "editor", form, nil)
+	if body := w.Body.String(); w.Code != http.StatusUnprocessableEntity || !strings.Contains(body, "cần ghi nguồn") || !strings.Contains(body, "Bánh xèo 46A") {
+		t.Fatalf("no source: %d", w.Code)
+	}
+	form.Del("csrf")
+	if w := do(h, "POST", "/admin/stories/new", "editor", form, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("without CSRF: %d", w.Code)
+	}
+}
+
+func TestValidateGuide(t *testing.T) {
+	story := GuideKinds["stories"]
+	for name, c := range map[string]struct {
+		k    guideKind
+		g    GuideItem
+		want string
+	}{
+		"ok draft dish without source":         {GuideKinds["foods"], GuideItem{Title: "Phở", Status: "DRAFT"}, ""},
+		"story needs a body":                   {story, GuideItem{Title: "T", Sources: "S", Status: "DRAFT"}, "nội dung"},
+		"story needs a source even as a draft": {story, GuideItem{Title: "T", Body: "B", Status: "DRAFT"}, "nguồn"},
+		"link must be http":                    {story, GuideItem{Title: "T", Body: "B", SourceURL: "javascript:alert(1)", Status: "DRAFT"}, "https://"},
+		"bad status":                           {story, GuideItem{Title: "T", Body: "B", Sources: "S", Status: "LIVE"}, "trạng thái"},
+		"title too long":                       {GuideKinds["foods"], GuideItem{Title: strings.Repeat("a", 151), Status: "DRAFT"}, "tên"},
+	} {
+		err := validateGuide(c.k, &c.g)
+		if (c.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.want)) {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }

@@ -27,4 +27,6 @@ class FakeApi : GoWanderApi {
     override suspend fun reverseGeocode(at: LatLon): List<GeoResult> = emptyList()
     override suspend fun streetImage(at: LatLon): StreetImageResponse? = null
     override suspend fun imageBytes(url: String): ByteArray = ByteArray(0)
+    override suspend fun guide(): com.gowander.content.GuideContent = com.gowander.content.GuideContent()
+    override suspend fun recordOpen() {}
 }

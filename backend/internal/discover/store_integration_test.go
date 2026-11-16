@@ -39,9 +39,13 @@ INSERT INTO place_category_links VALUES ('0190f0c2-0000-7000-8000-000000000001',
 INSERT INTO place_media (place_id, storage_key, media_type, alt_text, source_credit, license_info, sort_order, is_cover) VALUES
   ('0190f0c2-0000-7000-8000-000000000001', 'fixture/b.jpg', 'IMAGE', NULL, 'FIXTURE', 'FIXTURE', 2, false),
   ('0190f0c2-0000-7000-8000-000000000001', 'fixture/a.jpg', 'IMAGE', 'Cổng chợ', 'FIXTURE', 'FIXTURE', 1, true);
-INSERT INTO food_items (id, name, name_en, slug, status) VALUES
-  ('0190f0c2-0000-7000-8000-0000000000f1', 'Phở bò', 'Beef pho', 'pho-bo', 'PUBLISHED'),
-  ('0190f0c2-0000-7000-8000-0000000000f2', 'Món nháp', NULL, 'mon-nhap', 'DRAFT');
+INSERT INTO food_items (id, name, name_en, slug, status, summary, shops, sources, sort_order) VALUES
+  ('0190f0c2-0000-7000-8000-0000000000f1', 'Phở bò', 'Beef pho', 'pho-bo', 'PUBLISHED', 'Tô phở', E'Quán A | 1 Lê Lợi\nQuán B', 'Nguồn A', 20),
+  ('0190f0c2-0000-7000-8000-0000000000f2', 'Món nháp', NULL, 'mon-nhap', 'DRAFT', NULL, NULL, NULL, 10);
+INSERT INTO historical_stories (slug, title, summary, content, try_this, sources, source_url, language_code, status, published_at, sort_order) VALUES
+  ('chuyen-1', 'Chuyện một', 'Tóm tắt', E'Đoạn một.\n\nĐoạn hai.', 'Thử đi', NULL, 'https://example.test/s', 'vi', 'PUBLISHED', now(), 1),
+  ('chuyen-nhap', 'Chuyện nháp', NULL, 'x', NULL, 'Nguồn', NULL, 'vi', 'DRAFT', NULL, 2),
+  ('story-en', 'English story', NULL, 'x', NULL, 'Source', NULL, 'en', 'PUBLISHED', now(), 3);
 INSERT INTO place_foods (place_id, food_id, price_min, price_max) VALUES
   ('0190f0c2-0000-7000-8000-000000000001', '0190f0c2-0000-7000-8000-0000000000f1', 45000, 70000),
   ('0190f0c2-0000-7000-8000-000000000001', '0190f0c2-0000-7000-8000-0000000000f2', 1, 2);
@@ -248,6 +252,19 @@ func TestStore(t *testing.T) {
 			if _, err := s.Place(ctx, id); !errors.Is(err, ErrNotFound) {
 				t.Errorf("%s: want ErrNotFound, got %v", id, err)
 			}
+		}
+	})
+
+	t.Run("guide has published dishes and Vietnamese stories only, parsed for the app", func(t *testing.T) {
+		g, err := s.Guide(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(g.Dishes) != 1 || g.Dishes[0].ID != "pho-bo" || len(g.Dishes[0].Shops) != 2 || g.Dishes[0].Shops[0].Address != "1 Lê Lợi" || g.Dishes[0].Sources != "Nguồn A" {
+			t.Fatalf("dishes %+v", g.Dishes)
+		}
+		if len(g.Stories) != 1 || g.Stories[0].ID != "chuyen-1" || len(g.Stories[0].Paragraphs) != 2 || g.Stories[0].Sources != "https://example.test/s" {
+			t.Fatalf("stories %+v", g.Stories)
 		}
 	})
 

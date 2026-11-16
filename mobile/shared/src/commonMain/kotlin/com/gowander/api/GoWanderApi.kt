@@ -23,6 +23,7 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
+import com.gowander.content.GuideContent
 import kotlinx.serialization.json.Json
 
 /** Base URL of the Go API for this platform during development (ADR-029 §3). */
@@ -63,6 +64,10 @@ interface GoWanderApi {
     suspend fun streetImage(at: LatLon): StreetImageResponse?
     /** Raw bytes of an image URL returned by the API (street photo). */
     suspend fun imageBytes(url: String): ByteArray
+    /** Published dishes and stories of the TP.HCM guide (M07 slice 3). */
+    suspend fun guide(): GuideContent
+    /** One app start, counted per day on the server (ADR-038). Sends nothing else: no id, no location. */
+    suspend fun recordOpen()
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
@@ -126,6 +131,19 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
         }.places
 
     override suspend fun place(id: String): PlaceDetail = call("/api/v1/places/${id.encodeURLPathPart()}") {}
+
+    override suspend fun guide(): GuideContent = call("/api/v1/guide/hcm") {}
+
+    override suspend fun recordOpen() {
+        val status = try {
+            client.request("$base/api/v1/usage/open") { method = HttpMethod.Post }.status
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw ApiError.Network(e)
+        }
+        if (!status.isSuccess()) throw ApiError.Unexpected("HTTP ${status.value} for an app start")
+    }
 
     override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> =
         call<GeocodeResponse>("/api/v1/geocode") {

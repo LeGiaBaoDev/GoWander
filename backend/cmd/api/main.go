@@ -98,7 +98,7 @@ func run(log *slog.Logger) error {
 }
 
 // newHandler wires every route; integration tests use it with a real OTP.
-func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage mobility.Recorder) http.Handler {
+func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage *analytics.Counter) http.Handler {
 	mux := httpx.NewRouter(log)
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -122,12 +122,17 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log, Usage: usage}.Plan)
+	plan := mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}
+	if usage != nil { // tests run without counters
+		plan.Usage = usage
+		usage.Mount(mux)
+	}
+	mux.Post("/api/v1/routes/plan", plan.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
-	adminHandler := admin.Handler{Store: adminStore, BootstrapEmail: cfg.AdminBootstrapEmail, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
+	adminHandler := admin.Handler{Store: adminStore, BaseURL: cfg.AdminBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
-	if cfg.GoogleLogin() {
-		adminHandler.Auth = admin.NewGoogle(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.AdminBaseURL+"/admin/auth/callback")
+	if cfg.MailEnabled() {
+		adminHandler.Mailer = admin.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
 	}
 	adminHandler.Mount(mux)
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)

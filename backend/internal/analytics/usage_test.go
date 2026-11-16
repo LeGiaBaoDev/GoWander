@@ -1,12 +1,32 @@
 package analytics
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
 )
+
+func TestOpenCountsADayAndNothingElse(t *testing.T) {
+	c := New(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r := chi.NewRouter()
+	c.Mount(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/usage/open", nil))
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("%d %q", rec.Code, rec.Body)
+	}
+	if e := <-c.queue; !e.Open || len(e.Day) != 10 || e.Mode != "" || e.From != (mobility.Coordinate{}) {
+		t.Fatalf("event %+v", e)
+	}
+}
 
 func TestEventOf(t *testing.T) {
 	bus := func(id, short, long string) mobility.Leg {

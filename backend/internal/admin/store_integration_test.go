@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 )
 
 // emptyAdminTables runs as the owner role on the TEST database only (database.TestDatabaseURL).
-const emptyAdminTables = `TRUNCATE admin_audit_logs, admin_sessions, user_roles, user_auth_identities, user_contacts, users`
+const emptyAdminTables = `TRUNCATE admin_audit_logs, admin_sessions, admin_password_resets, admin_credentials, user_roles, user_contacts, users`
 
 // setup empties the admin tables of the TEST database and returns a store connected as gowander_admin.
 func setup(t *testing.T) *PG {
@@ -52,92 +51,116 @@ func setup(t *testing.T) *PG {
 	return &PG{Pool: pool}
 }
 
-func google(sub, email string) Identity {
-	return Identity{Issuer: googleIssuer, Subject: sub, Email: email, EmailVerified: true, Name: "Người " + sub}
+// account creates an operator with a known password (via CreateAccount, then a change) and returns its id.
+func account(t *testing.T, s *PG, login, role string) string {
+	t.Helper()
+	ctx := context.Background()
+	id, temp, err := s.CreateAccount(ctx, login, login+"@example.vn", "", role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ChangePassword(ctx, id, temp, "mật khẩu của "+login, "", "r"); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
-func TestStore(t *testing.T) {
+func TestAccounts(t *testing.T) {
 	s := setup(t)
 	ctx := context.Background()
 
-	t.Run("only the bootstrap email gets in while nobody has a role", func(t *testing.T) {
-		if _, err := s.Login(ctx, google("1", "stranger@example.vn"), "owner@example.vn", "r1"); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("stranger: %v", err)
+	t.Run("create-account gives a temporary password that must be changed", func(t *testing.T) {
+		id, temp, err := s.CreateAccount(ctx, " BaoLe ", "Owner@Example.VN", "Bảo", RoleSystemAdmin)
+		if err != nil || len(temp) != 16 {
+			t.Fatalf("%v %q", err, temp)
 		}
-		unverified := google("2", "owner@example.vn")
-		unverified.EmailVerified = false
-		if _, err := s.Login(ctx, unverified, "owner@example.vn", "r2"); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("unverified email: %v", err)
+		if _, _, err := s.CreateAccount(ctx, "baole", "other@example.vn", "", RoleSystemAdmin); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("a login is unique whatever the case: %v", err)
 		}
-		owner, err := s.Login(ctx, google("10", "Owner@Example.VN"), "owner@example.vn", "r3")
-		if err != nil {
-			t.Fatal(err)
+		if _, _, err := s.CreateAccount(ctx, "khac", "owner@example.vn", "", RoleSystemAdmin); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("one login per person: %v", err)
 		}
-		token, err := s.CreateSession(ctx, owner, time.Hour)
-		if err != nil {
-			t.Fatal(err)
-		}
-		se, err := s.Session(ctx, token)
-		if err != nil || !se.Has(RoleSystemAdmin) || se.Email != "owner@example.vn" || len(se.CSRF) < 32 {
-			t.Fatalf("session: %+v %v", se, err)
-		}
-		// Bootstrap is a one-time door: once someone holds a role, the same email from another Google account is refused.
-		if _, err := s.Login(ctx, google("11", "owner@example.vn"), "owner@example.vn", "r4"); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("second google account for the bootstrap email: %v", err)
-		}
-	})
-
-	t.Run("granted email links on first sign-in; accounts are never merged by email", func(t *testing.T) {
-		ops, _ := s.Operators(ctx)
-		ownerID := ops[0].UserID
-		if err := s.Grant(ctx, ownerID, "Editor@Example.VN", RoleContentEditor, "r5"); err != nil {
-			t.Fatal(err)
-		}
-		if err := s.Grant(ctx, ownerID, "not-an-email", RoleContentEditor, "r6"); !errors.Is(err, ErrBadInput) {
-			t.Fatalf("bad email: %v", err)
-		}
-		if err := s.Grant(ctx, ownerID, "x@example.vn", "ROOT", "r7"); !errors.Is(err, ErrBadInput) {
-			t.Fatalf("bad role: %v", err)
-		}
-		editor, err := s.Login(ctx, google("20", "editor@example.vn"), "", "r8")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.Login(ctx, google("21", "editor@example.vn"), "", "r9"); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("second google account, same email: %v", err)
-		}
-		if again, err := s.Login(ctx, google("20", "editor-new@example.vn"), "", "r10"); err != nil || again != editor {
-			t.Fatalf("linked account with a changed email: %v %v", again, err)
-		}
-		// Revoking the last role signs the person out and keeps them out.
-		token, _ := s.CreateSession(ctx, editor, time.Hour)
-		if err := s.Revoke(ctx, ownerID, editor, RoleContentEditor, "r11"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.Session(ctx, token); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("session after revoke: %v", err)
-		}
-		if _, err := s.Login(ctx, google("20", "editor@example.vn"), "", "r12"); !errors.Is(err, ErrNotAllowed) {
-			t.Fatalf("login without a role: %v", err)
-		}
-	})
-
-	t.Run("the last system admin cannot be removed", func(t *testing.T) {
-		ops, _ := s.Operators(ctx)
-		var ownerID string
-		for _, o := range ops {
-			if strings.Contains(strings.Join(o.Roles, ","), RoleSystemAdmin) {
-				ownerID = o.UserID
+		for _, bad := range [][3]string{{"ab", "a@b.vn", RoleSystemAdmin}, {"ok-login", "not-an-email", RoleSystemAdmin}, {"ok-login", "a@b.vn", "ROOT"}} {
+			if _, _, err := s.CreateAccount(ctx, bad[0], bad[1], "", bad[2]); !errors.Is(err, ErrBadInput) {
+				t.Errorf("%v: %v", bad, err)
 			}
 		}
-		if err := s.Revoke(ctx, ownerID, ownerID, RoleSystemAdmin, "r13"); !errors.Is(err, ErrLastSystemAdmin) {
-			t.Fatalf("last system admin: %v", err)
+		got, err := s.PasswordLogin(ctx, "BAOLE", temp, "r1")
+		if err != nil || got != id {
+			t.Fatalf("sign-in with the temporary password: %v", err)
 		}
-		if err := s.Grant(ctx, ownerID, "second@example.vn", RoleSystemAdmin, "r14"); err != nil {
+		token, _ := s.CreateSession(ctx, id, time.Hour)
+		se, err := s.Session(ctx, token)
+		if err != nil || !se.MustChange || se.Login != "baole" || !se.Has(RoleSystemAdmin) || se.Email != "owner@example.vn" {
+			t.Fatalf("session %+v %v", se, err)
+		}
+		other, _ := s.CreateSession(ctx, id, time.Hour)
+		if err := s.ChangePassword(ctx, id, "sai", "mật khẩu mới dài", token, "r2"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("wrong current password: %v", err)
+		}
+		if err := s.ChangePassword(ctx, id, temp, "baole", token, "r3"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("weak password: %v", err)
+		}
+		if err := s.ChangePassword(ctx, id, temp, "mật khẩu mới dài", token, "r4"); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Revoke(ctx, ownerID, ownerID, RoleSystemAdmin, "r15"); err != nil {
-			t.Fatalf("with a second system admin: %v", err)
+		if se, err := s.Session(ctx, token); err != nil || se.MustChange {
+			t.Fatalf("this session stays and is unlocked: %+v %v", se, err)
+		}
+		if _, err := s.Session(ctx, other); !errors.Is(err, ErrNotAllowed) {
+			t.Fatalf("other sessions are signed out: %v", err)
+		}
+	})
+
+	t.Run("wrong passwords lock the account for 15 minutes", func(t *testing.T) {
+		if _, err := s.PasswordLogin(ctx, "ai-do", "x", "r"); !errors.Is(err, ErrNotAllowed) {
+			t.Fatalf("unknown login: %v", err)
+		}
+		for i := range maxFailedLogins {
+			if _, err := s.PasswordLogin(ctx, "baole", "sai lần "+string(rune('0'+i)), "r"); !errors.Is(err, ErrNotAllowed) {
+				t.Fatal(err)
+			}
+		}
+		if _, err := s.PasswordLogin(ctx, "baole", "mật khẩu mới dài", "r"); !errors.Is(err, ErrNotAllowed) {
+			t.Fatalf("locked account let the right password in: %v", err)
+		}
+	})
+
+	t.Run("a reset link works once, unlocks and signs out", func(t *testing.T) {
+		if _, _, err := s.StartPasswordReset(ctx, "ai-do", "r"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("unknown login: %v", err)
+		}
+		email, token, err := s.StartPasswordReset(ctx, "BaoLe", "r5")
+		if err != nil || email != "owner@example.vn" || token == "" {
+			t.Fatalf("%q %v", email, err)
+		}
+		if _, _, err := s.StartPasswordReset(ctx, "baole", "r6"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("a second email within 2 minutes: %v", err)
+		}
+		if err := s.ResetPassword(ctx, token, "ngắn", "r7"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("weak password: %v", err)
+		}
+		if err := s.ResetPassword(ctx, token, "mật khẩu sau khi quên", "r8"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.ResetPassword(ctx, token, "mật khẩu lần nữa nha", "r9"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("link used twice: %v", err)
+		}
+		if _, err := s.PasswordLogin(ctx, "baole", "mật khẩu sau khi quên", "r10"); err != nil {
+			t.Fatalf("new password after a lock: %v", err)
+		}
+	})
+
+	t.Run("reset-password from the server sets a temporary password", func(t *testing.T) {
+		temp, err := s.SetTemporaryPassword(ctx, "baole")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.PasswordLogin(ctx, "baole", temp, "r"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.SetTemporaryPassword(ctx, "ai-do"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("unknown login: %v", err)
 		}
 	})
 
@@ -149,7 +172,7 @@ func TestStore(t *testing.T) {
 	})
 
 	t.Run("audit log records the changes and the admin role cannot change it", func(t *testing.T) {
-		entries, err := s.AuditLog(ctx, 50)
+		entries, err := s.AuditLog(ctx, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,11 +180,11 @@ func TestStore(t *testing.T) {
 		for _, e := range entries {
 			actions[e.Action]++
 		}
-		if actions["admin.bootstrap"] != 1 || actions["role.grant"] != 2 || actions["role.revoke"] != 2 || actions["admin.login"] < 2 {
+		if actions["account.create"] != 1 || actions["admin.login_failed"] < maxFailedLogins || actions["admin.password_reset"] != 1 || actions["admin.password_change"] != 1 {
 			t.Fatalf("audit actions: %v", actions)
 		}
-		// Expected to be refused: gowander_admin only has INSERT and SELECT on the log.
-		for _, sql := range []string{`UPDATE admin_audit_logs SET action = 'x'`, `TRUNCATE admin_audit_logs`} {
+		// Expected to be refused: gowander_admin only has INSERT and SELECT on the log, and cannot rename a login.
+		for _, sql := range []string{`UPDATE admin_audit_logs SET action = 'x'`, `TRUNCATE admin_audit_logs`, `UPDATE admin_credentials SET login = 'x'`} {
 			if _, err := s.Pool.Exec(ctx, sql); err == nil {
 				t.Fatalf("the admin role could run %q", sql)
 			}
@@ -181,8 +204,8 @@ func TestEditPlaces(t *testing.T) {
 	var placeID string
 	var food, cafe int64
 	err = owner.QueryRow(ctx, `
-		WITH f AS (INSERT INTO place_categories (name, slug) VALUES ('Ăn uống T', 'food-t') ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id),
-		     c AS (INSERT INTO place_categories (name, slug) VALUES ('Cà phê T', 'cafe-t') ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id),
+		WITH f AS (INSERT INTO place_categories (name, slug) VALUES ('Ăn uống T', 'food-t') ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, is_active = true RETURNING id),
+		     c AS (INSERT INTO place_categories (name, slug) VALUES ('Cà phê T', 'cafe-t') ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, is_active = true RETURNING id),
 		     p AS (INSERT INTO places (name, slug, location, primary_category_id, status, source, source_ref, license, attribution)
 		           SELECT 'Quán Test', 'quan-test-' || floor(random() * 1e9)::bigint, ST_SetSRID(ST_MakePoint(106.7, 10.77), 4326)::geography, f.id,
 		                  'PUBLISHED', 'FIXTURE', 'admin-test-' || floor(random() * 1e9)::bigint, 'test', 'test' FROM f RETURNING id)
@@ -197,15 +220,7 @@ func TestEditPlaces(t *testing.T) {
 		owner.Exec(context.Background(), `UPDATE places SET status = 'HIDDEN' WHERE id = $1::uuid`, placeID)
 	})
 
-	ops, _ := s.Operators(ctx)
-	if len(ops) == 0 { // TestStore may not have run first: make an operator for the audit actor.
-		id, err := s.Login(ctx, google("e1", "edit@example.vn"), "edit@example.vn", "r")
-		if err != nil {
-			t.Fatal(err)
-		}
-		ops = []Operator{{UserID: id}}
-	}
-	actor := ops[0].UserID
+	actor := account(t, s, "editor", RoleContentEditor)
 
 	p, err := s.Place(ctx, placeID)
 	if err != nil || p.Name != "Quán Test" || p.CategoryID != food || p.EditedAt != nil {
@@ -259,11 +274,12 @@ func TestUsageReadsCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close(ctx)
-	// Test database only: two wards, counters for today and one day past the 30-day window.
+	// Test database only: two provinces, app starts, counters for today and one day past the 30-day window.
 	_, err = owner.Exec(ctx, `
-		DELETE FROM admin_areas; DELETE FROM usage_route_plans; DELETE FROM usage_bus_lines; DELETE FROM usage_place_routes;
+		DELETE FROM admin_areas; DELETE FROM usage_route_plans; DELETE FROM usage_bus_lines; DELETE FROM usage_place_routes; DELETE FROM usage_app_opens;
+		INSERT INTO usage_app_opens VALUES ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 12), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 30, 99);
 		INSERT INTO admin_areas (code, name, geom) VALUES
-		  ('rA', 'Phường A', ST_Multi(ST_MakeEnvelope(0, 0, 1, 1, 4326))), ('rB', 'Phường B', ST_Multi(ST_MakeEnvelope(1, 0, 2, 1, 4326)));
+		  ('rA', 'Tỉnh A', ST_Multi(ST_MakeEnvelope(0, 0, 1, 1, 4326))), ('rB', 'Tỉnh B', ST_Multi(ST_MakeEnvelope(1, 0, 2, 1, 4326)));
 		INSERT INTO usage_route_plans VALUES
 		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'BUS', 'FROM', 'rA', 7), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'BUS', 'TO', 'rB', 7),
 		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'CAR', 'FROM', 'rB', 2), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'CAR', 'TO', '', 2),
@@ -277,20 +293,89 @@ func TestUsageReadsCounters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(u.Daily) != 30 || u.Total != 9 || len(u.Areas) != 2 {
+	if len(u.Daily) != 30 || u.Total != 9 || len(u.Areas) != 2 || u.Opens != 12 {
 		t.Fatalf("30 days, origin side only, older rows left out: days %d total %d areas %d", len(u.Daily), u.Total, len(u.Areas))
 	}
-	if len(u.Lines) != 1 || u.Lines[0].Label != "19" || len(u.From) != 1 || u.From[0].Label != "Phường A" || len(u.To) != 1 || u.To[0].Label != "Phường B" {
+	if len(u.Lines) != 1 || u.Lines[0].Label != "19" || len(u.From) != 1 || u.From[0].Label != "Tỉnh A" || len(u.To) != 1 || u.To[0].Label != "Tỉnh B" {
 		t.Fatalf("items under 5 are left out of the rankings: lines %v from %v to %v", u.Lines, u.From, u.To)
 	}
 	if len(u.Modes) != 2 || u.Modes[0].Label != "Xe buýt" {
 		t.Fatalf("modes %v", u.Modes)
 	}
 	b, err := s.Usage(ctx, UsageQuery{Days: 30, Area: "rB"})
-	if err != nil || b.Total != 2 || b.AreaName != "Phường B" || b.To != nil {
+	if err != nil || b.Total != 2 || b.AreaName != "Tỉnh B" || b.To != nil {
 		t.Fatalf("filtered by origin ward, no destinations: %+v %v", b, err)
 	}
 	if x, _ := s.Usage(ctx, UsageQuery{Days: 7, Area: "nope"}); x.Area != "" || x.Total != 9 {
 		t.Fatalf("an unknown ward is ignored: %+v", x)
+	}
+}
+
+func TestGuideItems(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+	owner, err := pgx.Connect(ctx, database.TestDatabaseURL(os.Getenv("MIGRATE_DATABASE_URL")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(ctx)
+	// Test database only.
+	if _, err := owner.Exec(ctx, `DELETE FROM place_foods; DELETE FROM food_items; DELETE FROM historical_stories`); err != nil {
+		t.Fatal(err)
+	}
+	actor := account(t, s, "guide", RoleContentEditor)
+	dish := GuideItem{Title: "Bánh xèo Đà Lạt", Summary: "Giòn", Extra: "Quán A | 1 Lê Lợi", Sources: "Nguồn", Status: "PUBLISHED", SortOrder: 5}
+	id1, err := s.SaveGuideItem(ctx, actor, "foods", dish, "req-f1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.SaveGuideItem(ctx, actor, "foods", dish, "req-f2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := s.GuideItem(ctx, "foods", id1)
+	b, _ := s.GuideItem(ctx, "foods", id2)
+	if a.Slug != "hcm-food-banh-xeo-da-lat" || b.Slug != "hcm-food-banh-xeo-da-lat-2" || a.EditedAt == nil || a.Extra != "Quán A | 1 Lê Lợi" {
+		t.Fatalf("slugs from the Vietnamese title, unique: %q %q %+v", a.Slug, b.Slug, a)
+	}
+	a.Title, a.Status = "Bánh xèo", "HIDDEN"
+	if _, err := s.SaveGuideItem(ctx, actor, "foods", a, "req-f3"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GuideItem(ctx, "foods", id1); got.Title != "Bánh xèo" || got.Status != "HIDDEN" || got.Slug != a.Slug {
+		t.Fatalf("update keeps the slug: %+v", got)
+	}
+	if _, err := s.SaveGuideItem(ctx, actor, "foods", GuideItem{ID: "00000000-0000-0000-0000-000000000000", Title: "x", Status: "DRAFT"}, "r"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown dish: %v", err)
+	}
+
+	story := GuideItem{Title: "Chuyện bờ sông", Body: "Một.\n\nHai.", Sources: "Cục Du lịch", Status: "DRAFT"}
+	sid, err := s.SaveGuideItem(ctx, actor, "stories", story, "req-s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := s.GuideItem(ctx, "stories", sid)
+	st.Status = "PUBLISHED"
+	if _, err := s.SaveGuideItem(ctx, actor, "stories", st, "req-s2"); err != nil {
+		t.Fatalf("publishing sets the date the CHECK needs: %v", err)
+	}
+	if list, err := s.GuideItems(ctx, "stories"); err != nil || len(list) != 1 || list[0].Status != "PUBLISHED" {
+		t.Fatalf("stories %v %v", list, err)
+	}
+	// Saving without a change writes no audit line.
+	if _, err := s.SaveGuideItem(ctx, actor, "stories", st, "req-s3"); err != nil {
+		t.Fatal(err)
+	}
+	// The slug is the app's id: the Admin role cannot change it.
+	if _, err := s.Pool.Exec(ctx, `UPDATE food_items SET slug = 'x' WHERE id::text = $1`, id1); err == nil {
+		t.Fatal("the admin role could change a slug")
+	}
+	entries, _ := s.AuditLog(ctx, 50)
+	seen := map[string]bool{}
+	for _, e := range entries {
+		seen[e.Action+":"+e.RequestID] = true
+	}
+	if !seen["food.create:req-f1"] || !seen["food.update:req-f3"] || !seen["story.update:req-s2"] || seen["story.update:req-s3"] {
+		t.Fatalf("audit: %v", seen)
 	}
 }

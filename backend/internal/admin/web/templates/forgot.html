@@ -1,0 +1,19 @@
+{{define "title"}}Quên mật khẩu · GoWander Admin{{end}}
+{{define "main"}}
+<section class="splash">
+  <img class="logo" src="/admin/static/logo_full.png" alt="GoWander" width="180" height="120">
+  <h1>Quên mật khẩu</h1>
+  {{if not .MailReady}}
+  <p class="notice bad" role="alert">Chưa bật gửi email (SMTP). Nhờ người quản lý server cấp mật khẩu tạm bằng lệnh <code>go run ./cmd/admin reset-password</code>.</p>
+  {{else if .Sent}}
+  <p class="notice ok" role="status">Nếu mã tài khoản đúng, email có link đặt lại mật khẩu đã được gửi tới địa chỉ của tài khoản. Link dùng được một lần, trong 30 phút. Không thấy thì xem thư mục Spam.</p>
+  {{else}}
+  <p class="muted">Nhập mã tài khoản. GoWander gửi link đặt mật khẩu mới tới email của tài khoản.</p>
+  <form class="form login-form" method="post" action="/admin/forgot">
+    <label>Mã tài khoản <input name="login" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="40" autofocus></label>
+    <button type="submit" class="block">Gửi link đặt lại</button>
+  </form>
+  {{end}}
+  <p><a href="/admin/login">← Về trang đăng nhập</a></p>
+</section>
+{{end}}

@@ -1,0 +1,18 @@
+{{define "title"}}Đặt mật khẩu mới · GoWander Admin{{end}}
+{{define "main"}}
+<section class="splash">
+  <img class="logo" src="/admin/static/logo_full.png" alt="GoWander" width="180" height="120">
+  <h1>Đặt mật khẩu mới</h1>
+  {{with .Problem}}<p class="notice bad" role="alert">Chưa đặt được: {{.}}.</p>{{end}}
+  {{if .Token}}
+  <form class="form login-form" method="post" action="/admin/reset">
+    <input type="hidden" name="t" value="{{.Token}}">
+    <label>Mật khẩu mới <span class="muted small">(12–128 ký tự)</span><input name="new" type="password" autocomplete="new-password" required minlength="12" maxlength="128" autofocus></label>
+    <label>Nhập lại <input name="confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+    <button type="submit" class="block">Đặt mật khẩu</button>
+  </form>
+  {{else}}
+  <p class="notice bad" role="alert">Link thiếu mã. Mở lại link trong email, hoặc <a href="/admin/forgot">yêu cầu link mới</a>.</p>
+  {{end}}
+</section>
+{{end}}

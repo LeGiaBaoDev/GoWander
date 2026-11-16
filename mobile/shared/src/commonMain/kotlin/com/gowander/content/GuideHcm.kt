@@ -1,13 +1,18 @@
 package com.gowander.content
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.gowander.mock.Move
+import kotlinx.serialization.Serializable
 
 /*
  * The TP.HCM guide, written by the owner: docs/content/cam-nang-tp-hcm.md (content_version 0.1.0-draft, sources
  * reviewed 15-11-2026). Everything here is copied from that file; nothing is added to it. It is still an editorial
  * draft: no licensed photos, opening hours only where the official site states them, suggested shops not visited.
  * Rules taken from the file: no star ratings set by us, no travel minutes that the router has not confirmed.
- * shortcut: bundled in the app, so a text change needs a release; move it behind the API when the admin (M07) exists.
+ * Dishes and stories are served by the API since M07 slice 3 (edited in the Admin); the copies below are what the app shows
+ * before the first answer and offline. Highlights, tips and trips are still bundled (next slice).
  */
 
 data class Tip(val title: String, val text: String)
@@ -16,10 +21,14 @@ data class Tip(val title: String, val text: String)
 data class Highlight(val id: String, val name: String, val kind: String, val lat: Double, val lon: Double, val summary: String, val hours: String? = null)
 
 /** A shop the editor suggests for a dish; address only, nothing checked on site yet. */
-data class Shop(val name: String, val address: String)
+@Serializable
+data class Shop(val name: String, val address: String = "")
 
-data class Dish(val id: String, val name: String, val summary: String, val description: String, val shops: List<Shop>)
+/** [id] is the server's slug; the bundled dishes use the same ids. */
+@Serializable
+data class Dish(val id: String, val name: String, val summary: String, val description: String, val shops: List<Shop>, val sources: String = GUIDE_FOOD_SOURCE)
 
+@Serializable
 data class Story(val id: String, val title: String, val summary: String, val paragraphs: List<String>, val tryThis: String, val sources: String) {
     /** Reading time from the length of the text (about 200 words a minute). */
     val minutes: Int get() = (paragraphs.sumOf { it.split(' ').size } + 199) / 200
@@ -105,7 +114,27 @@ val GUIDE_DISHES = listOf(
 const val GUIDE_FOOD_SOURCE = "Cục Du lịch Quốc gia Việt Nam (vietnam.travel)"
 const val GUIDE_SHOP_NOTE = "Quán do biên tập gợi ý, chưa kiểm tra tại chỗ. Hãy hỏi giá và giờ mở cửa trước khi đi; người dị ứng thực phẩm nên hỏi quán về thành phần."
 
-fun guideDish(id: String) = GUIDE_DISHES.firstOrNull { it.id == id } ?: GUIDE_DISHES.first()
+fun guideDish(id: String) = Guide.dishes.firstOrNull { it.id == id } ?: GUIDE_DISHES.firstOrNull { it.id == id } ?: GUIDE_DISHES.first()
+
+/** GET /api/v1/guide/hcm: the published dishes and stories. */
+@Serializable
+data class GuideContent(val dishes: List<Dish> = emptyList(), val stories: List<Story> = emptyList())
+
+/**
+ * What the guide screens show. Starts with the bundled copy; once the API answers, the server's lists replace it,
+ * even when they are empty (the Admin hid everything): the server is the source of truth.
+ */
+object Guide {
+    var dishes by mutableStateOf(GUIDE_DISHES)
+        private set
+    var stories by mutableStateOf(GUIDE_STORIES)
+        private set
+
+    fun use(content: GuideContent) {
+        dishes = content.dishes
+        stories = content.stories
+    }
+}
 
 val GUIDE_STORIES = listOf(
     Story(

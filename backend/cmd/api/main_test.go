@@ -37,7 +37,8 @@ func (s stubStore) Clusters(context.Context, discover.ClusterQuery) ([]discover.
 func (s stubStore) Place(context.Context, string) (discover.PlaceDetail, error) {
 	return discover.PlaceDetail{}, discover.ErrNotFound
 }
-func (s stubStore) Ready(context.Context) error { return s.readyErr }
+func (s stubStore) Ready(context.Context) error                   { return s.readyErr }
+func (s stubStore) Guide(context.Context) (discover.Guide, error) { return discover.Guide{}, nil }
 
 func (s stubProvider) PlanRoute(context.Context, mobility.Query) ([]mobility.Route, error) {
 	panic("boom") // exercises the recoverer

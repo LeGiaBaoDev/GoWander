@@ -4,7 +4,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,18 +27,20 @@ type Config struct {
 	MapillaryToken string
 	MapillaryURL   string // MAPILLARY_URL, default https://graph.mapillary.com
 
-	// Admin pages (M07, ADR-037). Optional: without ADMIN_DATABASE_URL the /admin pages answer 503 and the public API
-	// works as before. ADMIN_DATABASE_URL uses the role gowander_admin and holds a password: never log it.
-	AdminDatabaseURL    string
-	AdminBaseURL        string // ADMIN_BASE_URL, default http://localhost:8090: builds the OAuth redirect URI
-	GoogleClientID      string // GOOGLE_CLIENT_ID; with GOOGLE_CLIENT_SECRET turns Google sign-in on
-	GoogleClientSecret  string // a secret: never log it
-	AdminBootstrapEmail string // ADMIN_BOOTSTRAP_EMAIL: first SYSTEM_ADMIN while nobody has a role. Private data.
+	// Admin pages (M07, ADR-037, ADR-039). Optional: without ADMIN_DATABASE_URL the /admin pages answer 503 and the
+	// public API works as before. ADMIN_DATABASE_URL uses the role gowander_admin and holds a password: never log it.
+	AdminDatabaseURL string
+	AdminBaseURL     string // ADMIN_BASE_URL, default http://localhost:8090: the link in "quên mật khẩu" emails
+
+	// SMTP for "quên mật khẩu" (ADR-039: Gmail, smtp.gmail.com:587 with an app password). Optional: without SMTP_HOST
+	// the page says email is not set up. SMTP_PASSWORD is a secret, SMTP_USERNAME/SMTP_FROM are private: never log them.
+	SMTPHost, SMTPUsername, SMTPPassword, SMTPFrom string
+	SMTPPort                                       int // SMTP_PORT, default 587
 }
 
-// AdminEnabled: the Admin pages can open the database. GoogleLogin: they can also sign people in.
+// AdminEnabled: the Admin pages can open the database. MailEnabled: they can send "quên mật khẩu" emails.
 func (c Config) AdminEnabled() bool { return c.AdminDatabaseURL != "" }
-func (c Config) GoogleLogin() bool  { return c.GoogleClientID != "" && c.GoogleClientSecret != "" }
+func (c Config) MailEnabled() bool  { return c.SMTPHost != "" }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
 func Load(getenv func(string) string) (Config, error) {
@@ -55,11 +59,12 @@ func Load(getenv func(string) string) (Config, error) {
 		MapillaryToken: getenv("MAPILLARY_TOKEN"),
 		MapillaryURL:   or("MAPILLARY_URL", "https://graph.mapillary.com"),
 
-		AdminDatabaseURL:    getenv("ADMIN_DATABASE_URL"),
-		AdminBaseURL:        strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
-		GoogleClientID:      getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:  getenv("GOOGLE_CLIENT_SECRET"),
-		AdminBootstrapEmail: strings.ToLower(strings.TrimSpace(getenv("ADMIN_BOOTSTRAP_EMAIL"))),
+		AdminDatabaseURL: getenv("ADMIN_DATABASE_URL"),
+		AdminBaseURL:     strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
+		SMTPHost:         getenv("SMTP_HOST"),
+		SMTPUsername:     getenv("SMTP_USERNAME"),
+		SMTPPassword:     getenv("SMTP_PASSWORD"),
+		SMTPFrom:         strings.TrimSpace(getenv("SMTP_FROM")),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -92,8 +97,19 @@ func Load(getenv func(string) string) (Config, error) {
 		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) {
 		errs = append(errs, errors.New("ADMIN_BASE_URL must be https://host (http only for localhost), without a path"))
 	}
-	if (c.GoogleClientID == "") != (c.GoogleClientSecret == "") {
-		errs = append(errs, errors.New("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together"))
+	port, err := strconv.Atoi(or("SMTP_PORT", "587"))
+	if err != nil || port < 1 || port > 65535 {
+		errs = append(errs, errors.New("SMTP_PORT must be a port number"))
+	}
+	c.SMTPPort = port
+	if c.SMTPHost != "" {
+		if a, err := mail.ParseAddress(c.SMTPFrom); err != nil || a.Address != c.SMTPFrom {
+			errs = append(errs, errors.New("SMTP_FROM must be a plain email address when SMTP_HOST is set"))
+		}
+		// net/smtp only sends a password over TLS (STARTTLS), except to localhost (Mailpit).
+		if (c.SMTPUsername == "") != (c.SMTPPassword == "") {
+			errs = append(errs, errors.New("SMTP_USERNAME and SMTP_PASSWORD must be set together"))
+		}
 	}
 	return c, errors.Join(errs...)
 }

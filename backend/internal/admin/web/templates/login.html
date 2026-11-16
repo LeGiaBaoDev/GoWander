@@ -5,11 +5,13 @@
   <p class="tagline">Move Smart. Explore More.</p>
   <h1>Trang quản trị</h1>
   <p class="muted">Dành cho quản trị viên GoWander. Người dùng app không cần đăng nhập ở đây.</p>
-  {{if .Error}}<p class="notice bad" role="alert">{{.Error}}</p>{{end}}
-  {{if .GoogleReady}}
-  <a class="button block" href="/admin/auth/start">Đăng nhập bằng Google</a>
-  {{else}}
-  <p class="notice bad">Đăng nhập Google chưa được bật: đặt GOOGLE_CLIENT_ID và GOOGLE_CLIENT_SECRET rồi khởi động lại API.</p>
-  {{end}}
+  {{with .Notice}}<p class="notice ok" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="notice bad" role="alert">{{.}}</p>{{end}}
+  <form class="form login-form" method="post" action="/admin/login">
+    <label>Mã tài khoản <input name="login" value="{{.Login}}" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="40" autofocus></label>
+    <label>Mật khẩu <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+    <button type="submit" class="block">Đăng nhập</button>
+  </form>
+  <p><a href="/admin/forgot">Quên mật khẩu?</a></p>
 </section>
 {{end}}
