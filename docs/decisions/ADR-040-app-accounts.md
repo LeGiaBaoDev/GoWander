@@ -1,6 +1,6 @@
 # ADR-040 — Tài khoản người dùng app
 
-- **Trạng thái:** Accepted (hướng đi, chủ dự án 16-11-2026) · chưa triển khai · Plan chi tiết: [`docs/plans/AUTH-tai-khoan-nguoi-dung.md`](../plans/AUTH-tai-khoan-nguoi-dung.md)
+- **Trạng thái:** Accepted (hướng đi, chủ dự án 16-11-2026) · **đã triển khai AUTH-1…AUTH-3 (16-11-2026)**; AUTH-4 (Face ID), AUTH-5 (SMS), AUTH-6 (đồng bộ, đổi email), AUTH-7 (Apple) để sau · Plan chi tiết: [`docs/plans/AUTH-tai-khoan-nguoi-dung.md`](../plans/AUTH-tai-khoan-nguoi-dung.md)
 - **Liên quan:** ADR-022 (đăng nhập bằng mật khẩu, OTP qua email, guest mode), ADR-037/039 (tài khoản Admin), ADR-038 (thống kê không lưu dữ liệu cá nhân).
 
 ## Bối cảnh

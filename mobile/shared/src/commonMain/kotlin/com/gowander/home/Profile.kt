@@ -115,7 +115,11 @@ fun ProfileScreen(
                 Text(MockPortfolio.NAME, Modifier.weight(1f).padding(start = 10.dp), size = 17.sp, weight = FontWeight.Bold)
             }
             if (tab == 0) {
-                Button(Strings.DESIGN, kind = ButtonKind.Violet, icon = KitIcons.pen, compact = true, pill = true, onClick = onDesign)
+                Button(
+                    Strings.DESIGN, kind = ButtonKind.Violet, icon = KitIcons.pen, compact = true, pill = true,
+                    // The portfolio belongs to an account: a guest is asked to sign in first (ADR-040 §6.3).
+                    onClick = if (account.isSignedIn) onDesign else onWelcome,
+                )
                 IconButton(ExtraIcons.share, Strings.SHARE_PORTFOLIO, tint = Palette.Ink) { notice(Strings.SHARE_LATER) }
             }
             IconButton(KitIcons.gear, Strings.SETTINGS, tint = Palette.Ink, onClick = onSettings)
