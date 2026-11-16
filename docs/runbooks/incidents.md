@@ -98,6 +98,23 @@ grep -i "smtp\|email" backend/var/api.log | tail -10
 
 Xem `docs/runbooks/google-sign-in.md` (bảng lỗi: audience, Test users, SHA-1, URL scheme, `LINK_REQUIRED`).
 
+## 9. Admin
+
+**Dấu hiệu:** `gowander_admin_login_failures_total` tăng; trang Admin 5xx hoặc chậm bất thường.
+
+- **Đăng nhập bị từ chối nhiều:** mỗi tài khoản tự khoá sau 5 lần sai trong 15 phút; nếu con số vẫn tăng thì có thể
+  nhiều tài khoản bị thử hoặc nhiều người cùng gõ sai. Kiểm nhật ký: `/admin/audit` (lọc `admin.login_failed`), và
+  `docker exec ... psql ... "SELECT login, failed_attempts, locked_until FROM gowander.admin_credentials"`.
+- **5xx trên `/admin/...`:** log theo `requestId`; trang nặng nhất thường là `Báo cáo thống kê` (quét bảng thời gian).
+  Nếu database là nguyên nhân, xem mục 5.
+- **Admin chậm:** kiểm cùng lúc với `gowander_http_request_duration_seconds{route=~"/admin/.*"}`; nếu chỉ một trang,
+  giảm khoảng thời gian hoặc lọc trước khi mở rộng truy vấn.
+- **Quên mật khẩu Admin:** link một lần qua email (ADR-039), không có SMS. Nếu SMTP hỏng, xem mục 6; cấp lại bằng
+  `go run ./cmd/admin reset-password -login <mã>` (in mật khẩu tạm một lần).
+- **Admin và tài khoản app là hai thế giới riêng** (ADR-040 §3.1): nhập mã đăng nhập của Admin vào ô đăng nhập của app
+  sẽ chỉ nhận câu "sai thông tin" chung, **không gửi mã, không gửi SMS**. Muốn một người vừa vận hành vừa dùng app thì
+  phải liên kết hai tài khoản — việc của giai đoạn thiết kế lại phân quyền, chưa làm.
+
 ## 8. Sau sự cố
 
 1. Ghi vào `docs/changes/` mục cùng ngày: triệu chứng, `requestId`, nguyên nhân, cách sửa, bằng chứng.

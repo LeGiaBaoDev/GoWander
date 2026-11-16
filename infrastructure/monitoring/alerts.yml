@@ -71,3 +71,31 @@ groups:
           summary: "Gửi email xác minh/đặt lại mật khẩu lỗi hơn 3 lần trong 1 giờ"
           description: "Kiểm SMTP_* trong .env và hạn mức Gmail; người dùng sẽ không đăng ký được."
           runbook: "docs/runbooks/incidents.md#6-email"
+
+      # --- Admin (the operators' pages). Low traffic: absolute counts, not ratios. ---
+      - alert: GowanderAdminErrors
+        expr: increase(gowander_http_requests_total{route=~"/admin/.*",status="5xx"}[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Trang Admin trả lỗi 5xx"
+          description: "Một trang Admin hỏng là một thao tác vận hành không làm được; xem log theo requestId."
+          runbook: "docs/runbooks/incidents.md#9-admin"
+
+      - alert: GowanderAdminSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gowander_http_request_duration_seconds_bucket{route=~"/admin/.*"}[10m])) by (le)) > 3
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Trang Admin chậm hơn 3 giây (p95)"
+          description: "Thường là báo cáo thống kê quét bảng lớn hoặc database chậm; xem mục 5."
+          runbook: "docs/runbooks/incidents.md#9-admin"
+
+      - alert: GowanderAdminLoginRefused
+        expr: increase(gowander_admin_login_failures_total[15m]) > 10
+        labels: { severity: warning }
+        annotations:
+          summary: "Hơn 10 lần đăng nhập Admin bị từ chối trong 15 phút"
+          description: "Có thể là gõ sai nhiều lần, cũng có thể là dò mật khẩu. Kiểm nhật ký và khoá tài khoản."
+          runbook: "docs/runbooks/incidents.md#9-admin"

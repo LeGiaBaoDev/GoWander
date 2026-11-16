@@ -392,6 +392,11 @@ func sameOrigin(next http.Handler) http.Handler {
 	})
 }
 
+// adminLoginRefused counts refused Admin sign-ins (M09): a slow, steady trickle is someone guessing; one account locks
+// after five tries, but attempts spread over several accounts or from many people are only visible here.
+var adminLoginRefused = httpx.Default.RegisterCounter("gowander_admin_login_failures_total",
+	"Admin sign-ins refused (wrong login or password, or a locked account)")
+
 func (h Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 	notice := map[string]string{"reset": "Đã đặt mật khẩu mới. Đăng nhập bằng mật khẩu mới."}[r.URL.Query().Get("n")]
 	h.render(w, r, http.StatusOK, "login", map[string]any{"Notice": notice, "MailReady": h.Mailer != nil})
@@ -401,6 +406,7 @@ func (h Handler) login(w http.ResponseWriter, r *http.Request) {
 	login := r.PostFormValue("login")
 	userID, err := h.Store.PasswordLogin(r.Context(), login, r.PostFormValue("password"), httpx.RequestID(r))
 	if errors.Is(err, ErrNotAllowed) {
+		adminLoginRefused.Inc()
 		h.Log.Info("admin sign-in refused", "requestId", httpx.RequestID(r)) // no login, no password in logs
 		h.render(w, r, http.StatusUnauthorized, "login", map[string]any{"Login": login, "MailReady": h.Mailer != nil,
 			"Error": "Sai mã tài khoản hoặc mật khẩu. Sai 5 lần liên tiếp thì tài khoản bị khoá 15 phút."})

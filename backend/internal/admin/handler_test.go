@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
 
 type fakeStore struct {
@@ -355,6 +357,21 @@ func TestWritesNeedTheCSRFToken(t *testing.T) {
 	}
 	if _, ok := store.sessions["sys"]; ok {
 		t.Fatal("session kept after sign-out")
+	}
+}
+
+// M09: refused sign-ins are counted, so a steady trickle (someone guessing, several accounts) can raise an alert even
+// though each account locks itself after five tries.
+func TestRefusedAdminLoginIsCounted(t *testing.T) {
+	h := server(newFake(), nil)
+	before := httpx.Default.Render()
+	w := do(h, "POST", "/admin/login", "", url.Values{"login": {"baole"}, "password": {"sai"}}, nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong password: %d", w.Code)
+	}
+	after := httpx.Default.Render()
+	if after == before || !strings.Contains(after, "gowander_admin_login_failures_total") {
+		t.Fatal("the refused sign-in was not counted")
 	}
 }
 
