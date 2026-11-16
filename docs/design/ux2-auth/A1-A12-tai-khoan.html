@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoWander · Canvas UX-2 · Hàng “Tài khoản” (AUTH-0, A1–A12)</title>
+<style>
+  @font-face{font-family:"Be Vietnam Pro";src:url("../../../mobile/shared/src/commonMain/composeResources/font/bevietnampro_regular.ttf") format("truetype");font-weight:400;font-display:swap}
+  @font-face{font-family:"Be Vietnam Pro";src:url("../../../mobile/shared/src/commonMain/composeResources/font/bevietnampro_medium.ttf") format("truetype");font-weight:500;font-display:swap}
+  @font-face{font-family:"Be Vietnam Pro";src:url("../../../mobile/shared/src/commonMain/composeResources/font/bevietnampro_semibold.ttf") format("truetype");font-weight:600;font-display:swap}
+  @font-face{font-family:"Be Vietnam Pro";src:url("../../../mobile/shared/src/commonMain/composeResources/font/bevietnampro_bold.ttf") format("truetype");font-weight:700;font-display:swap}
+
+  :root{
+    --bg:#FFFFFF; --subtle:#F6FAFA; --line:#E5F2F1; --ink:#123C48; --muted:#52717A;
+    --primary:#047A7D; --soft:#DDF7F0; --warn:#FFF4D6; --accent:#C8234F; --accent-soft:#FDE7EC;
+    --violet:#5A3FA8; --violet-soft:#EFEAFB; --google-line:#DADCE0;
+    --ok:#0F7A4F;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:#EDF3F3; color:var(--ink);
+    font-family:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; font-size:15px; line-height:1.5;
+  }
+  svg.ic{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .paper{max-width:1600px;margin:0 auto;padding:40px 32px 80px}
+
+  /* ---------- page head ---------- */
+  .pagehead{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;justify-content:space-between;margin-bottom:34px}
+  .pagehead h1{margin:6px 0 8px;font-size:31px;line-height:1.2;letter-spacing:-.5px}
+  .pagehead .lede{margin:0;max-width:720px;color:var(--muted);font-size:15px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--primary);background:var(--soft);padding:6px 12px;border-radius:999px}
+  .scope{display:grid;gap:10px;min-width:330px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px}
+  .scope h4{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .scope .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--soft);color:var(--primary)}
+  .chip.off{background:var(--subtle);color:var(--muted);border:1px dashed #D3E3E2}
+  .scope .note{margin:0;font-size:12.5px;color:var(--muted)}
+
+  /* ---------- row ---------- */
+  .rowhead{display:flex;align-items:baseline;gap:14px;margin:0 0 18px;padding-bottom:10px;border-bottom:2px solid #D7E7E6}
+  .rowhead h2{margin:0;font-size:22px;letter-spacing:-.3px}
+  .rowhead span{font-size:13px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(362px,1fr));gap:34px 26px;align-items:start}
+  .item{margin:0}
+  .item figcaption{margin-top:14px;padding-left:2px}
+  .item figcaption b{display:block;font-size:15px}
+  .item figcaption .sub{display:block;font-size:12.5px;color:var(--muted);margin:2px 0 8px}
+  .item figcaption ul{margin:0;padding-left:16px;display:grid;gap:4px}
+  .item figcaption li{font-size:12.5px;color:var(--muted);line-height:1.45}
+  .item figcaption li b{display:inline;font-size:12.5px;color:var(--ink)}
+
+  /* ---------- phone ---------- */
+  .phonewrap{width:334px;height:723px;margin:0 auto;position:relative}
+  .phone{width:390px;height:844px;transform:scale(.85641);transform-origin:top left;background:#fff;border-radius:40px;border:1px solid #DCE9E8;
+         box-shadow:0 20px 40px rgba(18,60,72,.10),0 2px 6px rgba(18,60,72,.06);overflow:hidden;
+         display:flex;flex-direction:column;position:relative}
+  .sb{height:46px;flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;
+      padding:0 26px 6px;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .sb .r{display:flex;align-items:center;gap:5px}
+  .sb .bar{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative;opacity:.9}
+  .sb .bar::after{content:"";position:absolute;inset:1.5px 8px 1.5px 1.5px;background:var(--ink);border-radius:1px}
+  .screen{flex:1;min-height:0;overflow:auto;scrollbar-width:none;display:flex;flex-direction:column}
+  .screen::-webkit-scrollbar{display:none}
+
+  /* ---------- building blocks ---------- */
+  .pad{padding:0 20px}
+  .stack{display:flex;flex-direction:column;gap:12px}
+  .stack.sm{gap:8px}
+  .stack.lg{gap:16px}
+  .hdr{display:flex;align-items:center;gap:10px;padding:4px 20px 14px}
+  .hdr h3{margin:0;font-size:21px;font-weight:600;letter-spacing:-.2px}
+  .hdr .grow{flex:1}
+  .h1{margin:0;font-size:27px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
+  .sub{margin:0;font-size:14px;color:var(--muted)}
+  .tiny{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .iconbtn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;color:var(--ink)}
+  .iconbtn.plain{border:none}
+  .lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
+  .field{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;background:#fff;
+         border:1px solid var(--line);border-radius:16px;font-size:16px;color:var(--ink)}
+  .field .ic{color:var(--muted)}
+  .field .ph{color:#819CA2}
+  .field .val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .field .tail{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;font-weight:600}
+  .field.focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(4,122,125,.12)}
+  .field.err{border-color:var(--accent);box-shadow:0 0 0 3px rgba(200,35,79,.10)}
+  .field.ok{border-color:#9FD6B9}
+  .msg{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;line-height:1.45}
+  .msg.err{color:var(--accent)}
+  .msg.ok{color:var(--ok)}
+  .msg .ic{width:15px;height:15px;margin-top:1px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:56px;padding:0 18px;
+       border-radius:16px;border:1px solid transparent;font-size:15.5px;font-weight:600;letter-spacing:.1px}
+  .btn.primary{background:var(--primary);color:#fff}
+  .btn.outline{background:#fff;border-color:var(--primary);color:var(--primary)}
+  .btn.google{background:#fff;border-color:var(--google-line);color:var(--ink);justify-content:flex-start;padding:0 16px}
+  .btn.google .g{width:22px;height:22px;flex:0 0 auto}
+  .btn.google .tail{margin-left:auto;color:var(--muted);display:flex}
+  .btn.secondary{background:var(--subtle);color:var(--ink);border-color:var(--line)}
+  .btn.danger{background:var(--accent);color:#fff}
+  .btn.disabled{background:#D9E7E6;color:#FFFFFF}
+  .btn.sm{min-height:44px;font-size:14px;border-radius:14px;padding:0 14px}
+  .btn.link{background:none;border:none;min-height:44px;padding:0;color:var(--primary);font-size:14.5px;justify-content:flex-start}
+  .btn.violet{background:var(--violet);color:#fff;min-height:44px;font-size:14px;border-radius:999px;padding:0 16px}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+  .card{border:1px solid var(--line);border-radius:20px;padding:16px;background:#fff;display:flex;flex-direction:column;gap:10px}
+  .card.soft{background:var(--soft);border-color:#C8EDE4}
+  .card.flat{background:var(--subtle);border-color:var(--line)}
+  .card.warn{background:var(--warn);border-color:#F0E0AE}
+  .card.bad{background:var(--accent-soft);border-color:#F6C9D5}
+  .card h4{margin:0;font-size:16.5px;font-weight:700;line-height:1.35}
+  .row{display:flex;align-items:center;gap:12px}
+  .row.between{justify-content:space-between}
+  .grow{flex:1;min-width:0}
+  .avatar{width:44px;height:44px;border-radius:999px;background:var(--soft);color:var(--primary);
+          display:grid;place-items:center;font-weight:700;font-size:15px;flex:0 0 auto}
+  .avatar.lg{width:64px;height:64px;font-size:22px;border:2px solid var(--violet);padding:0;background:var(--violet-soft);color:var(--violet)}
+  .badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--primary)}
+  .badge.ok{background:#E4F6EC;color:var(--ok)}
+  .badge.warn{background:var(--warn);color:#8A6410}
+  .badge.lock{background:var(--subtle);color:var(--muted);border:1px solid var(--line)}
+  .list{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff}
+  .listrow{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;border-top:1px solid var(--line)}
+  .listrow:first-child{border-top:none}
+  .listrow .ic{color:var(--muted)}
+  .listrow .t{font-size:15px;font-weight:600;line-height:1.3}
+  .listrow .s{font-size:12.5px;color:var(--muted);line-height:1.35}
+  .list.tight .listrow{min-height:52px;padding:8px 14px}
+  .chev{color:#9DB6BB;display:flex}
+  .seg{display:flex;gap:4px;background:var(--subtle);border-radius:16px;padding:4px}
+  .seg span{flex:1;text-align:center;font-size:13.5px;font-weight:600;padding:10px 0;border-radius:12px;color:var(--muted)}
+  .seg span.on{background:#fff;color:var(--violet);box-shadow:0 1px 3px rgba(18,60,72,.10)}
+  .pillrow{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{font-size:13px;font-weight:600;padding:10px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+  .pill.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .check{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45}
+  .box{width:22px;height:22px;border-radius:6px;border:1.5px solid #B9D3D2;flex:0 0 auto;display:grid;place-items:center;color:#fff}
+  .box.on{background:var(--primary);border-color:var(--primary)}
+  .box .ic{width:14px;height:14px;stroke-width:3}
+  .switch{width:48px;height:28px;border-radius:999px;background:#B9D3D2;position:relative;flex:0 0 auto}
+  .switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(18,60,72,.2)}
+  .switch.on{background:var(--primary)}
+  .switch.on::after{left:23px}
+  .bar-strength{display:flex;gap:4px;margin-top:8px}
+  .bar-strength i{flex:1;height:4px;border-radius:999px;background:#E3ECEC}
+  .bar-strength i.on{background:var(--ok)}
+  .legal{font-size:11px;color:var(--muted);line-height:1.5;text-align:center}
+  .legal a{color:var(--primary);text-decoration:none;font-weight:600}
+  .spacer{flex:1}
+  .stickybar{padding:12px 20px 18px;border-top:1px solid var(--line);background:#fff;display:flex;flex-direction:column;gap:10px}
+
+  /* A5 code boxes */
+  .codes{display:flex;gap:9px;justify-content:space-between}
+  .codes span{flex:1;height:58px;border-radius:14px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;font-size:22px;font-weight:700}
+  .codes span.on{border-color:var(--primary);box-shadow:0 0 0 3px rgba(4,122,125,.12)}
+  .codes span.caret{color:#B9D3D2}
+
+  /* A12 map-ish backdrop */
+  .mapbg{background:
+     linear-gradient(180deg,rgba(4,122,125,.06),rgba(4,122,125,0) 40%),
+     repeating-linear-gradient(90deg,#EAF3F2 0 1px,transparent 1px 46px),
+     repeating-linear-gradient(0deg,#EAF3F2 0 1px,transparent 1px 46px),
+     #F4FAF9}
+
+  /* notes */
+  .notesection{margin-top:56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:20px}
+  .notecard{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px 20px}
+  .notecard h3{margin:0 0 10px;font-size:16px}
+  .notecard ul,.notecard ol{margin:0;padding-left:18px;display:grid;gap:6px}
+  .notecard li{font-size:13px;color:var(--muted);line-height:1.5}
+  .notecard li b{color:var(--ink)}
+  .swatches{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 12px}
+  .sw{display:flex;flex-direction:column;gap:4px;font-size:10.5px;color:var(--muted)}
+  .sw i{width:56px;height:34px;border-radius:8px;border:1px solid rgba(18,60,72,.10);display:block}
+  .footnote{margin:44px 0 0;padding:16px 18px;border-radius:16px;background:#fff;border:1px dashed #C9DEDD;font-size:12.5px;color:var(--muted)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--subtle);padding:1px 5px;border-radius:5px;color:var(--ink)}
+</style>
+</head>
+<body>
+<!-- icon sprite: 2px strokes, 24 box (GoWander kit) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></symbol>
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6 3h3l2 5-2.5 1.5a12 12 0 0 0 6 6L16 13l5 2v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4 5.2A2 2 0 0 1 6 3Z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M9.9 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 6 10 6a17 17 0 0 1-3.3 3.9"/><path d="M6.6 7.4A17 17 0 0 0 2 11s3.5 6 10 6a10.9 10.9 0 0 0 4.4-.9"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5.5 5.5L20 6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6l7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8 6 12l4 4M6 12h9"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 4.7-4.7 2 2-4.7 4.7-2Z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16v4Z"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-tap" viewBox="0 0 24 24"><path d="M9 11V6a2 2 0 1 1 4 0v7"/><path d="M13 10a2 2 0 0 1 4 0v5a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3a2 2 0 0 1 4 0"/></symbol>
+</svg>
+
+<div class="paper">
+
+  <div class="pagehead">
+    <div>
+      <span class="kicker"><svg class="ic" style="width:14px;height:14px"><use href="#i-compass"/></svg> Canvas UX-2 · Hàng mới “Tài khoản”</span>
+      <h1>A1–A12 · Tài khoản người dùng app</h1>
+      <p class="lede">
+        Bản dựng để chủ dự án duyệt trước khi code (AUTH-0). Màn hình theo Design Kit v4 (Be Vietnam Pro, teal <code>#047A7D</code>),
+        ô nhập <b>nền trắng</b> viền <code>#E5F2F1</code>, nút Google có logo G chính thức.
+        Số liệu trong màn là mẫu; quyết định đã chốt ở <code>docs/plans/AUTH-tai-khoan-nguoi-dung.md</code> và ADR-040.
+      </p>
+    </div>
+    <div class="scope">
+      <h4>Đợt đầu (duyệt lần này)</h4>
+      <div class="chips">
+        <span class="chip">Email + mật khẩu</span>
+        <span class="chip">Số điện thoại</span>
+        <span class="chip">Tên đăng nhập</span>
+        <span class="chip">Google</span>
+        <span class="chip">Mã 6 số qua email</span>
+        <span class="chip">Lịch sử tìm kiếm (trong máy)</span>
+      </div>
+      <h4>Để sau — không vẽ đợt này</h4>
+      <div class="chips">
+        <span class="chip off">Face ID / vân tay</span>
+        <span class="chip off">SMS</span>
+        <span class="chip off">Đăng nhập Apple</span>
+        <span class="chip off">Đồng bộ lên server</span>
+      </div>
+      <p class="note">App vẫn mở được và dùng đủ Bản đồ / Khám phá / Tìm đường / Feedbacks khi chưa đăng nhập.</p>
+    </div>
+  </div>
+
+  <div class="rowhead">
+    <h2>Hàng “Tài khoản”</h2>
+    <span>12 màn · 390 × 844 (khung thu nhỏ) · trạng thái mặc định, ghi chú hành vi ở dưới mỗi màn</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- ================= A1 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <h3 class="grow" style="font-size:15px;font-weight:700">Hồ sơ</h3>
+            <span class="iconbtn"><svg class="ic"><use href="#i-gear"/></svg></span>
+          </div>
+          <div class="pad stack">
+            <div class="seg"><span class="on" style="color:var(--violet)">Portfolio</span><span>Đã lưu</span></div>
+
+            <div class="card soft">
+              <div class="row">
+                <span class="avatar" style="background:#fff"><svg class="ic" style="color:var(--primary)"><use href="#i-user"/></svg></span>
+                <div class="grow">
+                  <h4>Đăng nhập để lưu portfolio, kế hoạch và gửi feedback nhanh hơn</h4>
+                </div>
+              </div>
+              <p class="tiny" style="margin:0">Chưa đăng nhập vẫn dùng bản đồ bình thường. Đăng nhập để GoWander tự điền tên và email khi bạn gửi feedback.</p>
+              <div class="btn primary" style="min-height:50px">Đăng nhập</div>
+              <div class="btn outline" style="min-height:50px">Tạo tài khoản</div>
+            </div>
+
+            <div class="row between" style="margin-top:4px">
+              <span style="font-size:14px;font-weight:700">Đã lưu <span class="badge lock">trong máy</span></span>
+              <span style="font-size:12.5px;color:var(--muted)">2 địa điểm</span>
+            </div>
+            <div class="list">
+              <div class="listrow">
+                <span class="avatar" style="width:48px;height:48px;border-radius:12px;background:var(--subtle);color:var(--muted)"><svg class="ic"><use href="#i-pin"/></svg></span>
+                <div class="grow"><div class="t">Chợ Bến Thành</div><div class="s">Chợ · Quận 1</div></div>
+                <span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span>
+              </div>
+              <div class="listrow">
+                <span class="avatar" style="width:48px;height:48px;border-radius:12px;background:var(--subtle);color:var(--muted)"><svg class="ic"><use href="#i-pin"/></svg></span>
+                <div class="grow"><div class="t">Bưu điện Thành phố</div><div class="s">Di tích · Quận 1</div></div>
+                <span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span>
+              </div>
+            </div>
+
+            <div class="list" style="margin-top:2px">
+              <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Lịch sử tìm kiếm</div><div class="s">Trong máy · 12 mục</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-gear"/></svg><div class="grow"><div class="t">Cài đặt</div><div class="s">Giao diện, nguồn dữ liệu</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A1 · Hồ sơ (khách)</b>
+        <span class="sub">Tab Hồ sơ khi chưa đăng nhập</span>
+        <ul>
+          <li><b>Đã lưu</b> vẫn hiện (dữ liệu trong máy), không giấu sau đăng nhập.</li>
+          <li>Hai nút dẫn tới A2 với ý định tương ứng (đăng nhập / tạo tài khoản).</li>
+          <li>Lịch sử tìm kiếm (A11) mở được cả khi là khách.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A2 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="pad stack" style="padding-top:22px;gap:0;flex:1">
+            <div style="display:flex;justify-content:center;padding:16px 0 4px">
+              <img src="../../../backend/internal/admin/web/static/logo_full.png" alt="GoWander" style="width:152px;height:auto">
+            </div>
+            <div style="text-align:center;padding:14px 10px 30px">
+              <h2 class="h1" style="font-size:25px">Đi trong thành phố,<br>hiểu từng con đường.</h2>
+            </div>
+            <div class="stack" style="gap:10px">
+              <div class="btn google">
+                <svg class="g" viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                <span>Tiếp tục với Google</span>
+                <span class="tail"><svg class="ic" style="width:18px;height:18px"><use href="#i-arrow"/></svg></span>
+              </div>
+              <div class="divider">hoặc</div>
+              <div class="btn primary">Đăng nhập bằng email</div>
+              <div class="btn outline">Tạo tài khoản</div>
+              <div class="btn link" style="justify-content:center;color:var(--muted);font-weight:600">Để sau</div>
+            </div>
+            <p class="legal" style="margin-top:auto;padding-bottom:20px">Tiếp tục nghĩa là bạn đồng ý với <a href="#">Điều khoản</a> và <a href="#">Chính sách quyền riêng tư</a> của GoWander.</p>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A2 · Chào mừng</b>
+        <span class="sub">Mở từ A1, từ Portfolio khi cần tài khoản, hoặc từ “Đăng nhập để khỏi nhập tên” ở Feedbacks</span>
+        <ul>
+          <li>Logo thật của GoWander (bản dọc <code>logo_full.png</code>) trên nền trắng, chữ Be Vietnam Pro.</li>
+          <li>“Để sau” đóng và quay lại đúng màn đang xem (không mất trạng thái).</li>
+          <li>Nút Google là nút duy nhất có viền xám nhạt theo guideline của Google.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A3 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr"><span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span></div>
+          <div class="pad stack lg" style="padding-top:0">
+            <div class="stack sm">
+              <h2 class="h1">Đăng nhập</h2>
+              <p class="sub">Chào mừng bạn quay lại! Đăng nhập bằng email, số điện thoại hoặc tên đăng nhập.</p>
+            </div>
+
+            <div>
+              <span class="lbl">Email, số điện thoại hoặc tên đăng nhập</span>
+              <div class="field focus">
+                <svg class="ic"><use href="#i-at"/></svg>
+                <span class="val">lananh</span>
+              </div>
+            </div>
+            <div>
+              <span class="lbl">Mật khẩu</span>
+              <div class="field">
+                <svg class="ic"><use href="#i-lock"/></svg>
+                <span class="val">••••••••••</span>
+                <span class="tail"><svg class="ic" style="width:20px;height:20px"><use href="#i-eye"/></svg></span>
+              </div>
+              <div class="row" style="margin-top:10px;justify-content:flex-end">
+                <span style="font-size:13px;font-weight:600;color:var(--primary)">Quên mật khẩu?</span>
+              </div>
+            </div>
+
+            <div class="btn primary">Đăng nhập</div>
+            <div class="divider">hoặc</div>
+            <div class="btn google">
+              <svg class="g" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              <span>Tiếp tục với Google</span>
+              <span class="tail"><svg class="ic" style="width:18px;height:18px"><use href="#i-arrow"/></svg></span>
+            </div>
+            <div class="divider" style="margin-top:6px"></div>
+            <p style="margin:0;text-align:center;font-size:13.5px;color:var(--muted)">Chưa có tài khoản? <b style="color:var(--primary)">Tạo tài khoản</b></p>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A3 · Đăng nhập</b>
+        <span class="sub">Một ô nhận cả email / số điện thoại / tên đăng nhập</span>
+        <ul>
+          <li>Sai thông tin: chữ đỏ dưới ô “Sai email, số điện thoại, tên đăng nhập hoặc mật khẩu.” (không nói tài khoản có tồn tại hay không).</li>
+          <li>Sai 5 lần: khoá 15 phút, hiện khối cảnh báo “Thử lại sau 14:32”.</li>
+          <li><b>Face ID chưa vẽ</b> — sẽ là nút phụ dưới nút Đăng nhập khi làm AUTH-4.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A4 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr"><span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span></div>
+          <div class="pad stack" style="padding-top:0">
+            <div class="stack sm">
+              <h2 class="h1">Tạo tài khoản</h2>
+              <p class="sub">Chỉ mất một phút. Thiếu gì bạn bổ sung sau cũng được.</p>
+            </div>
+
+            <div>
+              <span class="lbl">Tên hiển thị</span>
+              <div class="field"><svg class="ic"><use href="#i-user"/></svg><span class="val">Lan Anh</span></div>
+            </div>
+            <div>
+              <span class="lbl">Tên đăng nhập</span>
+              <div class="field ok">
+                <svg class="ic"><use href="#i-at"/></svg>
+                <span class="val">lananh</span>
+                <span class="tail" style="color:var(--ok)"><svg class="ic" style="width:18px;height:18px"><use href="#i-check"/></svg></span>
+              </div>
+              <div class="msg ok" style="margin-top:6px"><svg class="ic"><use href="#i-check"/></svg>Tên “lananh” còn trống — bạn dùng được nhé</div>
+            </div>
+            <div>
+              <span class="lbl">Email</span>
+              <div class="field"><svg class="ic"><use href="#i-mail"/></svg><span class="ph">ban@example.com</span></div>
+            </div>
+            <div>
+              <span class="lbl">Số điện thoại <span style="font-weight:500;color:var(--muted)">(không bắt buộc)</span></span>
+              <div class="field">
+                <svg class="ic"><use href="#i-phone"/></svg>
+                <span class="val" style="color:#819CA2">0912 345 678</span>
+                <span class="tail" style="color:var(--muted)">+84</span>
+              </div>
+            </div>
+            <div>
+              <span class="lbl">Mật khẩu</span>
+              <div class="field">
+                <svg class="ic"><use href="#i-lock"/></svg>
+                <span class="val">••••••••••</span>
+                <span class="tail"><svg class="ic" style="width:20px;height:20px"><use href="#i-eye"/></svg></span>
+              </div>
+              <div class="bar-strength"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+            </div>
+            <div class="check">
+              <span class="box on"><svg class="ic"><use href="#i-check"/></svg></span>
+              <span>Đồng ý với <b style="color:var(--primary)">Điều khoản</b> và <b style="color:var(--primary)">Chính sách quyền riêng tư</b>.</span>
+            </div>
+            <div class="btn primary">Tạo tài khoản</div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A4 · Tạo tài khoản</b>
+        <span class="sub">Tên hiển thị, tên đăng nhập, email, số điện thoại, mật khẩu, đồng ý điều khoản</span>
+        <ul>
+          <li>Tên đăng nhập báo ngay: “Tên này còn trống — bạn dùng được nhé” (xanh) / “Tên này có người dùng rồi, thử tên khác nhé” (đỏ); kiểm khi đang gõ, có giới hạn tần suất.</li>
+          <li>Trùng email/số: “Email này đã được dùng. Đăng nhập hoặc quên mật khẩu?” — một câu chung, không lộ chi tiết.</li>
+          <li>Nút chỉ bật khi đủ ô bắt buộc + đã tick điều khoản; nút Google nằm ngay dưới (A2/A3 dùng cùng kiểu nút).</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A5 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr"><span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span></div>
+          <div class="pad stack lg" style="padding-top:0">
+            <div class="stack sm">
+              <h2 class="h1">Nhập mã xác minh</h2>
+              <p class="sub">GoWander vừa gửi mã 6 số tới <b style="color:var(--ink)">l•••••@example.com</b>. Mã dùng được trong 10 phút nhé.</p>
+            </div>
+            <div class="codes">
+              <span>4</span><span>8</span><span>2</span><span>9</span><span class="on">1</span><span class="caret"></span>
+            </div>
+            <div class="msg err"><svg class="ic"><use href="#i-info"/></svg>Mã không đúng. Bạn còn 4 lần thử.</div>
+            <div class="row between">
+              <span style="font-size:13px;color:var(--muted)">Gửi lại sau 0:42</span>
+              <span style="font-size:13px;font-weight:600;color:var(--primary)">Đổi email</span>
+            </div>
+            <div class="btn primary">Xác minh</div>
+            <div class="card flat" style="margin-top:6px">
+              <div class="row"><svg class="ic" style="color:var(--primary)"><use href="#i-mail"/></svg><b style="font-size:13.5px">Không thấy thư?</b></div>
+              <p class="tiny" style="margin:0">Xem mục Spam/Quảng cáo. Thư gửi từ GoWander, không trả lời được. Mỗi email nhận tối đa 5 mã/giờ.</p>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A5 · Nhập mã</b>
+        <span class="sub">Dùng cho xác minh email và cho bước 2 của quên mật khẩu</span>
+        <ul>
+          <li>6 ô số, tự nhảy ô, dán được cả mã; sai quá 5 lần thì mã hỏng và phải gửi lại.</li>
+          <li>Đếm ngược 60 s mới cho gửi lại; hết hạn 10 phút.</li>
+          <li>Ô nhập đọc được bằng TalkBack/VoiceOver (“Mã số 5 trên 6”).</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A6 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr"><span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span></div>
+          <div class="pad stack lg" style="padding-top:0">
+            <div class="row" style="gap:6px">
+              <span class="badge" style="background:var(--primary);color:#fff">1 Email</span>
+              <span style="flex:1;height:2px;background:var(--line);border-radius:2px"></span>
+              <span class="badge lock">2 Mã</span>
+              <span style="flex:1;height:2px;background:var(--line);border-radius:2px"></span>
+              <span class="badge lock">3 Mật khẩu</span>
+            </div>
+            <div class="stack sm">
+              <h2 class="h1">Quên mật khẩu</h2>
+              <p class="sub">Nhập email bạn đã dùng để tạo tài khoản, GoWander gửi mã 6 số để bạn đặt mật khẩu mới.</p>
+            </div>
+            <div>
+              <span class="lbl">Email</span>
+              <div class="field focus"><svg class="ic"><use href="#i-mail"/></svg><span class="val">lananh@example.com</span></div>
+            </div>
+              <div class="btn primary">Gửi mã</div>
+
+            <div style="border:1px dashed #C9DEDD;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--subtle)">
+              <span class="badge lock" style="align-self:flex-start">Bước 3 · xem trước</span>
+              <div>
+                <span class="lbl">Mật khẩu mới</span>
+                <div class="field"><svg class="ic"><use href="#i-lock"/></svg><span class="val">••••••••••</span><span class="tail"><svg class="ic" style="width:20px;height:20px"><use href="#i-eye"/></svg></span></div>
+              </div>
+              <div>
+                <span class="lbl">Nhập lại mật khẩu mới</span>
+                <div class="field"><svg class="ic"><use href="#i-lock"/></svg><span class="val">••••••••••</span></div>
+              </div>
+              <div class="btn secondary sm">Đặt mật khẩu mới</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A6 · Quên mật khẩu</b>
+        <span class="sub">3 bước: email → mã (A5) → mật khẩu mới</span>
+        <ul>
+          <li>Bước 2 dùng lại màn A5, chỉ đổi tiêu đề (“Nhập mã đặt lại mật khẩu”).</li>
+          <li>Bước 3 có ô nhập lại để tránh gõ sai; kiểm độ mạnh như A4.</li>
+          <li>Luôn báo trung tính “Nếu email này có tài khoản, mã đã được gửi.” — không lộ email có tài khoản hay không.</li>
+          <li>Đợt 1 chỉ email (SMTP). SMS là AUTH-5, sẽ thêm lựa chọn “Gửi mã qua SMS” khi có số đã xác minh.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A7 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <span class="avatar">LA</span>
+            <div class="grow" style="min-width:0">
+              <div style="font-size:16px;font-weight:700;line-height:1.2">Lan Anh</div>
+              <div style="font-size:12.5px;color:var(--muted)">@lananh</div>
+            </div>
+            <span class="iconbtn" style="width:40px;height:40px;border:none"><svg class="ic"><use href="#i-share"/></svg></span>
+            <span class="iconbtn" style="width:40px;height:40px"><svg class="ic"><use href="#i-gear"/></svg></span>
+          </div>
+          <div class="pad stack">
+            <div class="card" style="gap:12px">
+              <div class="row">
+                <span class="avatar lg">LA</span>
+                <div class="grow">
+                  <div style="font-size:17px;font-weight:700">Lan Anh</div>
+                  <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+                    <span class="badge ok"><svg class="ic" style="width:12px;height:12px"><use href="#i-check"/></svg>Email đã xác minh</span>
+                    <span class="badge warn">SĐT chưa xác minh</span>
+                  </div>
+                </div>
+              </div>
+              <div class="btn violet" style="align-self:flex-start"><svg class="ic" style="width:16px;height:16px"><use href="#i-pen"/></svg> Thiết kế portfolio</div>
+            </div>
+
+            <div class="seg"><span class="on">Portfolio</span><span>Đã lưu</span></div>
+
+            <div class="card flat" style="gap:8px">
+              <div class="row"><svg class="ic" style="color:var(--violet)"><use href="#i-pin"/></svg><span style="font-size:13px;font-weight:700">Hành trình của Lan Anh</span></div>
+              <p class="tiny" style="margin:0">3 chuyến · 18 địa điểm · 4 câu chuyện. Bản xem trước, số liệu mẫu.</p>
+            </div>
+
+            <div class="list tight">
+              <div class="listrow"><svg class="ic"><use href="#i-compass"/></svg><div class="grow"><div class="t">Kế hoạch</div><div class="s">Mở tab Hành trình · trong máy</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-pin"/></svg><div class="grow"><div class="t">Đã lưu</div><div class="s">2 địa điểm · trong máy</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Lịch sử tìm kiếm</div><div class="s">12 mục · trong máy</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-gear"/></svg><div class="grow"><div class="t">Cài đặt tài khoản</div><div class="s">Tên, mật khẩu, Google, xoá tài khoản</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A7 · Hồ sơ (đã đăng nhập)</b>
+        <span class="sub">Thay khối mời đăng nhập ở A1 bằng thông tin tài khoản</span>
+        <ul>
+          <li>Avatar chữ cái (chưa có ảnh đại diện ở đợt này).</li>
+          <li>Nhãn “Email đã xác minh” / “SĐT chưa xác minh” đúng dữ liệu thật.</li>
+          <li>Portfolio mẫu vẫn là dữ liệu mẫu; số liệu sẽ là thật ở AUTH-6.</li>
+          <li>Kế hoạch và Đã lưu vẫn nằm trong máy ở đợt này; hàng “Kế hoạch” chỉ là lối tắt sang tab Hành trình.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A8 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span>
+            <h3>Cài đặt tài khoản</h3>
+          </div>
+          <div class="pad stack" style="padding-top:0">
+            <div class="list tight">
+              <div class="listrow"><svg class="ic"><use href="#i-user"/></svg><div class="grow"><div class="s">Tên hiển thị</div><div class="t">Lan Anh</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-at"/></svg><div class="grow"><div class="s">Tên đăng nhập</div><div class="t">@lananh</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-mail"/></svg><div class="grow"><div class="s">Email</div><div class="t" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px">lananh@example.com</div></div><span class="badge ok" style="flex:0 0 auto">Đã xác minh</span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-phone"/></svg><div class="grow"><div class="s">Số điện thoại</div><div class="t" style="font-size:13.5px">+84 912 345 678</div></div><span class="badge warn" style="flex:0 0 auto">Chưa xác minh</span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-lock"/></svg><div class="grow"><div class="s">Mật khẩu</div><div class="t">Đã đặt · đổi lúc 18:20</div></div><span style="font-size:13px;font-weight:600;color:var(--primary)">Đổi</span></div>
+            </div>
+
+            <div class="list tight">
+              <div class="listrow">
+                <svg class="ic" style="color:#4285F4"><use href="#i-globe"/></svg>
+                <div class="grow"><div class="t">Google</div><div class="s">Đã liên kết lananh@gmail.com</div></div>
+                <span style="font-size:13px;font-weight:600;color:var(--muted)">Huỷ liên kết</span>
+              </div>
+              <div class="listrow" style="opacity:.55">
+                <svg class="ic"><use href="#i-shield"/></svg>
+                <div class="grow"><div class="t">Đăng nhập bằng Face ID</div><div class="s">Sẽ có ở giai đoạn sau</div></div>
+                <span class="badge lock">sau</span>
+              </div>
+            </div>
+
+            <div class="list tight">
+              <div class="listrow"><svg class="ic"><use href="#i-device"/></svg><div class="grow"><div class="t">Thiết bị hiện tại</div><div class="s">iPhone · hoạt động 2 phút trước</div></div></div>
+              <div class="listrow"><svg class="ic"><use href="#i-logout"/></svg><div class="grow"><div class="t">Đăng xuất mọi thiết bị</div><div class="s">Thu hồi mọi phiên, kể cả máy này</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+              <div class="listrow"><svg class="ic"><use href="#i-logout"/></svg><div class="grow"><div class="t">Đăng xuất</div></div></div>
+            </div>
+
+            <div class="list tight" style="border-color:#F6C9D5">
+              <div class="listrow"><svg class="ic" style="color:var(--accent)"><use href="#i-trash"/></svg><div class="grow"><div class="t" style="color:var(--accent)">Xoá tài khoản</div><div class="s">Xoá vĩnh viễn, không khôi phục</div></div><span class="chev"><svg class="ic"><use href="#i-chev"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A8 · Cài đặt tài khoản</b>
+        <span class="sub">Sửa tên / tên đăng nhập / số điện thoại, mật khẩu, Google, phiên, xoá tài khoản</span>
+        <ul>
+          <li>Email chưa đổi được ở đợt này (AUTH-6) — hàng email chỉ hiện trạng thái xác minh.</li>
+          <li>Google: “Liên kết” khi chưa có, “Huỷ liên kết” khi đã có; chỉ cho huỷ nếu tài khoản còn mật khẩu.</li>
+          <li>Face ID để mờ có nhãn “sau” — đúng vị trí sẽ dùng ở AUTH-4, không phải màn mới.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A9 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span>
+            <h3>Xoá tài khoản</h3>
+          </div>
+          <div class="pad stack">
+            <div class="card bad">
+              <div class="row"><svg class="ic" style="color:var(--accent)"><use href="#i-trash"/></svg><h4 style="font-size:16px">Việc này không khôi phục được</h4></div>
+              <p class="tiny" style="margin:0;color:#7A2036">Xoá xong, GoWander xoá ngay tên, email, số điện thoại và mật khẩu của bạn.</p>
+            </div>
+
+            <div class="stack sm">
+              <b style="font-size:14px">Bạn sẽ mất</b>
+              <div class="card flat" style="gap:8px">
+                <div class="row"><svg class="ic" style="color:var(--muted)"><use href="#i-x"/></svg><span style="font-size:13px">Tài khoản, không đăng nhập lại được bằng email/số cũ</span></div>
+                <div class="row"><svg class="ic" style="color:var(--muted)"><use href="#i-x"/></svg><span style="font-size:13px">Portfolio đã đăng và lịch sử tìm kiếm trên máy chủ</span></div>
+                <div class="row"><svg class="ic" style="color:var(--muted)"><use href="#i-x"/></svg><span style="font-size:13px">Mọi thiết bị bị đăng xuất</span></div>
+              </div>
+              <b style="font-size:14px;margin-top:4px">Vẫn giữ</b>
+              <div class="card flat" style="gap:8px">
+                <div class="row"><svg class="ic" style="color:var(--ok)"><use href="#i-check"/></svg><span style="font-size:13px">Feedbacks đã gửi: giữ nội dung nhưng gỡ tên/email, hiện “Tài khoản đã xoá”</span></div>
+              </div>
+            </div>
+
+            <div>
+              <span class="lbl">Xác nhận bằng mật khẩu</span>
+              <div class="field"><svg class="ic"><use href="#i-lock"/></svg><span class="ph">Nhập mật khẩu</span><span class="tail"><svg class="ic" style="width:20px;height:20px"><use href="#i-eye"/></svg></span></div>
+            </div>
+            <div class="check">
+              <span class="box"><svg class="ic"><use href="#i-check"/></svg></span>
+              <span>Tôi hiểu việc này không thể hoàn tác.</span>
+            </div>
+            <div class="btn danger" style="opacity:.55">Xoá tài khoản</div>
+            <div class="btn secondary">Giữ tài khoản</div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A9 · Xoá tài khoản</b>
+        <span class="sub">Giải thích mất gì / giữ gì, xác nhận rồi mới xoá</span>
+        <ul>
+          <li>Nút xoá chỉ bật khi đã nhập đúng mật khẩu và tick ô hiểu.</li>
+          <li>Xoá mềm phía server: trạng thái DELETED, xoá email/số/tên/băm ngay.</li>
+          <li>Kế hoạch và Đã lưu trong máy vẫn còn trên máy này (không thuộc tài khoản ở đợt 1).</li>
+          <li>Đây là màn bắt buộc để lên App Store khi app có tài khoản.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A10 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span>
+            <h3>Feedbacks</h3>
+          </div>
+          <div class="pad stack">
+            <div class="row" style="background:var(--subtle);border-radius:14px;padding:12px;gap:8px">
+              <svg class="ic" style="color:var(--primary);width:18px;height:18px"><use href="#i-pin"/></svg>
+              <span style="font-size:14px;font-weight:600">Đang góp ý: Khám phá</span>
+            </div>
+
+            <div class="card" style="background:var(--subtle);border-color:var(--line);gap:8px">
+              <div class="row">
+                <span class="avatar">LA</span>
+                <div class="grow">
+                  <div style="font-size:15px;font-weight:700">Lan Anh</div>
+                  <div style="font-size:12.5px;color:var(--muted)">lananh@example.com</div>
+                </div>
+                <span class="badge lock"><svg class="ic" style="width:12px;height:12px"><use href="#i-lock"/></svg>Từ hồ sơ</span>
+              </div>
+              <p class="tiny" style="margin:0">Tên và email lấy từ tài khoản của bạn — muốn đổi thì vào Cài đặt tài khoản.</p>
+            </div>
+
+            <div class="stack sm">
+              <b style="font-size:15px">Loại feedback</b>
+              <div class="pillrow"><span class="pill on">Thông tin sai</span><span class="pill">Thiếu địa điểm</span></div>
+              <div class="pillrow"><span class="pill">App lỗi</span><span class="pill">Góp ý khác</span></div>
+            </div>
+
+            <div>
+              <span class="lbl">Nội dung</span>
+              <div class="field" style="min-height:104px;align-items:flex-start;padding:12px 14px">
+                <span class="ph" style="line-height:1.5">Ví dụ: Giờ mở cửa chưa đúng, nhờ GoWander kiểm tra lại.</span>
+              </div>
+            </div>
+
+            <b style="font-size:15px">Ảnh đính kèm</b>
+            <div class="row" style="gap:10px">
+              <div class="btn secondary sm" style="flex:1"><svg class="ic" style="width:16px;height:16px"><use href="#i-camera"/></svg> Ảnh màn hình</div>
+              <div class="btn secondary sm" style="flex:1">Chọn ảnh</div>
+            </div>
+            <p class="tiny" style="margin:0">Ảnh chỉ được gửi khi bạn bấm Gửi feedback.</p>
+          </div>
+        </div>
+        <div class="stickybar">
+          <div class="btn primary"><svg class="ic" style="width:18px;height:18px"><use href="#i-arrow"/></svg> Gửi feedback</div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A10 · Feedbacks (đã đăng nhập)</b>
+        <span class="sub">Khối người gửi chỉ đọc thay cho 2 ô tên/email</span>
+        <ul>
+          <li>Server bỏ qua tên/email app gửi lên, dùng dữ liệu tài khoản (không tin client).</li>
+          <li>Khách vẫn thấy 2 ô như hiện nay, kèm dòng “Đăng nhập để khỏi nhập tên và email”.</li>
+          <li>Admin hiện “Tài khoản đã đăng nhập · email đã xác minh” và số feedback đã góp.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A11 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen">
+          <div class="hdr">
+            <span class="iconbtn plain"><svg class="ic"><use href="#i-back"/></svg></span>
+            <h3 class="grow">Lịch sử tìm kiếm</h3>
+            <span style="font-size:13px;font-weight:600;color:var(--accent)">Xoá tất cả</span>
+          </div>
+          <div class="pad stack" style="padding-top:0">
+            <div class="list">
+              <div class="listrow" style="min-height:60px">
+                <svg class="ic"><use href="#i-clock"/></svg>
+                <div class="grow"><div class="t">Lưu lịch sử tìm kiếm</div><div class="s">Chỉ lưu trên máy này, không gửi đi đâu</div></div>
+                <span class="switch on"></span>
+              </div>
+            </div>
+
+            <div class="stack sm">
+              <b style="font-size:13px;color:var(--muted);letter-spacing:.02em">HÔM NAY</b>
+              <div class="list tight">
+                <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Chợ Bến Thành</div><div class="s">Địa điểm · 18:12</div></div><span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span></div>
+                <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">quán cà phê yên tĩnh quận 3</div><div class="s">Tìm kiếm · 17:48</div></div><span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span></div>
+              </div>
+            </div>
+
+            <div class="stack sm">
+              <b style="font-size:13px;color:var(--muted)">HÔM QUA</b>
+              <div class="list tight">
+                <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Nhà thờ Đức Bà</div><div class="s">Địa điểm · 20:05</div></div><span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span></div>
+                <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Metro Bến Thành → Suối Tiên</div><div class="s">Tìm đường · 08:14</div></div><span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span></div>
+              </div>
+            </div>
+
+            <div class="stack sm">
+              <b style="font-size:13px;color:var(--muted)">TRƯỚC ĐÓ</b>
+              <div class="list tight">
+                <div class="listrow"><svg class="ic"><use href="#i-clock"/></svg><div class="grow"><div class="t">Chợ Lớn</div><div class="s">Địa điểm · 14/11</div></div><span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A11 · Lịch sử tìm kiếm</b>
+        <span class="sub">Mở từ A1 / A7 — cả khách và người đã đăng nhập</span>
+        <ul>
+          <li>Nhóm Hôm nay / Hôm qua / Trước đó; xoá từng mục và “Xoá tất cả”.</li>
+          <li>Giữ 30 mục gần nhất trong <code>Prefs</code>; không lưu toạ độ ra khỏi máy.</li>
+          <li>Tắt công tắc: xoá ngay toàn bộ và ngừng ghi (bật lại thì bắt đầu từ trống).</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+    <!-- ================= A12 ================= -->
+    <figure class="item">
+      <div class="phonewrap"><div class="phone">
+        <div class="sb"><span>9:41</span><span class="r"><svg class="ic" style="width:15px;height:15px"><use href="#i-globe"/></svg><span class="bar"></span></span></div>
+        <div class="screen mapbg">
+          <div class="pad" style="padding-top:10px">
+            <div class="row" style="gap:10px">
+              <div class="field" style="flex:1;background:#fff;box-shadow:0 6px 16px rgba(18,60,72,.10);border-color:#fff">
+                <svg class="ic" style="color:var(--primary)"><use href="#i-search"/></svg>
+                <span class="ph">Tìm địa điểm, số nhà, tuyến…</span>
+              </div>
+              <span class="iconbtn" style="background:#fff;border-color:#fff;box-shadow:0 6px 16px rgba(18,60,72,.10)"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span>
+            </div>
+
+            <div class="card" style="margin-top:14px;padding:8px 14px 12px;box-shadow:0 12px 28px rgba(18,60,72,.14);border-color:#fff">
+              <div class="row between" style="padding:6px 0 2px">
+                <b style="font-size:12.5px;letter-spacing:.04em;color:var(--muted)">GẦN ĐÂY</b>
+                <span style="font-size:12px;font-weight:600;color:var(--muted)">Xoá hết</span>
+              </div>
+              <div class="listrow" style="border-top:none;padding-left:0;padding-right:0;min-height:50px">
+                <svg class="ic" style="color:var(--muted)"><use href="#i-clock"/></svg>
+                <div class="grow"><div class="t" style="font-weight:600">Chợ Bến Thành</div><div class="s">Địa điểm · Quận 1</div></div>
+                <span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span>
+              </div>
+              <div class="listrow" style="padding-left:0;padding-right:0;min-height:50px">
+                <svg class="ic" style="color:var(--muted)"><use href="#i-clock"/></svg>
+                <div class="grow"><div class="t" style="font-weight:600">quán cà phê yên tĩnh quận 3</div><div class="s">Tìm kiếm</div></div>
+                <span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span>
+              </div>
+              <div class="listrow" style="padding-left:0;padding-right:0;min-height:50px">
+                <svg class="ic" style="color:var(--muted)"><use href="#i-clock"/></svg>
+                <div class="grow"><div class="t" style="font-weight:600">Dinh Độc Lập</div><div class="s">Địa điểm · Quận 1</div></div>
+                <span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span>
+              </div>
+              <div class="listrow" style="padding-left:0;padding-right:0;min-height:50px">
+                <svg class="ic" style="color:var(--muted)"><use href="#i-clock"/></svg>
+                <div class="grow"><div class="t" style="font-weight:600">Nhà thờ Đức Bà</div><div class="s">Địa điểm · Quận 1</div></div>
+                <span class="iconbtn plain" style="width:40px;height:40px"><svg class="ic" style="width:16px;height:16px"><use href="#i-x"/></svg></span>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:12px;padding:8px 14px 12px;box-shadow:0 12px 28px rgba(18,60,72,.10);border-color:#fff">
+              <b style="font-size:12.5px;letter-spacing:.04em;color:var(--muted);padding:6px 0 2px;display:block">GỢI Ý</b>
+              <div class="listrow" style="padding-left:0;padding-right:0;min-height:48px"><svg class="ic" style="color:var(--primary)"><use href="#i-pin"/></svg><div class="grow"><div class="t" style="font-weight:600">Chợ Lớn</div><div class="s">Chợ · Quận 5</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <figcaption>
+        <b>A12 · Ô tìm địa điểm có gợi ý nhanh</b>
+        <span class="sub">Khi ô tìm còn trống và được chạm</span>
+        <ul>
+          <li>“Gần đây” là 5 mục mới nhất, có ✕ từng mục và “Xoá hết”; dưới đó mới tới gợi ý.</li>
+          <li>Chỉ ghi lịch sử khi người dùng <b>chọn</b> một kết quả, không ghi mỗi lần gõ.</li>
+          <li>Chọn mục là đi luôn như chọn kết quả tìm kiếm; tắt “Lưu lịch sử” thì khối này biến mất.</li>
+        </ul>
+      </figcaption>
+    </figure>
+
+  </div><!-- /grid -->
+
+  <!-- ================= NOTES ================= -->
+  <div class="notesection">
+    <div class="notecard">
+      <h3>Màu và kiểu dáng dùng trong các màn</h3>
+      <div class="swatches">
+        <span class="sw"><i style="background:#047A7D"></i>primary</span>
+        <span class="sw"><i style="background:#123C48"></i>ink</span>
+        <span class="sw"><i style="background:#52717A"></i>muted</span>
+        <span class="sw"><i style="background:#E5F2F1"></i>line</span>
+        <span class="sw"><i style="background:#DDF7F0"></i>soft</span>
+        <span class="sw"><i style="background:#FFF4D6"></i>warn</span>
+        <span class="sw"><i style="background:#C8234F"></i>accent</span>
+        <span class="sw"><i style="background:#FFFFFF"></i>ô nhập</span>
+      </div>
+      <ul>
+        <li>Ô nhập: <b>nền trắng</b>, viền <code>#E5F2F1</code>, bo 16, cao 54, biểu tượng trái, nhãn 13 ở trên.</li>
+        <li>Nút chính: teal đầy, cao 56, bo 16, chữ 15.5 SemiBold.</li>
+        <li>Nút Google: trắng, viền <code>#DADCE0</code>, logo G 22 px bên trái, mũi tên bên phải.</li>
+        <li>Thẻ: bo 20, viền 1 px; thẻ mời đăng nhập dùng nền <code>#DDF7F0</code>.</li>
+        <li>Logo dùng ảnh thật trong repo (<code>backend/internal/admin/web/static/logo_full.png</code>, <code>logo_icon.png</code>), không vẽ lại.</li>
+        <li>Chữ Be Vietnam Pro, cỡ nhỏ nhất 11.5 (chỉ cho dòng pháp lý), nội dung 13–16.</li>
+      </ul>
+    </div>
+
+    <div class="notecard">
+      <h3>Trạng thái và lỗi đã tính trong thiết kế</h3>
+      <ul>
+        <li><b>Đang gửi:</b> nút đổi “Đang gửi…” và khoá bấm; lỗi mạng hiện câu tiếng Việt, không mất dữ liệu đã gõ.</li>
+        <li><b>Đăng nhập sai 5 lần:</b> khoá 15 phút theo tài khoản, hiện khối cảnh báo màu <code>warn</code> kèm giờ mở lại.</li>
+        <li><b>Mã sai:</b> còn N lần thử; quá 5 lần thì mã hỏng, chỉ còn “Gửi lại”.</li>
+        <li><b>Tên đăng nhập:</b> kiểm ngay khi gõ (còn trống / đã có / sai định dạng 3–30 ký tự <code>a–z 0–9 . _</code>).</li>
+        <li><b>Google trùng email chưa liên kết:</b> báo “Email này đã có tài khoản. Đăng nhập bằng mật khẩu rồi bật Liên kết Google trong Cài đặt.”</li>
+        <li><b>Mất mạng:</b> thông báo + nút Thử lại; phiên còn hạn thì vẫn vào được phần đã có trong máy.</li>
+        <li><b>Tải chậm:</b> khung xám cho danh sách (A11), không nháy trắng.</li>
+      </ul>
+    </div>
+
+    <div class="notecard">
+      <h3>Tiếp cận (TalkBack / VoiceOver)</h3>
+      <ul>
+        <li>Tương phản chữ ≥ 4.5:1; viền ô nhập chỉ là trang trí, trạng thái lỗi luôn kèm chữ.</li>
+        <li>Vùng bấm ≥ 48 dp (nút ✕ trong danh sách là 40 hiển thị nhưng đệm chạm 48).</li>
+        <li>Ô mã đọc “Mã số 5 trên 6”; nút con mắt đọc “Hiện mật khẩu / Ẩn mật khẩu”.</li>
+        <li>Lỗi đọc ngay khi hiện (live region), không chỉ đổi màu viền.</li>
+        <li>Chữ lớn: nhãn ô nhập xuống dòng, không cắt; nút giữ một dòng.</li>
+      </ul>
+    </div>
+
+    <div class="notecard">
+      <h3>Nối với API (AUTH-1)</h3>
+      <ul>
+        <li>A3 → <code>POST /auth/login</code>; A2/A3/A4 Google → <code>POST /auth/google</code>.</li>
+        <li>A4 → <code>POST /auth/register</code> + <code>GET /auth/username-available</code>; A5 → <code>/auth/verify-email</code>, <code>/auth/resend-code</code>.</li>
+        <li>A6 → <code>/auth/forgot</code>, <code>/auth/verify-email</code> (mã), <code>/auth/reset</code>.</li>
+        <li>A7/A8 → <code>GET/PATCH /me</code>, <code>POST /me/password</code>, <code>POST /me/google</code>, <code>/auth/logout(-all)</code>, <code>DELETE /me</code>.</li>
+        <li>A10 → <code>POST /api/v1/feedbacks</code> (server tự lấy tên/email khi có phiên).</li>
+        <li>A11, A12 → chỉ trong máy (<code>Prefs</code>), không có API ở đợt này.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="footnote">
+    <b>Ghi chú bàn giao:</b> đây là bản dựng HTML của hàng “Tài khoản” để duyệt AUTH-0 (phiên làm việc này không có công cụ artifact nên không đăng trực tiếp lên canvas được).
+    Duyệt xong mới làm AUTH-1 (migration <code>0014_app_accounts</code>, gói <code>account</code>, API, OpenAPI) rồi AUTH-2 (app KMP, kiểm tra trên cả Android và iOS).
+    Face ID, SMS, đăng nhập Apple, đồng bộ lên server: <b>chưa làm, chưa vẽ</b> — chờ chủ dự án giao.
+  </p>
+
+</div>
+</body>
+</html>

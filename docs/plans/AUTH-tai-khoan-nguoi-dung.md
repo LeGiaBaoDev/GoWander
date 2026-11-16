@@ -172,7 +172,9 @@ Gói mới `backend/internal/account` (store + handler), mount trong `cmd/api/ma
 - `BiometricUnlock` expect/actual (AUTH-4).
 
 ### 6.2 Màn hình (vẽ trên canvas UX-2 trước, chủ dự án duyệt rồi mới code)
-Canvas: https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4 — thêm hàng "Tài khoản". Phong cách theo mẫu chủ dự án gửi nhưng bằng màu GoWander:
+Canvas: https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4 — thêm hàng "Tài khoản".
+**Bản dựng để duyệt (16-11-2026):** [`docs/design/ux2-auth/A1-A12-tai-khoan.html`](../../docs/design/ux2-auth/A1-A12-tai-khoan.html) — 12 màn A1–A12, khung 390 × 844, logo thật (`logo_full.png`), ô nhập trắng, nút Google có logo G chính thức, kèm ghi chú hành vi/lỗi/tiếp cận dưới từng màn. Phiên làm bản này không có công cụ artifact nên **chưa đăng lên canvas**; mở file bằng Chrome để duyệt, hoặc dán vào canvas khi cần. Đợt đầu chỉ vẽ email / số điện thoại / tên đăng nhập + mật khẩu và Google.
+Phong cách theo mẫu chủ dự án gửi nhưng bằng màu GoWander:
 - Nền trắng hoặc khối màu teal `#047A7D` ở đầu trang với logo GoWander; phần form là thẻ trắng bo 24 dp.
 - **Ô nhập nền trắng**, viền `#E5F2F1`, bo 16 dp, cao ≥ 52 dp, biểu tượng bên trái (thư, điện thoại, khoá), nút con mắt ở ô mật khẩu; chữ ≥ 16 sp; nhãn phía trên ô (không chỉ placeholder).
 - Nút chính teal đầy, cao 56 dp, bo tròn; nút **"Tiếp tục với Google"** nền trắng, viền xám nhạt, logo G nhiều màu bên trái, mũi tên bên phải (như mẫu deeps).
@@ -215,7 +217,7 @@ Canvas: https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4 — thêm hàng "Tài 
 
 | Phase | Việc | Đạt khi |
 |---|---|---|
-| **AUTH-0** | ADR-040 (đã viết, trạng thái Proposed → chủ dự án chốt), vẽ A1–A12 trên canvas | Chủ dự án duyệt canvas |
+| **AUTH-0** | ADR-040 (đã viết, trạng thái Proposed → chủ dự án chốt), vẽ A1–A12 trên canvas | Chủ dự án duyệt canvas — **bản dựng 12 màn đã có (16-11-2026, `docs/design/ux2-auth/A1-A12-tai-khoan.html`), chờ duyệt** |
 | **AUTH-1** | Migration 0014, gói `account` (đăng ký, tên đăng nhập, mã, đăng nhập bằng email/số/tên đăng nhập, phiên, quên mật khẩu, me, xoá, **kiểm tra Google ID token**), tách gói mật khẩu + mail dùng chung với Admin, feedback lấy tên/email từ phiên, OpenAPI | `go vet`, `go test -race ./...`, test tích hợp (vai trò DB, khoá, mã hết hạn, xoá tài khoản), rà soát bảo mật (`ecc:security-reviewer`), test Admin vẫn đạt |
 | **AUTH-2** | App: `SecureTokenStore`, `AccountStore`, màn A1–A10, **nút Google trên Android và iOS**, Portfolio cần đăng nhập, lịch sử tìm kiếm trong máy (A11, A12) | `:shared:testAndroidHostTest`, `:shared:iosSimulatorArm64Test`, `xcodebuild`, ảnh chụp **Android và iOS** từng màn, `mobile/tools/e2e_ux.py` không lỗi |
 | **AUTH-3** | Admin trang Người dùng app; chi tiết feedback hiện tài khoản; liên kết/huỷ liên kết Google trong Cài đặt app | Chrome máy tính + điện thoại; đăng nhập Google thật trên emulator + simulator |
