@@ -95,6 +95,19 @@ data class PlaceSummary(
     val source: Source,
 )
 
+/** Khám phá › "Đang được tìm nhiều": rank only, never a count (GET /api/v1/places/popular). */
+@Serializable
+data class PopularPlace(
+    val id: String,
+    val name: String,
+    val category: CategoryRef? = null,
+    val rank: Int,
+    val thumbUrl: String? = null,
+)
+
+@Serializable
+data class PopularPage(val days: Int = 7, val places: List<PopularPlace> = emptyList())
+
 @Serializable
 data class PlacePage(val places: List<PlaceSummary>, val nextCursor: String? = null)
 

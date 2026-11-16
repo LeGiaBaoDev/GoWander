@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
 import com.gowander.home.LocalNotice
 import com.gowander.mock.MOCK_RATING_SPLIT
@@ -77,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowander.api.PlaceDetail
 import com.gowander.api.PlaceSummary
+import com.gowander.api.PopularPlace
 import com.gowander.route.PlaceRow
 import com.gowander.route.categoryIcon
 import com.gowander.ui.Button
@@ -99,6 +102,7 @@ fun DiscoverScreen(
     vm: DiscoverViewModel,
     listState: LazyListState,
     onOpen: (PlaceSummary) -> Unit,
+    onOpenId: (String) -> Unit = {},
     nearby: List<PlaceSummary> = emptyList(),
     onRegion: (String) -> Unit = {},
     onTrip: (String) -> Unit = {},
@@ -113,7 +117,7 @@ fun DiscoverScreen(
             Segmented(listOf(Strings.NEAR_YOU_TAB, Strings.VIETNAM_PLACES), tab) { tab = it }
         }
         if (tab == 1) RegionsMap(Modifier.weight(1f).padding(top = 12.dp), onRegion)
-        else PlaceList(s, vm, listState, onOpen, nearby, onTrip, onShowMap)
+        else PlaceList(s, vm, listState, onOpen, onOpenId, nearby, onTrip, onShowMap)
     }
 }
 
@@ -128,7 +132,7 @@ fun PlaceScreen(vm: DiscoverViewModel, id: String, saved: Boolean = false, onSav
         if (!holds) vm.openPlace(id) // coming back to the page (Back from the route) does not download it again
     }
     when (val d = s.detail) {
-        is DetailState.Loaded -> if (d.place.id == id) PlaceDetailView(d.place, saved, { onSave(d.place) }, onBack = onBack) { onDirections(d.place) } else PlaceLoading(onBack)
+        is DetailState.Loaded -> if (d.place.id == id) PlaceDetailView(d.place, saved, { onSave(d.place) }, s.popular.firstOrNull { it.id == id }?.rank, onBack = onBack) { onDirections(d.place) } else PlaceLoading(onBack)
         is DetailState.Failed -> if (d.id != id) PlaceLoading(onBack) else Column(Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Header(Strings.PLACE, onBack = onBack)
             Text(d.message, color = Palette.Accent, bold = true)
@@ -146,7 +150,7 @@ private fun PlaceLoading(onBack: () -> Unit) = Column(Modifier.fillMaxSize().bac
 
 @Composable
 private fun PlaceList(
-    s: DiscoverUiState, vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit,
+    s: DiscoverUiState, vm: DiscoverViewModel, listState: LazyListState, onOpen: (PlaceSummary) -> Unit, onOpenId: (String) -> Unit,
     nearby: List<PlaceSummary>, onTrip: (String) -> Unit, onShowMap: () -> Unit,
 ) {
     var text by rememberSaveable { mutableStateOf(s.query ?: "") }
@@ -188,6 +192,18 @@ private fun PlaceList(
                     Text(Strings.SUGGESTED_TRIP, size = 12.sp, color = Palette.Primary, weight = FontWeight.Bold)
                     Text(trip.title, size = 15.sp, weight = FontWeight.Bold)
                     Text(trip.summary, size = 12.sp, color = Palette.Muted)
+                }
+            }
+        }
+        // UX-2 screen 19 (owner, 16-11-2026): ranks only, never counts; hidden until the API has enough real use.
+        if (browsing && s.popular.isNotEmpty()) item {
+            Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    Text(Strings.POPULAR, Modifier.weight(1f).semantics { heading() }, size = 17.sp, weight = FontWeight.Bold)
+                    Text(Strings.POPULAR_SPAN, size = 12.sp, color = Palette.Muted)
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    s.popular.forEach { PopularCard(it) { onOpenId(it.id) } }
                 }
             }
         }
@@ -243,6 +259,26 @@ private fun PlaceList(
     }
 }
 
+/** Screen 19 card: photo with the rank on it, name and category; read out as one button. */
+@Composable
+private fun PopularCard(p: PopularPlace, onClick: () -> Unit) {
+    Column(
+        Modifier.width(132.dp).clickable(role = Role.Button, onClick = onClick)
+            .clearAndSetSemantics { contentDescription = Strings.popularCard(p.rank, p.name, p.category?.name); role = Role.Button },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box {
+            MockPhoto(p.id, Modifier.size(132.dp, 96.dp), categoryIcon(p.category?.slug))
+            Text(
+                "#${p.rank}", Modifier.padding(8.dp).clip(RoundedCornerShape(11.dp)).background(Palette.Ink).padding(horizontal = 8.dp, vertical = 2.dp),
+                size = 12.sp, color = Palette.Bg, weight = FontWeight.Bold,
+            )
+        }
+        Text(p.name, size = 14.sp, weight = FontWeight.SemiBold, maxLines = 2)
+        p.category?.name?.let { Text(it, size = 12.sp, color = Palette.Muted, maxLines = 1) }
+    }
+}
+
 /** Screen 8 row: 64 dp photo, name, category · sample stars, and how far on foot when the distance is known. */
 @Composable
 private fun DiscoverRow(p: PlaceSummary, onClick: () -> Unit) {
@@ -266,7 +302,7 @@ private fun DiscoverRow(p: PlaceSummary, onClick: () -> Unit) {
  * three tabs. Stars, reviews and photos are sample data (PIPELINE §5c mock register); the overview is real (OSM).
  */
 @Composable
-private fun PlaceDetailView(p: PlaceDetail, saved: Boolean, onSave: () -> Unit, onBack: () -> Unit, onDirections: () -> Unit) {
+private fun PlaceDetailView(p: PlaceDetail, saved: Boolean, onSave: () -> Unit, popularRank: Int?, onBack: () -> Unit, onDirections: () -> Unit) {
     val notice = LocalNotice.current
     var tab by rememberSaveable(p.id) { mutableStateOf(0) }
     val rating = mockRating(p.id)
@@ -281,6 +317,16 @@ private fun PlaceDetailView(p: PlaceDetail, saved: Boolean, onSave: () -> Unit, 
         ) {
             Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) { Box(Modifier.size(40.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line)) }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // UX-2 screen 20: this week's rank, when the place is among the most searched-for.
+                popularRank?.let {
+                    Row(
+                        Modifier.clip(RoundedCornerShape(15.dp)).background(Palette.Warn).padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(ExtraIcons.trend, 16.dp, Palette.Amber)
+                        Text(Strings.popularBadge(it), size = 13.sp, color = Palette.Amber, weight = FontWeight.Bold)
+                    }
+                }
                 Text(p.name, Modifier.semantics { heading() }, size = 22.sp, weight = FontWeight.Bold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Stars(rating, size = 13)

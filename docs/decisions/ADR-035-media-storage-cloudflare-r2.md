@@ -1,6 +1,6 @@
 # ADR-035 — Lưu ảnh: Cloudflare R2, phát qua CDN của Cloudflare
 
-- **Trạng thái:** Accepted (chưa triển khai) · **Ngày:** 15-11-2026
+- **Trạng thái:** Accepted · **Ngày:** 15-11-2026 · nhận ảnh trong Admin đã làm 16-11-2026, lưu trên máy cho môi trường dev; adapter R2 chưa làm (chờ tài khoản R2)
 - **Liên quan:** ADR-028 (Discover, bảng `place_media`), ADR-033 (ảnh đường phố), `PIPELINE.md` §5c (bảng dữ liệu mẫu: ảnh)
 
 ## Bối cảnh
@@ -25,3 +25,10 @@ App cần ảnh thật cho quán, món ăn, cẩm nang vùng và portfolio. Hi�
 - **Giá chưa tra lại tại ngày quyết định** (lý do chọn R2 là không tính phí tải ra, theo hiểu biết chung): phải kiểm bảng giá R2 và hạn mức miễn phí trước khi triển khai.
 - Cần quy trình nhận ảnh (ai tải lên, kiểm duyệt, giấy phép từng ảnh): thuộc CONTENT / M07 Admin, có `ecc:security-reviewer` xem (tải file lên là đầu vào từ người dùng).
 - Thẻ nổi trên bản đồ giữ ô biểu tượng cho tới khi có ảnh thật của địa điểm (chủ dự án, 15-11-2026: đã thử ảnh đường phố làm ảnh thu nhỏ rồi bỏ).
+
+## Triển khai đợt 1 (16-11-2026)
+
+- `backend/internal/media`: nhận ảnh JPEG/PNG/WebP ≤ 10 MB, kiểm cỡ trước khi giải mã (≤ 12.000 px mỗi cạnh, ≤ 40 triệu điểm ảnh), giải mã để chắc là ảnh, mã hoá lại JPEG ở 480 px và 1600 px (bỏ toàn bộ metadata, kể cả GPS trong EXIF), đặt tên theo SHA-256 của file gốc (`img/<32 hex>-480.jpg`). Interface `Storage`; bản `Local` lưu vào `MEDIA_DIR` (mặc định `backend/var/media`, không vào Git) và phát ở `/media/` với `nosniff`, cache 1 năm.
+- **Chỉ cho môi trường dev:** cấu hình từ chối khởi động khi `ADMIN_BASE_URL` là https mà chưa có R2 (đúng quyết định "không lưu ảnh trên máy chủ API"). Khi có R2: viết adapter `Storage` cho R2 (S3 API), đặt `MEDIA_BASE_URL` là tên miền CDN; database, Admin và API không đổi.
+- Admin: ảnh địa điểm (nhiều ảnh, một ảnh bìa, xoá), ảnh món ăn và câu chuyện (một ảnh); bắt buộc ghi công và chọn giấy phép (Ảnh của GoWander, Chủ địa điểm cho phép, CC BY 4.0, CC BY-SA 4.0, CC0); file chỉ bị xoá khi không còn mục nào dùng.
+- API công khai trả `url` (1600 px), `thumbUrl` (480 px), ghi công và giấy phép.

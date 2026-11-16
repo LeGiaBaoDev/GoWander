@@ -32,6 +32,11 @@ type Config struct {
 	AdminDatabaseURL string
 	AdminBaseURL     string // ADMIN_BASE_URL, default http://localhost:8090: the link in "quên mật khẩu" emails
 
+	// Photos (ADR-035). MEDIA_DIR: development storage on this machine, default var/media; refused when the Admin runs
+	// on https (production keeps photos in R2, not on the API server). MEDIA_BASE_URL: where the app loads them from,
+	// default http://localhost:8090/media.
+	MediaDir, MediaBaseURL string
+
 	// SMTP for "quên mật khẩu" (ADR-039: Gmail, smtp.gmail.com:587 with an app password). Optional: without SMTP_HOST
 	// the page says email is not set up. SMTP_PASSWORD is a secret, SMTP_USERNAME/SMTP_FROM are private: never log them.
 	SMTPHost, SMTPUsername, SMTPPassword, SMTPFrom string
@@ -61,6 +66,8 @@ func Load(getenv func(string) string) (Config, error) {
 
 		AdminDatabaseURL: getenv("ADMIN_DATABASE_URL"),
 		AdminBaseURL:     strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
+		MediaDir:         or("MEDIA_DIR", "var/media"),
+		MediaBaseURL:     strings.TrimRight(or("MEDIA_BASE_URL", "http://localhost:8090/media"), "/"),
 		SMTPHost:         getenv("SMTP_HOST"),
 		SMTPUsername:     getenv("SMTP_USERNAME"),
 		SMTPPassword:     getenv("SMTP_PASSWORD"),
@@ -96,6 +103,12 @@ func Load(getenv func(string) string) (Config, error) {
 	if u, err := url.Parse(c.AdminBaseURL); err != nil || u.Host == "" || u.User != nil || u.Path != "" ||
 		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) {
 		errs = append(errs, errors.New("ADMIN_BASE_URL must be https://host (http only for localhost), without a path"))
+	}
+	if strings.HasPrefix(c.AdminBaseURL, "https://") {
+		errs = append(errs, errors.New("photos are stored on this machine (MEDIA_DIR), which ADR-035 allows only in development: production needs the R2 storage (not built yet)"))
+	}
+	if u, err := url.Parse(c.MediaBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		errs = append(errs, errors.New("MEDIA_BASE_URL must be an absolute http(s) URL without credentials"))
 	}
 	port, err := strconv.Atoi(or("SMTP_PORT", "587"))
 	if err != nil || port < 1 || port > 65535 {

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,21 @@ type Event struct {
 	From, To mobility.Coordinate
 	LineIDs  []string // transit lines suggested in any of the returned routes, each once
 	Lines    []string // display names, same order
+	Vehicles []string // BUS, METRO or BOAT, same order
+}
+
+// CellDeg is the side of a destination cell in degrees (~500 m); the Admin map uses the same grid.
+const CellDeg = 0.0045
+
+// vehicleOf groups OTP's transit modes for the Admin: rail of any kind is the metro, ferries are boats.
+func vehicleOf(mode string) string {
+	switch mode {
+	case "SUBWAY", "RAIL", "TRAM", "MONORAIL", "FUNICULAR":
+		return "METRO"
+	case "FERRY":
+		return "BOAT"
+	}
+	return "BUS"
 }
 
 // EventOf reduces a search and its answer to what is counted.
@@ -57,7 +73,7 @@ func EventOf(q mobility.Query, routes []mobility.Route, now time.Time) Event {
 			if name == "" {
 				name = l.Line.ID
 			}
-			e.LineIDs, e.Lines = append(e.LineIDs, l.Line.ID), append(e.Lines, name)
+			e.LineIDs, e.Lines, e.Vehicles = append(e.LineIDs, l.Line.ID), append(e.Lines, name), append(e.Vehicles, vehicleOf(l.Mode))
 		}
 	}
 	return e
@@ -123,7 +139,7 @@ func (c *Counter) Run(ctx context.Context) {
 
 func (c *Counter) expire(ctx context.Context) {
 	cutoff := time.Now().In(hcm).AddDate(0, -RetentionMonths, 0).Format(time.DateOnly)
-	for _, table := range []string{"usage_route_plans", "usage_bus_lines", "usage_place_routes", "usage_app_opens"} {
+	for _, table := range []string{"usage_route_plans", "usage_bus_lines", "usage_place_routes", "usage_app_opens", "usage_dest_cells"} {
 		if _, err := c.Pool.Exec(ctx, "DELETE FROM "+table+" WHERE day < $1::date", cutoff); err != nil {
 			c.Log.Warn("usage counter expiry failed", "table", table, "err", err)
 		}
@@ -147,10 +163,25 @@ WITH f AS (SELECT ` + fmt.Sprintf(areaOf, "$3", "$2") + ` AS code),
        SELECT $1::date, p.id, 1 FROM (
          SELECT id FROM places WHERE status = 'PUBLISHED' AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, 30)
          ORDER BY location <-> ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography LIMIT 1) p
-       ON CONFLICT (day, place_id) DO UPDATE SET plans = u.plans + 1)
-INSERT INTO usage_bus_lines AS u (day, line_id, line_name, area_code, suggested)
-SELECT $1::date, l.id, l.name, f.code, 1 FROM f, unnest($7::text[], $8::text[]) AS l(id, name)
-ON CONFLICT (day, line_id, area_code) DO UPDATE SET suggested = u.suggested + 1, line_name = EXCLUDED.line_name`
+       ON CONFLICT (day, place_id) DO UPDATE SET plans = u.plans + 1),
+     cell AS (
+       INSERT INTO usage_dest_cells AS u (day, lat_i, lon_i, plans)
+       VALUES ($1::date, floor($4::float8 / ` + cellSQL + `)::int, floor($5::float8 / ` + cellSQL + `)::int, 1)
+       ON CONFLICT (day, lat_i, lon_i) DO UPDATE SET plans = u.plans + 1)
+INSERT INTO usage_bus_lines AS u (day, line_id, line_name, area_code, suggested, vehicle)
+SELECT $1::date, l.id, l.name, f.code, 1, l.vehicle FROM f, unnest($7::text[], $8::text[], $9::text[]) AS l(id, name, vehicle)
+ON CONFLICT (day, line_id, area_code) DO UPDATE SET suggested = u.suggested + 1, line_name = EXCLUDED.line_name, vehicle = EXCLUDED.vehicle`
+
+var cellSQL = strconv.FormatFloat(CellDeg, 'f', -1, 64)
+
+// vehicles pads the vehicle list to the lines (an event built by hand may leave it empty: bus).
+func vehicles(e Event) []string {
+	v := slices.Clone(e.Vehicles)
+	for len(v) < len(e.LineIDs) {
+		v = append(v, "BUS")
+	}
+	return v[:len(e.LineIDs)]
+}
 
 // Save counts one event.
 func Save(ctx context.Context, pool *pgxpool.Pool, e Event) error {
@@ -159,6 +190,6 @@ func Save(ctx context.Context, pool *pgxpool.Pool, e Event) error {
 			ON CONFLICT (day) DO UPDATE SET opens = u.opens + 1`, e.Day)
 		return err
 	}
-	_, err := pool.Exec(ctx, saveSQL, e.Day, e.From.Lat, e.From.Lon, e.To.Lat, e.To.Lon, e.Mode, e.LineIDs, e.Lines)
+	_, err := pool.Exec(ctx, saveSQL, e.Day, e.From.Lat, e.From.Lon, e.To.Lat, e.To.Lon, e.Mode, e.LineIDs, e.Lines, vehicles(e))
 	return err
 }

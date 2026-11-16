@@ -1,13 +1,19 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +34,10 @@ type fakeStore struct {
 	usage     Usage
 	usageQ    []UsageQuery
 	auditQ    []AuditQuery
+	photos    []Photo
+	bell      Bell
+	seen      int
+	orphan    string
 	guide     map[string]GuideItem
 	guideSave []GuideItem
 }
@@ -44,6 +54,56 @@ func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ str
 	}
 	f.changed = append(f.changed, next)
 	return nil
+}
+func (f *fakeStore) WardShapes(context.Context) ([]WardShape, error) {
+	return []WardShape{{Code: "w1", Name: "Phường Bến Thành", Path: "M 106.69 -10.78 L 106.71 -10.78 L 106.71 -10.76 Z", X: 106.70, Y: -10.77, MinX: 106.69, MinY: -10.78, MaxX: 106.71, MaxY: -10.76},
+		{Code: "w2", Name: "Phường Sài Gòn", Path: "M 106.70 -10.79 L 106.72 -10.79 L 106.72 -10.77 Z", X: 106.71, Y: -10.78, MinX: 106.70, MinY: -10.79, MaxX: 106.72, MaxY: -10.77},
+		{Code: "far", Name: "Xã Côn Đảo", Path: "M 106.6 -8.7 L 106.7 -8.7 L 106.7 -8.6 Z", X: 106.65, Y: -8.65, MinX: 106.6, MinY: -8.7, MaxX: 106.7, MaxY: -8.6}}, nil
+}
+func (f *fakeStore) Notifications(context.Context, string, int) (Bell, error) { return f.bell, nil }
+func (f *fakeStore) MarkNotificationsSeen(context.Context, string) error {
+	f.seen++
+	for i := range f.bell.Notices {
+		f.bell.Notices[i].Unread = false
+	}
+	f.bell.Unread = 0
+	return nil
+}
+func (f *fakeStore) PlacePhotos(context.Context, string) ([]Photo, error) { return f.photos, nil }
+func (f *fakeStore) AddPlacePhoto(_ context.Context, _, placeID, key string, in PhotoInput, _ string) error {
+	if _, ok := f.places[placeID]; !ok {
+		return ErrNotFound
+	}
+	if err := validatePhoto(&in); err != nil {
+		return err
+	}
+	f.photos = append(f.photos, Photo{ID: "ph" + strconv.Itoa(len(f.photos)+1), Key: key, Credit: in.Credit, License: in.License, Cover: len(f.photos) == 0})
+	return nil
+}
+func (f *fakeStore) SetPlaceCover(_ context.Context, _, _, photoID, _ string) error {
+	for i := range f.photos {
+		f.photos[i].Cover = f.photos[i].ID == photoID
+	}
+	return nil
+}
+func (f *fakeStore) DeletePlacePhoto(_ context.Context, _, _, photoID, _ string) (string, error) {
+	for i, p := range f.photos {
+		if p.ID == photoID {
+			f.photos = append(f.photos[:i], f.photos[i+1:]...)
+			return p.Key, nil
+		}
+	}
+	return "", ErrNotFound
+}
+func (f *fakeStore) SetGuideImage(_ context.Context, _, _, id, key string, in PhotoInput, _ string) (string, error) {
+	g, ok := f.guide[id]
+	if !ok {
+		return "", ErrNotFound
+	}
+	old := g.ImageKey
+	g.ImageKey, g.ImageCredit, g.ImageLicense = key, in.Credit, in.License
+	f.guide[id] = g
+	return old, nil
 }
 func (f *fakeStore) SetEmail(_ context.Context, _, email, password, _ string) error {
 	if password != "đúng mật khẩu rồi" {
@@ -167,11 +227,6 @@ func (f *fakeStore) SaveGuideItem(_ context.Context, _, kind string, g GuideItem
 	return g.ID, nil
 }
 
-func (f *fakeStore) AreaShapes(context.Context) ([]AreaShape, error) {
-	return []AreaShape{{Code: "r1", Name: "Thành phố Hồ Chí Minh", Path: "M 106 -10 L 107 -10 L 107 -11 Z", X: 106.5, Y: -10.5},
-		{Code: "r2", Name: "Tỉnh Khánh Hòa", Path: "M 109 -12 L 110 -12 L 110 -13 Z", X: 109.5, Y: -12.5}}, nil
-}
-
 func (f *fakeStore) Usage(_ context.Context, q UsageQuery) (Usage, error) {
 	f.usageQ = append(f.usageQ, q)
 	u := f.usage
@@ -192,9 +247,20 @@ func (m fakeMailer) Send(_ context.Context, to, _, body string) error {
 	return nil
 }
 
+// memStorage keeps "stored" photo files in memory for the handler tests.
+type memStorage map[string][]byte
+
+func (m memStorage) Put(_ context.Context, name string, data []byte) error {
+	m[name] = data
+	return nil
+}
+func (m memStorage) Delete(_ context.Context, name string) error { delete(m, name); return nil }
+
+var testMedia = memStorage{}
+
 func server(store Store, mailer Mailer) http.Handler {
 	r := chi.NewRouter()
-	h := Handler{Mailer: mailer, BaseURL: "https://admin.example.vn", Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := Handler{Mailer: mailer, BaseURL: "https://admin.example.vn", Media: testMedia, MediaURL: "https://cdn.example.vn/media", Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	if store != nil {
 		h.Store = store
 	}
@@ -423,24 +489,25 @@ func TestOverviewIsCustomersAndRevenueAtAGlance(t *testing.T) {
 	store := newFake()
 	store.usage = Usage{Opens: 120, PrevOpens: 100, Total: 80, PrevTotal: 100, OpensSeries: []bar{{"Th10/2026", 4}, {"Th11/2026", 9}},
 		PrevOpensSeries: []bar{{"Th10/2025", 2}, {"Th11/2025", 3}},
-		Modes:           []bar{{"Xe buýt", 60}, {"Đi bộ", 20}}, Places: []bar{{"Chợ Bến Thành · Chợ", 30}, {"Dinh Độc Lập · Di tích", 12}}}
+		Modes:           []bar{{"Xe buýt", 60}, {"Đi bộ", 20}}, Places: []bar{{"Chợ Bến Thành · Chợ", 30}, {"Dinh Độc Lập · Di tích", 12}},
+		Lines: []BusLine{{ID: "b19", Name: "19", Vehicle: "BUS", Value: 40}},
+		Wards: []WardCount{{Code: "w2", Name: "Phường Sài Gòn", Plans: 60, Places: 1}, {Code: "w1", Name: "Phường Bến Thành", Plans: 20, Places: 9}}}
 	body := do(server(store, nil), "GET", "/admin/?grain=month", "editor", nil, nil).Body.String()
-	for _, want := range []string{"Lượt mở app theo tháng", "so với 12 tháng trước", `aria-current="true">Tháng`, "Kỳ trước, cùng số ngày: 3", "Th11/2026 (đến hôm nay)", "Kỳ trước (Th10/2025): 2",
-		`href="/admin/?grain=year"`, "Lượt mở app", `change up">&#43;20%`, `change down">-20%`, "Doanh thu", "Chưa có", "Lợi nhuận", "Chợ Bến Thành · Chợ", "Xe buýt", "75%", "Hành trình của khách", "Dữ liệu mẫu", `href="/admin/reports"`} {
+	for _, want := range []string{"so với 12 tháng trước", `aria-current="true">Tháng`, "Doanh thu theo tháng", "Doanh thu đến từ đâu", "Affiliate",
+		`href="/admin/?grain=year"`, "Lượt mở app", `change up">&#43;20%`, `change down">-20%`, "Lợi nhuận", "Chợ Bến Thành · Chợ", "Dữ liệu mẫu",
+		"Khách đi đâu nhiều nhất", "Phường Sài Gòn", "Ít quán", `class="lv4 few"`, `<title>Phường Sài Gòn: 60 lượt · 1 địa điểm</title>`, `class="lv2"`,
+		"Địa điểm được tìm đường tới nhiều nhất"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("overview lacks %q", want)
 		}
 	}
-	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "month" || q.Area != "" {
-		t.Fatalf("overview query %+v", q)
-	}
-	// The province map: every province, both archipelagos named, a province links to the reports filtered by it.
-	store.usage.AreaCounts = map[string]int{"r1": 40}
-	body = do(server(store, nil), "GET", "/admin/?grain=week", "editor", nil, nil).Body.String()
-	for _, want := range []string{"Khách tìm đường từ đâu", "QĐ. Hoàng Sa", "QĐ. Trường Sa", "Tỉnh Khánh Hòa", `href="/admin/reports?grain=week&amp;area=r1"`, `class="lv4"`, `class="lv0"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("map lacks %q", want)
+	for _, gone := range []string{"Phương tiện được chọn", "Lượt mở app theo", "Khách tìm đường từ đâu", "Hành trình của khách", "QĐ. Hoàng Sa"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("the overview keeps only the main charts, found %q", gone)
 		}
+	}
+	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "month" || q.Line != "" {
+		t.Fatalf("overview query %+v", q)
 	}
 }
 
@@ -538,13 +605,14 @@ func TestValidatePlace(t *testing.T) {
 func TestOverviewShowsUsageWithItsFilters(t *testing.T) {
 	store := newFake()
 	h := server(store, nil)
-	// An unknown grain falls back to days; the province code is passed on (reports page; the overview has no area),
-	// and the grain links keep it.
-	w := do(h, "GET", "/admin/reports?grain=century&area=r1", "editor", nil, nil)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `href="/admin/reports?area=r1&amp;grain=year"`) {
+	// An unknown grain falls back to days; the line is passed on (reports page only), and the grain links keep it.
+	store.usage = Usage{UsageQuery: UsageQuery{Line: "b19"}, LineName: "19", LineOptions: []BusLine{{ID: "b19", Name: "19", Vehicle: "BUS"}}, Total: 40, Series: []bar{{"16/11", 40}}}
+	w := do(h, "GET", "/admin/reports?grain=century&line=b19", "editor", nil, nil)
+	if body := w.Body.String(); w.Code != http.StatusOK || !strings.Contains(body, `href="/admin/reports?line=b19&amp;grain=year"`) ||
+		!strings.Contains(body, "Tuyến 19: số lần có trong gợi ý") || !strings.Contains(body, "Bỏ lọc tuyến") || strings.Contains(body, "Phương tiện được chọn") {
 		t.Fatalf("reports: %d", w.Code)
 	}
-	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "day" || q.Area != "r1" {
+	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "day" || q.Line != "b19" {
 		t.Fatalf("query %+v", q)
 	}
 	if w := do(h, "GET", "/admin/usage", "sys", nil, nil); w.Code != http.StatusNotFound {
@@ -554,18 +622,18 @@ func TestOverviewShowsUsageWithItsFilters(t *testing.T) {
 
 func TestOverviewUsageHidesSmallNumbers(t *testing.T) {
 	store := newFake()
-	store.usage = Usage{Opens: 3, Total: 3, Series: []bar{{"15/11", 3}}, Areas: []Area{{"r1", "Thành phố Hồ Chí Minh"}}}
+	store.usage = Usage{Opens: 3, Total: 3, Series: []bar{{"15/11", 3}}, LineOptions: []BusLine{{ID: "b19", Name: "19", Vehicle: "BUS"}}}
 	body := do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
 	// Too little real use: the page shows sample numbers, and says so.
-	for _, want := range []string{"Khách dùng app", "Lượt mở app", "Dữ liệu mẫu", "Chưa đủ 5 lượt tìm đường thật", "Thành phố Hồ Chí Minh", "Cả nước"} {
+	for _, want := range []string{"Khách dùng app", "lượt mở app", "Dữ liệu mẫu", "Chưa đủ 5 lượt tìm đường thật", "Mọi tuyến", `<option value="b19">Tuyến 19</option>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("too little data: page lacks %q", want)
 		}
 	}
 	store.usage = Usage{Opens: 5000, Total: 1240, Series: []bar{{"15/11", 2}, {"16/11", 900}},
-		Modes: []bar{{"Xe buýt", 1238}, {"Xe đạp", 2}}, Lines: []bar{{"19", 600}}, Places: []bar{{"Chợ Bến Thành · Chợ và mua sắm", 80}}}
+		Modes: []bar{{"Xe buýt", 1238}, {"Xe đạp", 2}}, Lines: []BusLine{{ID: "b19", Name: "19", Vehicle: "BUS", Value: 600}, {ID: "m1", Name: "Metro số 1", Vehicle: "METRO", Value: 300}}, Places: []bar{{"Chợ Bến Thành · Chợ và mua sắm", 80}}}
 	body = do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
-	for _, want := range []string{"5.000", "1.240", "Tuyến 19", "Chợ Bến Thành · Chợ và mua sắm", "Xe buýt", "Xe đạp</span><span class=\"muted\">&lt;5"} {
+	for _, want := range []string{"5.000", "1.240", "Tuyến 19", "Metro số 1", `kind=METRO`, "Chợ Bến Thành · Chợ và mua sắm", "Xe buýt", "Xe đạp</span><span class=\"muted\">&lt;5"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -720,5 +788,208 @@ func TestAccountPage(t *testing.T) {
 	form.Set("password", "đúng mật khẩu rồi")
 	if w := do(h, "POST", "/admin/account/email", "me", form, nil); w.Header().Get("Location") != "/admin/account?email=1" || store.changed[len(store.changed)-1] != "email:new@example.vn" {
 		t.Fatalf("email change: %d %s", w.Code, w.Header().Get("Location"))
+	}
+}
+
+// upload posts a multipart form with a file, as the photo form does.
+func upload(h http.Handler, target, token, csrf string, file []byte, fields map[string]string) *httptest.ResponseRecorder {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	mw.WriteField("csrf", csrf)
+	for k, v := range fields {
+		mw.WriteField(k, v)
+	}
+	if file != nil {
+		fw, _ := mw.CreateFormFile("photo", "anh.png")
+		fw.Write(file)
+	}
+	mw.Close()
+	req := httptest.NewRequest("POST", target, &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+func pngBytes(t *testing.T) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 800, 600))); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+func TestPlacePhotos(t *testing.T) {
+	store := newFake()
+	h := server(store, nil)
+	ok := map[string]string{"credit": "Gia Bảo", "license": "Ảnh của GoWander", "alt": "Cổng chợ"}
+	w := upload(h, "/admin/places/p1/photos", "editor", "csrf-e", pngBytes(t), ok)
+	if w.Code != http.StatusSeeOther || len(store.photos) != 1 || !store.photos[0].Cover {
+		t.Fatalf("upload: %d %+v", w.Code, store.photos)
+	}
+	key := store.photos[0].Key
+	if _, stored := testMedia[key+"-480.jpg"]; !stored {
+		t.Fatal("the 480 px file was not stored")
+	}
+	if _, stored := testMedia[key+"-1600.jpg"]; !stored {
+		t.Fatal("the 1600 px file was not stored")
+	}
+	page := do(h, "GET", "/admin/places/p1", "editor", nil, nil)
+	if body := page.Body.String(); !strings.Contains(body, "https://cdn.example.vn/media/"+key+"-480.jpg") || !strings.Contains(body, "Ảnh bìa") || !strings.Contains(body, "© Gia Bảo") {
+		t.Fatal("place page lacks the photo")
+	}
+	if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' data: https://cdn.example.vn") {
+		t.Fatalf("CSP must allow the photo host: %s", csp)
+	}
+	for name, c := range map[string]struct {
+		file   []byte
+		fields map[string]string
+		want   string
+	}{
+		"not an image": {[]byte("<?php echo 1;"), ok, "không phải ảnh"},
+		"no file":      {nil, ok, "chọn một ảnh"},
+		"no credit":    {pngBytes(t), map[string]string{"license": "CC0"}, "ghi công"},
+		"bad licence":  {pngBytes(t), map[string]string{"credit": "A", "license": "của tôi"}, "giấy phép"},
+	} {
+		w := upload(h, "/admin/places/p1/photos", "editor", "csrf-e", c.file, c.fields)
+		if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), c.want) {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	if w := upload(h, "/admin/places/p1/photos", "editor", "", pngBytes(t), ok); w.Code != http.StatusForbidden {
+		t.Fatalf("without CSRF: %d", w.Code)
+	}
+	if w := upload(h, "/admin/places/p1/photos", "mod", "csrf-m", pngBytes(t), ok); w.Code != http.StatusForbidden {
+		t.Fatalf("moderator: %d", w.Code)
+	}
+	if w := do(h, "POST", "/admin/places/p1/photos/ph1/delete", "editor", url.Values{"csrf": {"csrf-e"}}, nil); w.Code != http.StatusSeeOther || len(store.photos) != 0 {
+		t.Fatalf("delete: %d", w.Code)
+	}
+	if _, stored := testMedia[key+"-480.jpg"]; stored {
+		t.Fatal("files of a photo nobody uses must be deleted")
+	}
+}
+
+func TestGuideImage(t *testing.T) {
+	store := newFake()
+	store.guide = map[string]GuideItem{"f1": {ID: "f1", Title: "Phở", Status: "DRAFT"}}
+	h := server(store, nil)
+	w := upload(h, "/admin/foods/f1/image", "editor", "csrf-e", pngBytes(t), map[string]string{"credit": "Quán Phở", "license": "Chủ địa điểm cho phép"})
+	if w.Code != http.StatusSeeOther || store.guide["f1"].ImageKey == "" {
+		t.Fatalf("dish photo: %d %+v", w.Code, store.guide["f1"])
+	}
+	if body := do(h, "GET", "/admin/foods/f1", "editor", nil, nil).Body.String(); !strings.Contains(body, "Thay ảnh") || !strings.Contains(body, "© Quán Phở") {
+		t.Fatal("dish page lacks its photo")
+	}
+	if w := do(h, "POST", "/admin/foods/f1/image/delete", "editor", url.Values{"csrf": {"csrf-e"}}, nil); w.Code != http.StatusSeeOther || store.guide["f1"].ImageKey != "" {
+		t.Fatalf("remove: %d", w.Code)
+	}
+	if w := upload(h, "/admin/stories/nope/image", "editor", "csrf-e", pngBytes(t), map[string]string{"credit": "A", "license": "CC0"}); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown story: %d", w.Code)
+	}
+}
+
+func TestBell(t *testing.T) {
+	store := newFake()
+	store.bell = group([]Notice{
+		{Action: "admin.login_failed", Object: "baole", At: time.Now(), Unread: true, Bad: true},
+		{Action: "place.update", Actor: "Biên tập A", Object: "Chợ Bến Thành", At: time.Now(), Unread: true},
+	}, 6)
+	h := server(store, nil)
+	body := do(h, "GET", "/admin/", "sys", nil, nil).Body.String()
+	for _, want := range []string{`class="bell"`, `aria-label="Thông báo, 2 chưa đọc"`, `<span class="bell-count">2</span>`,
+		"Đăng nhập sai mật khẩu", "Tài khoản baole", "Biên tập A · Chợ Bến Thành", `class="nt unread bad"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("bell lacks %q", want)
+		}
+	}
+	page := do(h, "GET", "/admin/notifications", "sys", nil, nil)
+	if page.Code != http.StatusOK || store.seen != 1 || strings.Contains(page.Body.String(), "bell-count") {
+		t.Fatalf("opening the list marks it read: %d seen=%d", page.Code, store.seen)
+	}
+	// No bell before the operator has their own password, or before signing in.
+	store.sessions["temp"] = Session{UserID: "t", Login: "x", CSRF: "c", Roles: []string{RoleSystemAdmin}, MustChange: true}
+	if strings.Contains(do(h, "GET", "/admin/password", "temp", nil, nil).Body.String(), `class="bell"`) {
+		t.Error("bell shown with a temporary password")
+	}
+	if strings.Contains(do(h, "GET", "/admin/login", "", nil, nil).Body.String(), `class="bell"`) {
+		t.Error("bell shown on the sign-in page")
+	}
+}
+
+func TestNoticesGroupRepeats(t *testing.T) {
+	now := time.Now()
+	fail := Notice{Action: "admin.login_failed", Object: "Bảo", Bad: true}
+	rows := []Notice{fail, fail, fail, fail, {Action: "admin.password_reset_requested", Object: "Bảo"}, fail}
+	for i := range rows {
+		rows[i].At, rows[i].Unread = now.Add(-time.Duration(i)*time.Minute), i < 2
+	}
+	b := group(rows, 6)
+	if len(b.Notices) != 2 || b.Notices[0].Count != 5 || b.Notices[0].Sub != "Tài khoản Bảo · 5 lần" || b.Notices[0].Icon != "lock" || b.Unread != 1 {
+		t.Fatalf("wrong passwords on the same day are one notice: %+v", b)
+	}
+	if b.Notices[1].Count != 1 || b.Notices[1].Title != "Yêu cầu link đặt lại mật khẩu" {
+		t.Fatalf("other notices stay apart: %+v", b.Notices)
+	}
+	yesterday := fail
+	yesterday.At = now.Add(-30 * time.Hour)
+	if two := group([]Notice{rows[0], yesterday}, 6); len(two.Notices) != 2 {
+		t.Fatal("another day is another notice")
+	}
+	if one := group(rows, 1); len(one.Notices) != 1 {
+		t.Fatalf("limit: %d", len(one.Notices))
+	}
+	for d, want := range map[time.Duration]string{10 * time.Second: "Vừa xong", 12 * time.Minute: "12 phút trước", 3 * time.Hour: "3 giờ trước"} {
+		if got := ago(now.Add(-d), now); got != want {
+			t.Errorf("ago(%v) = %q", d, got)
+		}
+	}
+}
+
+func TestReportsLineTabs(t *testing.T) {
+	store := newFake()
+	h := server(store, nil)
+	body := do(h, "GET", "/admin/reports?grain=week&kind=METRO", "editor", nil, nil).Body.String()
+	if q := store.usageQ[len(store.usageQ)-1]; q.Kind != "METRO" || !strings.Contains(body, `kind=METRO" aria-current="true">Metro`) ||
+		!strings.Contains(body, `href="/admin/reports?kind=METRO&amp;grain=day"`) {
+		t.Fatalf("metro tab: %+v", q)
+	}
+	do(h, "GET", "/admin/reports?kind=PLANE", "editor", nil, nil)
+	if q := store.usageQ[len(store.usageQ)-1]; q.Kind != "" {
+		t.Fatalf("an unknown kind is ignored: %+v", q)
+	}
+	for l, want := range map[BusLine]string{{Name: "19", Vehicle: "BUS"}: "Tuyến 19", {Name: "1", Vehicle: "METRO"}: "Metro 1",
+		{Name: "Metro số 1", Vehicle: "METRO"}: "Metro số 1", {Name: "2", Vehicle: "BOAT"}: "Buýt sông 2"} {
+		if got := l.Title(); got != want {
+			t.Errorf("%+v: %q", l, got)
+		}
+	}
+}
+
+func TestWardMapFramesTheWards(t *testing.T) {
+	shapes, _ := newFake().WardShapes(context.Background())
+	m := newWardMap(shapes, []WardCount{{Code: "w2", Plans: 100, Places: 1}, {Code: "w1", Plans: 10, Places: 0}})
+	byCode := map[string]wardArea{}
+	for _, a := range m.Areas {
+		byCode[a.Code] = a
+	}
+	if byCode["w2"].Level != 4 || !byCode["w2"].Few || byCode["w1"].Level != 1 || byCode["w1"].Few || byCode["w2"].Rank != 1 || len(m.Top) != 2 {
+		t.Fatalf("levels, ranks, few shops: %+v", byCode)
+	}
+	if _, inView := byCode["far"]; inView || len(m.Areas) != 2 {
+		t.Fatal("a ward far outside the frame is left out of the page")
+	}
+	var x, y, w, h float64
+	fmt.Sscanf(m.ViewBox, "%f %f %f %f", &x, &y, &w, &h)
+	if x > 106.60 || x+w < 106.80 || y > -10.88 || y+h < -10.70 || w != h {
+		t.Fatalf("the frame holds central HCMC as a square: %s", m.ViewBox)
+	}
+	if empty := newWardMap(shapes, nil); len(empty.Top) != 0 || empty.Areas[0].Level != 0 {
+		t.Fatal("no searches: no colour, no badges")
+	}
+	if wards := sampleWards(1000, shapes); len(wards) != 2 || wards[0].Name != "Phường Bến Thành" {
+		t.Fatalf("sample wards come from the loaded shapes only: %+v", wards)
 	}
 }

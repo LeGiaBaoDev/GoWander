@@ -58,6 +58,8 @@ interface GoWanderApi {
     /** How many places each cell of a grid over the viewport holds: for a map zoomed too far out to show single places. */
     suspend fun placeClusters(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?): List<PlaceCluster>
     suspend fun place(id: String): PlaceDetail
+    /** Most searched-for places of the last 7 days; empty until there is enough real use. */
+    suspend fun popular(): List<PopularPlace>
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
     /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
@@ -133,6 +135,8 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     override suspend fun place(id: String): PlaceDetail = call("/api/v1/places/${id.encodeURLPathPart()}") {}
 
     override suspend fun guide(): GuideContent = call("/api/v1/guide/hcm") {}
+
+    override suspend fun popular(): List<PopularPlace> = call<PopularPage>("/api/v1/places/popular") {}.places
 
     override suspend fun recordOpen() {
         val status = try {

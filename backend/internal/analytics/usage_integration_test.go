@@ -40,7 +40,7 @@ func TestSaveCountsByProvinceAndPlace(t *testing.T) {
 	var placeID string
 	err = owner.QueryRow(ctx, `
 		WITH _a AS (DELETE FROM admin_areas), _u AS (DELETE FROM usage_route_plans), _b AS (DELETE FROM usage_bus_lines), _p AS (DELETE FROM usage_place_routes),
-		     _o AS (DELETE FROM usage_app_opens),
+		     _o AS (DELETE FROM usage_app_opens), _c AS (DELETE FROM usage_dest_cells),
 		     _w AS (INSERT INTO admin_areas (code, name, geom) VALUES ('rT', 'Thành phố Thử', ST_Multi(ST_MakeEnvelope(106.6, 10.7, 106.75, 10.8, 4326))),
 		                                                         ('rOld', 'Tỉnh Cũ', ST_Multi(ST_MakeEnvelope(106.69, 10.76, 106.71, 10.78, 4326))))
 		INSERT INTO places (name, slug, location, status, source, source_ref, license, attribution)
@@ -63,7 +63,7 @@ func TestSaveCountsByProvinceAndPlace(t *testing.T) {
 	if err := Save(ctx, pool, e); err != nil {
 		t.Fatal(err)
 	}
-	e.LineIDs, e.Lines = []string{"b19"}, []string{"19"}
+	e.LineIDs, e.Lines, e.Vehicles = []string{"b19", "m1"}, []string{"19", "Metro số 1"}, []string{"BUS", "METRO"}
 	if err := Save(ctx, pool, e); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +84,13 @@ func TestSaveCountsByProvinceAndPlace(t *testing.T) {
 	var opens int
 	if err := owner.QueryRow(ctx, `SELECT opens FROM usage_app_opens WHERE day = '2026-11-16'`).Scan(&opens); err != nil || opens != 2 {
 		t.Fatalf("app opens %d %v", opens, err)
+	}
+	var metro string
+	var cell int
+	err = owner.QueryRow(ctx, `SELECT (SELECT vehicle FROM usage_bus_lines WHERE line_id = 'm1'),
+		(SELECT plans FROM usage_dest_cells WHERE day = '2026-11-16' AND lat_i = floor(10.85009 / 0.0045)::int AND lon_i = floor(106.80 / 0.0045)::int)`).Scan(&metro, &cell)
+	if err != nil || metro != "METRO" || cell != 2 {
+		t.Fatalf("metro %q, destination cell %d: %v", metro, cell, err)
 	}
 	// The API role still cannot change content.
 	if _, err := pool.Exec(ctx, `UPDATE places SET name = 'x' WHERE id = $1::uuid`, placeID); err == nil {

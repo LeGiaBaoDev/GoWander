@@ -98,6 +98,35 @@ paths:
                     items: { $ref: '#/components/schemas/PlaceSummary' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /api/v1/places/popular:
+    get:
+      operationId: popularPlaces
+      summary: Địa điểm đang được tìm nhiều (Khám phá); chỉ có hạng, không có số lượt
+      description: >-
+        Top 10 địa điểm đã xuất bản theo số lượt tìm đường kết thúc gần đó (≤ 30 m) trong 7 ngày gần nhất (giờ TP.HCM);
+        địa điểm dưới 5 lượt không vào danh sách (ADR-038). Danh sách rỗng khi chưa đủ dữ liệu: app ẩn hàng này.
+      responses:
+        '200':
+          description: Địa điểm theo hạng
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [days, places]
+                properties:
+                  days: { type: integer, example: 7 }
+                  places:
+                    type: array
+                    maxItems: 10
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/PlaceSummary'
+                        - type: object
+                          required: [rank]
+                          properties:
+                            rank: { type: integer, minimum: 1 }
+                            thumbUrl: { type: string, format: uri, description: Ảnh bìa 480 px, nếu có }
+        '503': { $ref: '#/components/responses/Error' }
   /api/v1/places/map:
     get:
       operationId: placesInBounds

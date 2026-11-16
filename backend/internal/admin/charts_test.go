@@ -16,59 +16,36 @@ func TestChartHelpers(t *testing.T) {
 	if d := delta(5, 0); d.Show {
 		t.Error("no badge without a previous period")
 	}
-	s := donut([]bar{{"Xe buýt", 75}, {"Đi bộ", 25}}, 100)
-	if len(s) != 2 || s[0].Dash != "75.00 25.00" || s[0].Offset != "25.00" || s[1].Offset != "-50.00" || s[1].Pct != 25 {
-		t.Errorf("donut %+v", s)
-	}
-	if donut(nil, 0) != nil {
-		t.Error("empty donut")
-	}
 	if g := greeting(time.Date(2026, 11, 16, 1, 0, 0, 0, time.UTC)); g != "Chào buổi sáng" { // 08:00 in HCMC
 		t.Error(g)
 	}
 }
 
-func TestVNMapLevelsAndRanks(t *testing.T) {
-	shapes := []AreaShape{{Code: "hcm", Name: "TP.HCM"}, {Code: "hn", Name: "Hà Nội"}, {Code: "kh", Name: "Khánh Hòa"}}
-	m := newVNMap(shapes, map[string]int{"hcm": 100, "hn": 20}, "hn", "/admin/reports?area=")
-	byCode := map[string]mapArea{}
-	for _, a := range m.Areas {
-		byCode[a.Code] = a
-	}
-	if byCode["hcm"].Level != 4 || byCode["hcm"].Rank != 1 || byCode["hn"].Level != 1 || byCode["hn"].Rank != 2 || !byCode["hn"].Selected {
-		t.Fatalf("%+v", byCode)
-	}
-	if byCode["kh"].Level != 0 || byCode["kh"].Rank != 0 || len(m.Top) != 2 {
-		t.Fatalf("a province without counts stays blank and unranked: %+v %d", byCode["kh"], len(m.Top))
-	}
-	if len(m.Islands) != 2 || m.Islands[0].Text1 != "QĐ. Hoàng Sa" || m.Islands[1].Text1 != "QĐ. Trường Sa" {
-		t.Fatal("both archipelagos must be on the map")
-	}
-	if empty := newVNMap(shapes, nil, "", ""); len(empty.Top) != 0 || empty.Areas[0].Level != 0 {
-		t.Fatal("no data: no ranks, no colour")
-	}
-}
-
 func TestSampleDataIsMarkedAndConsistent(t *testing.T) {
-	shapes := []AreaShape{{Code: "hcm", Name: "Thành phố Hồ Chí Minh"}, {Code: "hn", Name: "Thành phố Hà Nội"}}
 	for _, g := range Grains {
-		u := sampleUsage(UsageQuery{Grain: g}, []Area{{"hcm", "Thành phố Hồ Chí Minh"}}, shapes)
+		u := sampleUsage(UsageQuery{Grain: g}, nil)
 		if !u.Sample || len(u.Series) != g.Count || len(u.PrevSeries) != g.Count || len(u.OpensSeries) != g.Count || u.Total <= 0 ||
-			u.Opens <= u.Total || u.Total <= u.PrevTotal || u.AreaCounts["hcm"] <= u.AreaCounts["hn"] {
+			u.Opens <= u.Total || u.Total <= u.PrevTotal || len(u.Lines) != 5 || u.Lines[0].Value <= u.Lines[1].Value || len(u.LineOptions) != 5 {
 			t.Fatalf("%s: sample usage %+v", g.Key, u)
 		}
 		r := sampleRevenue(g)
-		if !r.Sample || r.Total <= r.Prev || r.Profit >= r.Total || len(r.Series) != g.Count || len(r.PrevSeries) != g.Count {
+		if !r.Sample || r.Total <= r.Prev || r.Profit >= r.Total || len(r.Series) != g.Count || len(r.ByChannel) != 2 {
 			t.Fatalf("%s: sample revenue %+v", g.Key, r)
 		}
 	}
 	day := grainOf("day")
-	if a, b := sampleUsage(UsageQuery{Grain: day}, nil, shapes), sampleUsage(UsageQuery{Grain: day}, nil, shapes); a.Total != b.Total {
+	if a, b := sampleUsage(UsageQuery{Grain: day}, nil), sampleUsage(UsageQuery{Grain: day}, nil); a.Total != b.Total {
 		t.Error("sample numbers must be the same on every load")
 	}
-	f := sampleUsage(UsageQuery{Grain: day, Area: "hcm"}, []Area{{"hcm", "Thành phố Hồ Chí Minh"}}, shapes)
-	if f.AreaName != "Thành phố Hồ Chí Minh" || f.From != nil || f.Total >= sampleUsage(UsageQuery{Grain: day}, nil, shapes).Total {
-		t.Fatalf("a province filter scales the sample down and hides destinations: %+v", f)
+	f := sampleUsage(UsageQuery{Grain: day, Line: "sample-19"}, nil)
+	if m := sampleUsage(UsageQuery{Grain: day, Kind: "METRO"}, nil); len(m.Lines) != 1 || m.Lines[0].Title() != "Metro số 1" {
+		t.Fatalf("the metro tab of the sample: %+v", m.Lines)
+	}
+	if f.LineName != "19" || f.Lines != nil || f.Modes != nil || f.Total >= sampleUsage(UsageQuery{Grain: day}, nil).Total {
+		t.Fatalf("a line filter shows that line's share only: %+v", f)
+	}
+	if x := sampleUsage(UsageQuery{Grain: day, Line: "nope"}, nil); x.Line != "" {
+		t.Fatal("an unknown line is ignored")
 	}
 	for v, want := range map[int64]string{48_230_000: "48,2 triệu ₫", 1_500_000_000: "1,5 tỷ ₫", 950_000: "950.000 ₫"} {
 		if got := vnd(v); got != want {

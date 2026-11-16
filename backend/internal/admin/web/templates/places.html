@@ -6,25 +6,27 @@
 </header>
 <form class="card filters" method="get" action="/admin/places" role="search">
   <label class="grow">Tìm theo tên <input type="search" name="q" value="{{.Q.Q}}" placeholder="Ví dụ: Bến Thành" maxlength="100"></label>
+  <div class="filter-choices">
   <label>Trạng thái <select name="status"><option value="">Tất cả</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Q.Status}} selected{{end}}>{{statusName .}}</option>{{end}}</select></label>
   <label>Loại <select name="category"><option value="0">Tất cả</option>{{range .Categories}}<option value="{{.ID}}"{{if eq .ID $.Q.Category}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
   <label>Còn thiếu <select name="missing"><option value="">Không lọc</option>
     {{range $k := list "photo" 0 "description" 0 "address" 0 "category" 0}}<option value="{{$k.Label}}"{{if eq $k.Label $.Q.Missing}} selected{{end}}>{{missingName $k.Label}}</option>{{end}}</select></label>
+  </div>
   <button type="submit">Lọc</button>
 </form>
 <div class="row"><p class="muted small" role="status">{{if .Total}}Hiển thị {{num .From}}–{{num .To}} trên {{num .Total}} địa điểm{{else}}Không có địa điểm nào khớp bộ lọc.{{end}}</p>
   <p class="legend-inline"><span class="facts"><span class="yes">Có</span><span class="no">Còn thiếu</span></span></p></div>
 {{if .List}}
-<div class="table-wrap">
+<div class="table-wrap cards">
 <table>
   <thead><tr><th>Tên</th><th>Loại</th><th>Trạng thái</th><th>Thông tin</th><th>Nguồn</th></tr></thead>
   <tbody>
   {{range .List}}<tr>
     <td><a class="strong" href="/admin/places/{{.ID}}">{{.Name}}</a></td>
-    <td>{{if .Category}}{{.Category}}{{else}}<span class="muted">Chưa có</span>{{end}}</td>
-    <td><span class="state s-{{.Status}}">{{statusName .Status}}</span></td>
-    <td><div class="facts"><span class="{{if .HasPhoto}}yes{{else}}no{{end}}" title="{{if .HasPhoto}}Có ảnh{{else}}Chưa có ảnh{{end}}">Ảnh</span><span class="{{if .HasDescription}}yes{{else}}no{{end}}" title="{{if .HasDescription}}Có mô tả{{else}}Chưa có mô tả{{end}}">Mô tả</span><span class="{{if .HasAddr}}yes{{else}}no{{end}}" title="{{if .HasAddr}}Có địa chỉ{{else}}Chưa có địa chỉ{{end}}">Địa chỉ</span></div></td>
-    <td class="muted">{{.Source}}</td>
+    <td data-label="Loại">{{if .Category}}{{.Category}}{{else}}<span class="muted">Chưa có</span>{{end}}</td>
+    <td class="c-state"><span class="state s-{{.Status}}">{{statusName .Status}}</span></td>
+    <td class="c-wide"><div class="facts"><span class="{{if .HasPhoto}}yes{{else}}no{{end}}" title="{{if .HasPhoto}}Có ảnh{{else}}Chưa có ảnh{{end}}">Ảnh</span><span class="{{if .HasDescription}}yes{{else}}no{{end}}" title="{{if .HasDescription}}Có mô tả{{else}}Chưa có mô tả{{end}}">Mô tả</span><span class="{{if .HasAddr}}yes{{else}}no{{end}}" title="{{if .HasAddr}}Có địa chỉ{{else}}Chưa có địa chỉ{{end}}">Địa chỉ</span></div></td>
+    <td class="muted" data-label="Nguồn">{{.Source}}</td>
   </tr>{{end}}
   </tbody>
 </table>

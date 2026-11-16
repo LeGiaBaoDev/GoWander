@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
 
@@ -33,9 +34,11 @@ const (
 // say what is missing instead of failing.
 type Handler struct {
 	Store         Store
-	Mailer        Mailer // "quên mật khẩu" emails (ADR-039)
-	BaseURL       string // ADMIN_BASE_URL, for the link in that email
-	SecureCookies bool   // https deployments; false only for http://localhost development
+	Mailer        Mailer        // "quên mật khẩu" emails (ADR-039)
+	BaseURL       string        // ADMIN_BASE_URL, for the link in that email
+	SecureCookies bool          // https deployments; false only for http://localhost development
+	Media         media.Storage // uploaded photos (ADR-035); nil: uploads say storage is not set up
+	MediaURL      string        // public base of photo files (MEDIA_BASE_URL)
 	Health        []Health
 	DataStatus    string // ROUTING_DATA_STATUS (ADR-027)
 	Log           *slog.Logger
@@ -65,6 +68,9 @@ var actionNames = map[string]string{
 	"account.temporary_password":     "Cấp mật khẩu tạm",
 	"account.rename":                 "Đổi tên hiển thị",
 	"account.email_change":           "Đổi email nhận link",
+	"photo.add":                      "Thêm ảnh",
+	"photo.cover":                    "Đổi ảnh bìa",
+	"photo.delete":                   "Xoá ảnh",
 	"role.grant":                     "Cấp vai trò",
 	"role.revoke":                    "Thu hồi vai trò",
 	"place.update":                   "Sửa địa điểm",
@@ -126,9 +132,13 @@ var pages = func() map[string]*template.Template {
 		"num":         groupDigits,
 		"statusName":  func(s string) string { return statusNames[s] },
 		"missingName": func(s string) string { return missingNames[s] },
-		"detail":      auditDetail,
-		"roleName":    func(code string) string { return cmpOr(roleNames[code], code) },
-		"entityName":  func(t string) string { return cmpOr(entityNames[t], t) },
+		"photoForm": func(action, csrf string, licenses []string, button string) map[string]any {
+			return map[string]any{"Action": action, "CSRF": csrf, "Licenses": licenses, "Button": button}
+		},
+		"ago":        func(t time.Time) string { return ago(t, time.Now()) },
+		"detail":     auditDetail,
+		"roleName":   func(code string) string { return cmpOr(roleNames[code], code) },
+		"entityName": func(t string) string { return cmpOr(entityNames[t], t) },
 		"short": func(s string) string {
 			if len(s) > 8 {
 				return s[:8]
@@ -165,7 +175,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset"} {
+	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "notifications", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -174,7 +184,7 @@ var pages = func() map[string]*template.Template {
 func (h Handler) Mount(r chi.Router) {
 	static, _ := fs.Sub(webFS, "web/static")
 	r.Route("/admin", func(r chi.Router) {
-		r.Use(securityHeaders)
+		r.Use(h.securityHeaders, limitBody)
 		r.Handle("/static/*", http.StripPrefix("/admin/static/", http.FileServer(http.FS(static))))
 		if h.Store == nil {
 			r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +205,7 @@ func (h Handler) Mount(r chi.Router) {
 			r.Use(h.requireSession, h.requireCSRF)
 			r.Get("/", h.home)
 			r.Get("/reports", h.reports)
+			r.Get("/notifications", h.notifications)
 			r.Post("/logout", h.logout)
 			r.Get("/password", h.passwordPage)
 			r.Post("/password", h.changePassword)
@@ -206,6 +217,9 @@ func (h Handler) Mount(r chi.Router) {
 				r.Get("/places", h.places)
 				r.Get("/places/{id}", h.placeForm)
 				r.Post("/places/{id}", h.savePlace)
+				r.Post("/places/{id}/photos", h.addPlacePhoto)
+				r.Post("/places/{id}/photos/{photo}/cover", h.placePhotoAction("cover"))
+				r.Post("/places/{id}/photos/{photo}/delete", h.placePhotoAction("delete"))
 				r.Get("/categories", h.categories)
 				r.Post("/categories/{id}", h.saveCategory)
 				for kind := range GuideKinds {
@@ -214,6 +228,8 @@ func (h Handler) Mount(r chi.Router) {
 					r.Post("/"+kind+"/new", h.saveGuide(kind))
 					r.Get("/"+kind+"/{id}", h.guideForm(kind))
 					r.Post("/"+kind+"/{id}", h.saveGuide(kind))
+					r.Post("/"+kind+"/{id}/image", h.guideImage(kind, true))
+					r.Post("/"+kind+"/{id}/image/delete", h.guideImage(kind, false))
 				}
 			})
 			r.Group(func(r chi.Router) {
@@ -224,11 +240,24 @@ func (h Handler) Mount(r chi.Router) {
 	})
 }
 
-// securityHeaders: no framing, no inline scripts, nothing cached (pages hold operator data).
-func securityHeaders(next http.Handler) http.Handler {
+// limitBody caps every request body: forms are small, a photo upload is at most media.MaxBytes plus the form fields.
+func limitBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, media.MaxBytes+1<<20)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders: no framing, no inline scripts, nothing cached (pages hold operator data). Photos may come from the
+// media host (R2's CDN in production), so its origin is allowed for images.
+func (h Handler) securityHeaders(next http.Handler) http.Handler {
+	img := "'self' data:"
+	if u, err := url.Parse(h.MediaURL); err == nil && u.Host != "" {
+		img += " " + u.Scheme + "://" + u.Host
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		hd.Set("Content-Security-Policy", "default-src 'self'; img-src "+img+"; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
 		hd.Set("Cache-Control", "no-store")
@@ -242,6 +271,14 @@ func (h Handler) render(w http.ResponseWriter, r *http.Request, status int, page
 	}
 	data["Me"] = current(r)
 	data["Page"] = page
+	// The bell on every signed-in page; a failure only hides it.
+	if me := current(r); me.UserID != "" && !me.MustChange && h.Store != nil {
+		if bell, err := h.Store.Notifications(r.Context(), me.UserID, 6); err == nil {
+			data["Bell"] = bell
+		} else {
+			h.Log.Warn("notifications failed", "requestId", httpx.RequestID(r), "err", err)
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := pages[page].Execute(w, data); err != nil {
@@ -481,11 +518,14 @@ func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // usageQuery reads the period (and, on the reports page, the departure province) from the query string.
-func usageQuery(r *http.Request, withArea bool) UsageQuery {
+func usageQuery(r *http.Request, withLine bool) UsageQuery {
 	q := UsageQuery{}
 	q.Grain = grainOf(r.URL.Query().Get("grain"))
-	if withArea {
-		q.Area = r.URL.Query().Get("area")
+	if withLine {
+		q.Line = r.URL.Query().Get("line")
+		if k := r.URL.Query().Get("kind"); slices.ContainsFunc(Vehicles, func(v struct{ Key, Name string }) bool { return v.Key == k }) {
+			q.Kind = k
+		}
 	}
 	return q
 }
@@ -505,6 +545,21 @@ func (h Handler) health(r *http.Request) (states []map[string]any, down []string
 	return states, down
 }
 
+// notifications is the full list (30 days); opening it marks everything as read.
+func (h Handler) notifications(w http.ResponseWriter, r *http.Request) {
+	me := current(r)
+	list, err := h.Store.Notifications(r.Context(), me.UserID, 100)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if err := h.Store.MarkNotificationsSeen(r.Context(), me.UserID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, "notifications", map[string]any{"List": list})
+}
+
 // home is the overview: customers and revenue at a glance (owner, 16-11-2026); details live on /admin/reports.
 func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 	q := usageQuery(r, false)
@@ -514,28 +569,24 @@ func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, down := h.health(r)
-	shapes, err := h.Store.AreaShapes(r.Context())
+	shapes, err := h.Store.WardShapes(r.Context())
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 	if u.Total < MinShown { // not enough real use yet: sample numbers, badged (mock.go)
-		u = sampleUsage(q, u.Areas, shapes)
+		u = sampleUsage(q, u.LineOptions)
+		u.Wards = sampleWards(u.Total, shapes)
 	}
 	rev := sampleRevenue(q.Grain) // no revenue source yet (mock.go)
-	var top []bar
-	if len(u.Places) > 5 {
-		top = u.Places[:5]
-	} else {
-		top = u.Places
-	}
+	// The overview (owner, 16-11-2026): four numbers, revenue over time, where people go (hot spots for affiliate
+	// shops) and the places they look for.
 	h.render(w, r, http.StatusOK, "home", map[string]any{
 		"U": u, "Grains": Grains, "GrainBase": "/admin/?", "MinShown": MinShown, "Down": down, "Greeting": greeting(time.Now()), "Welcome": r.URL.Query().Get("welcome") == "1",
 		"OpensChange": delta(u.Opens, u.PrevOpens), "SearchChange": delta(u.Total, u.PrevTotal),
-		"Opens": newLineChart("opens", u.OpensSeries, u.PrevOpensSeries, "lượt mở", groupDigits, u.Grain.partial()), "Modes": donut(u.Modes, u.Total), "TopPlaces": top,
-		"Map": newVNMap(shapes, u.AreaCounts, "", "/admin/reports?grain="+u.Grain.Key+"&area="),
+		"TopPlaces": u.Places[:min(8, len(u.Places))], "Hot": newWardMap(shapes, u.Wards), "FewShops": fewShops,
 		"Rev": rev, "RevChange": delta(int(rev.Total/1000), int(rev.Prev/1000)), "ProfitChange": delta(int(rev.Profit/1000), int(rev.PrevProfit/1000)),
-		"RevChart": revenueChart(rev), "Starts": SampleStarts(u.Total),
+		"RevChart": revenueChart(rev),
 	})
 }
 
@@ -564,17 +615,22 @@ func (h Handler) reports(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, r, err)
 			return
 		}
-		shapes, err := h.Store.AreaShapes(r.Context())
-		if err != nil {
-			h.fail(w, r, err)
-			return
-		}
 		if u.Total < MinShown { // not enough real use yet: sample numbers, badged (mock.go)
-			u = sampleUsage(u.UsageQuery, u.Areas, shapes)
+			u = sampleUsage(u.UsageQuery, u.LineOptions)
 		}
-		data["U"], data["Searches"] = u, newLineChart("searches", u.Series, u.PrevSeries, "lượt tìm", countText, u.Grain.partial())
-		data["GrainBase"] = "/admin/reports?" + map[bool]string{true: "area=" + url.QueryEscape(u.Area) + "&", false: ""}[u.Area != ""]
-		data["Map"] = newVNMap(shapes, u.AreaCounts, u.Area, "/admin/reports?grain="+u.Grain.Key+"&area=")
+		unit := "lượt tìm"
+		if u.Line != "" {
+			unit = "lượt gợi ý"
+		}
+		data["U"], data["Searches"] = u, newLineChart("searches", u.Series, u.PrevSeries, unit, countText, u.Grain.partial())
+		keep := url.Values{}
+		for k, v := range map[string]string{"line": u.Line, "kind": u.Kind} {
+			if v != "" {
+				keep.Set(k, v)
+			}
+		}
+		data["GrainBase"] = "/admin/reports?" + keep.Encode() + map[bool]string{true: "&", false: ""}[len(keep) > 0]
+		data["Vehicles"] = Vehicles
 		data["SearchChange"] = delta(u.Total, u.PrevTotal)
 	}
 	h.render(w, r, http.StatusOK, "reports", data)
@@ -633,13 +689,151 @@ func (h Handler) placeForm(w http.ResponseWriter, r *http.Request) {
 	h.renderPlace(w, r, http.StatusOK, p, "", r.URL.Query().Get("saved") == "1")
 }
 
-func (h Handler) renderPlace(w http.ResponseWriter, r *http.Request, status int, p Place, problem string, saved bool) {
+func (h Handler) renderPlace(w http.ResponseWriter, r *http.Request, status int, p Place, problem string, saved bool, photoProblem ...string) {
 	cats, err := h.Store.Categories(r.Context())
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, status, "place", map[string]any{"P": p, "Categories": cats, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved})
+	photos, err := h.Store.PlacePhotos(r.Context(), p.ID)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, status, "place", map[string]any{"P": p, "Categories": cats, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved,
+		"Photos": photos, "Licenses": PhotoLicenses, "MediaURL": h.MediaURL, "MediaReady": h.Media != nil,
+		"PhotoNotice":  map[string]string{"added": "Đã thêm ảnh.", "cover": "Đã đổi ảnh bìa.", "deleted": "Đã xoá ảnh."}[r.URL.Query().Get("photo")],
+		"PhotoProblem": strings.Join(photoProblem, "")})
+}
+
+// receivePhoto checks, re-encodes and stores the uploaded file; the problem text is for the editor.
+func (h Handler) receivePhoto(r *http.Request) (key string, in PhotoInput, problem string, err error) {
+	in = PhotoInput{Credit: r.PostFormValue("credit"), License: r.PostFormValue("license"), Alt: r.PostFormValue("alt")}
+	if h.Media == nil {
+		return "", in, "chưa cấu hình nơi lưu ảnh (MEDIA_DIR hoặc R2)", nil
+	}
+	if err := validatePhoto(&in); err != nil {
+		return "", in, strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), nil
+	}
+	file, _, err := r.FormFile("photo")
+	if err != nil {
+		return "", in, "chọn một ảnh JPEG, PNG hoặc WebP (tối đa 10 MB)", nil
+	}
+	defer file.Close()
+	p, err := media.Process(file)
+	switch {
+	case errors.Is(err, media.ErrNotImage):
+		return "", in, "file không phải ảnh JPEG, PNG hoặc WebP", nil
+	case errors.Is(err, media.ErrTooLarge):
+		return "", in, "ảnh quá lớn (tối đa 10 MB và 12.000 px mỗi cạnh)", nil
+	case err != nil:
+		return "", in, "", err
+	}
+	for name, data := range p.Files {
+		if err := h.Media.Put(r.Context(), name, data); err != nil {
+			return "", in, "", fmt.Errorf("store photo: %w", err)
+		}
+	}
+	return p.Key, in, "", nil
+}
+
+// dropFiles deletes a photo's files once no row uses them; a failure is logged, the page goes on.
+func (h Handler) dropFiles(r *http.Request, key string) {
+	if key == "" || h.Media == nil {
+		return
+	}
+	for _, side := range media.Sizes {
+		if err := h.Media.Delete(r.Context(), media.FileName(key, side)); err != nil {
+			h.Log.Warn("photo file not deleted", "requestId", httpx.RequestID(r), "err", err)
+		}
+	}
+}
+
+func (h Handler) addPlacePhoto(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	back := "/admin/places/" + url.PathEscape(id)
+	key, in, problem, err := h.receivePhoto(r)
+	if err == nil && problem == "" {
+		err = h.Store.AddPlacePhoto(r.Context(), current(r).UserID, id, key, in, httpx.RequestID(r))
+		if errors.Is(err, ErrBadInput) {
+			problem, err = strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), nil
+		}
+	}
+	switch {
+	case errors.Is(err, ErrNotFound):
+		h.render(w, r, http.StatusNotFound, "message", map[string]any{"Title": "Không có địa điểm này", "Text": "Địa điểm không tồn tại hoặc đường dẫn sai."})
+	case err != nil:
+		h.fail(w, r, err)
+	case problem != "":
+		p, err := h.Store.Place(r.Context(), id)
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		h.renderPlace(w, r, http.StatusUnprocessableEntity, p, "", false, problem)
+	default:
+		http.Redirect(w, r, back+"?photo=added#photos", http.StatusSeeOther)
+	}
+}
+
+func (h Handler) placePhotoAction(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, photo := chi.URLParam(r, "id"), chi.URLParam(r, "photo")
+		var err error
+		if action == "cover" {
+			err = h.Store.SetPlaceCover(r.Context(), current(r).UserID, id, photo, httpx.RequestID(r))
+		} else {
+			var orphan string
+			orphan, err = h.Store.DeletePlacePhoto(r.Context(), current(r).UserID, id, photo, httpx.RequestID(r))
+			h.dropFiles(r, orphan)
+		}
+		switch {
+		case errors.Is(err, ErrNotFound):
+			h.render(w, r, http.StatusNotFound, "message", map[string]any{"Title": "Không có ảnh này", "Text": "Ảnh đã bị xoá hoặc đường dẫn sai."})
+		case err != nil:
+			h.fail(w, r, err)
+		default:
+			http.Redirect(w, r, "/admin/places/"+url.PathEscape(id)+"?photo="+map[string]string{"cover": "cover", "delete": "deleted"}[action]+"#photos", http.StatusSeeOther)
+		}
+	}
+}
+
+func (h Handler) guideImage(kind string, add bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		back := "/admin/" + kind + "/" + url.PathEscape(id)
+		var key, problem string
+		var in PhotoInput
+		var err error
+		if add {
+			key, in, problem, err = h.receivePhoto(r)
+		}
+		if err == nil && problem == "" {
+			var orphan string
+			orphan, err = h.Store.SetGuideImage(r.Context(), current(r).UserID, kind, id, key, in, httpx.RequestID(r))
+			if errors.Is(err, ErrBadInput) {
+				problem, err = strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), nil
+			}
+			if err == nil {
+				h.dropFiles(r, orphan)
+			}
+		}
+		switch {
+		case errors.Is(err, ErrNotFound):
+			h.notFound(w, r, GuideKinds[kind])
+		case err != nil:
+			h.fail(w, r, err)
+		case problem != "":
+			g, err := h.Store.GuideItem(r.Context(), kind, id)
+			if err != nil {
+				h.fail(w, r, err)
+				return
+			}
+			h.renderGuide(w, r, http.StatusUnprocessableEntity, GuideKinds[kind], g, "", false, problem)
+		default:
+			http.Redirect(w, r, back+"?photo="+map[bool]string{true: "added", false: "deleted"}[add]+"#photo", http.StatusSeeOther)
+		}
+	}
 }
 
 func (h Handler) savePlace(w http.ResponseWriter, r *http.Request) {
@@ -727,8 +921,11 @@ func (h Handler) guideForm(kind string) http.HandlerFunc {
 	}
 }
 
-func (h Handler) renderGuide(w http.ResponseWriter, r *http.Request, status int, k guideKind, g GuideItem, problem string, saved bool) {
-	h.render(w, r, status, "guide_item", map[string]any{"K": k, "G": g, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved})
+func (h Handler) renderGuide(w http.ResponseWriter, r *http.Request, status int, k guideKind, g GuideItem, problem string, saved bool, photoProblem ...string) {
+	h.render(w, r, status, "guide_item", map[string]any{"K": k, "G": g, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved,
+		"Licenses": PhotoLicenses, "MediaURL": h.MediaURL, "MediaReady": h.Media != nil,
+		"PhotoNotice":  map[string]string{"added": "Đã lưu ảnh.", "deleted": "Đã gỡ ảnh."}[r.URL.Query().Get("photo")],
+		"PhotoProblem": strings.Join(photoProblem, "")})
 }
 
 func (h Handler) saveGuide(kind string) http.HandlerFunc {

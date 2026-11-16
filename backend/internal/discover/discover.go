@@ -39,6 +39,21 @@ type PlaceSummary struct {
 	Source           Source       `json:"source"`
 }
 
+// PopularPlace: one of the places most searched for over the last PopularDays (Khám phá › "Đang được tìm nhiều",
+// owner 16-11-2026). Only the rank is public, never the count; a place needs PopularMin searches (ADR-038 §5).
+type PopularPlace struct {
+	PlaceSummary
+	Rank     int    `json:"rank"`
+	ThumbURL string `json:"thumbUrl,omitempty"`
+	photoKey string
+}
+
+const (
+	PopularDays  = 7
+	PopularMin   = 5
+	PopularLimit = 10
+)
+
 type Media struct {
 	StorageKey   string `json:"storageKey"`
 	MediaType    string `json:"mediaType"`
@@ -46,6 +61,8 @@ type Media struct {
 	SourceCredit string `json:"sourceCredit"`
 	License      string `json:"license"`
 	IsCover      bool   `json:"isCover"`
+	URL          string `json:"url"`      // 1600 px
+	ThumbURL     string `json:"thumbUrl"` // 480 px
 }
 
 type Food struct {
@@ -116,5 +133,6 @@ type Store interface {
 	Clusters(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	Place(ctx context.Context, id string) (PlaceDetail, error)
 	Guide(ctx context.Context) (Guide, error) // published dishes and stories of the TP.HCM guide
+	Popular(ctx context.Context) ([]PopularPlace, error)
 	Ready(ctx context.Context) error
 }

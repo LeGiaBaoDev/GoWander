@@ -3,6 +3,28 @@
 document.addEventListener("change", (e) => {
   const s = e.target;
   if (s instanceof HTMLSelectElement && s.dataset.go !== undefined && s.value) location.assign(s.value);
+  if (s instanceof HTMLSelectElement && s.dataset.submit !== undefined) s.form?.requestSubmit();
+});
+
+// Small screens: ☰ opens the menu under the bar.
+document.addEventListener("click", (e) => {
+  const t = e.target instanceof Element ? e.target.closest(".menu-toggle") : null;
+  if (!t) return;
+  const side = t.closest(".side");
+  const open = side.classList.toggle("nav-open");
+  t.setAttribute("aria-expanded", String(open));
+  t.setAttribute("aria-label", open ? "Đóng menu" : "Mở menu");
+});
+
+// The bell and the account menu close on a click outside them or on Escape.
+document.addEventListener("click", (e) => {
+  document.querySelectorAll("details.bell[open], details.me-pop[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll("details.bell[open], details.me-pop[open]").forEach((d) => { d.open = false; d.querySelector("summary")?.focus(); });
+  const side = document.querySelector(".side.nav-open");
+  if (side) { side.classList.remove("nav-open"); side.querySelector(".menu-toggle")?.setAttribute("aria-expanded", "false"); }
 });
 
 // Every password field gets an eye button to show or hide what was typed (owner, 16-11-2026). The field goes back to

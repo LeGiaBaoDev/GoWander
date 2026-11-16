@@ -22,7 +22,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587}
+	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587,
+		MediaDir: "var/media", MediaBaseURL: "http://localhost:8090/media"}
 	if c != want {
 		t.Fatalf("got %+v, want %+v", c, want)
 	}
@@ -32,12 +33,12 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadAdmin(t *testing.T) {
-	c, err := Load(only("ADMIN_DATABASE_URL", "postgres://gowander_admin:secret@127.0.0.1/gowander", "ADMIN_BASE_URL", "https://admin.example.vn/",
+	c, err := Load(only("ADMIN_DATABASE_URL", "postgres://gowander_admin:secret@127.0.0.1/gowander", "ADMIN_BASE_URL", "http://localhost:8091/",
 		"SMTP_HOST", "smtp.gmail.com", "SMTP_USERNAME", "ops@example.vn", "SMTP_PASSWORD", "app-password", "SMTP_FROM", " ops@example.vn "))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.AdminEnabled() || !c.MailEnabled() || c.AdminBaseURL != "https://admin.example.vn" || c.SMTPPort != 587 || c.SMTPFrom != "ops@example.vn" {
+	if !c.AdminEnabled() || !c.MailEnabled() || c.AdminBaseURL != "http://localhost:8091" || c.SMTPPort != 587 || c.SMTPFrom != "ops@example.vn" {
 		t.Fatalf("got %+v", c)
 	}
 }
@@ -68,6 +69,8 @@ func TestLoadInvalid(t *testing.T) {
 		"ADMIN_DATABASE_URL not pg": only("ADMIN_DATABASE_URL", "mysql://admin:secret@db/gowander"),
 		"ADMIN_BASE_URL plain http": only("ADMIN_BASE_URL", "http://admin.example.vn"),
 		"ADMIN_BASE_URL with path":  only("ADMIN_BASE_URL", "https://example.vn/admin"),
+		"https Admin before R2":     only("ADMIN_BASE_URL", "https://admin.example.vn"),
+		"MEDIA_BASE_URL relative":   only("MEDIA_BASE_URL", "/media"),
 		"SMTP without from":         only("SMTP_HOST", "smtp.gmail.com"),
 		"SMTP user without secret":  only("SMTP_HOST", "smtp.gmail.com", "SMTP_FROM", "a@example.vn", "SMTP_USERNAME", "a@example.vn"),
 		"SMTP_PORT not a number":    only("SMTP_PORT", "smtp"),

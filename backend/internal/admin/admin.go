@@ -77,16 +77,23 @@ type Store interface {
 	DeleteSession(ctx context.Context, token string) error
 	Audit(ctx context.Context, e AuditEntry) error
 	AuditLog(ctx context.Context, limit int) ([]AuditEntry, error)
+	Notifications(ctx context.Context, userID string, limit int) (Bell, error)
+	WardShapes(ctx context.Context) ([]WardShape, error)
+	MarkNotificationsSeen(ctx context.Context, userID string) error
 	AuditPage(ctx context.Context, q AuditQuery) ([]AuditEntry, int, error)
 	AuditActivity(ctx context.Context, q AuditQuery) ([]bar, error)
 	Overview(ctx context.Context) (Overview, error)
 	Usage(ctx context.Context, q UsageQuery) (Usage, error)
-	AreaShapes(ctx context.Context) ([]AreaShape, error)
 	GuideItems(ctx context.Context, kind string) ([]GuideRow, error)
 	GuideItem(ctx context.Context, kind, id string) (GuideItem, error)
 	SaveGuideItem(ctx context.Context, actorID, kind string, g GuideItem, requestID string) (id string, err error)
 	Places(ctx context.Context, q PlaceQuery) (list []PlaceRow, total int, err error)
 	Place(ctx context.Context, id string) (Place, error)
+	PlacePhotos(ctx context.Context, placeID string) ([]Photo, error)
+	AddPlacePhoto(ctx context.Context, actorID, placeID, key string, in PhotoInput, requestID string) error
+	SetPlaceCover(ctx context.Context, actorID, placeID, photoID, requestID string) error
+	DeletePlacePhoto(ctx context.Context, actorID, placeID, photoID, requestID string) (orphan string, err error)
+	SetGuideImage(ctx context.Context, actorID, kind, id, key string, in PhotoInput, requestID string) (orphan string, err error)
 	UpdatePlace(ctx context.Context, actorID string, p Place, requestID string) error
 	Categories(ctx context.Context) ([]Category, error)
 	UpdateCategory(ctx context.Context, actorID string, c Category, requestID string) error

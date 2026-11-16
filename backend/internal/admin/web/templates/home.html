@@ -30,59 +30,30 @@
 </section>
 
 <div class="cols wide-first">
-  <section class="card">
-    <div class="row"><h2>Lượt mở app theo {{$u.Grain.Lower}}{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
-    {{template "linechart" .Opens}}
-  </section>
-  <section class="card">
-    <h2>Phương tiện được chọn{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
-    {{if and .Modes (ge $u.Total .MinShown)}}
-    <div class="donut-wrap">
-      <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Tỉ lệ phương tiện khi tìm đường">
-        <circle class="track" cx="21" cy="21" r="15.915" fill="none" stroke-width="6"/>
-        {{range .Modes}}<circle class="tone{{.Tone}}" cx="21" cy="21" r="15.915" fill="none" stroke-width="6" stroke-dasharray="{{.Dash}}" stroke-dashoffset="{{.Offset}}"><title>{{.Label}}: {{.Pct}}%</title></circle>{{end}}
-        <text x="21" y="21" class="donut-total{{if gt $u.Total 9999}} long{{end}}">{{count $u.Total}}</text><text x="21" y="26.5" class="donut-label">lượt tìm</text>
-      </svg>
-      <ul class="legend">{{range .Modes}}<li><span class="dot tone{{.Tone}}" aria-hidden="true"></span>{{.Label}}<span class="muted">{{.Pct}}%</span></li>{{end}}</ul>
-    </div>
-    {{else}}<p class="muted">Chưa đủ {{.MinShown}} lượt tìm đường để chia theo phương tiện.</p>{{end}}
-  </section>
-</div>
-
-<div class="cols wide-first">
   <section class="card{{if .Rev.Sample}} is-sample{{end}}">
     <div class="row"><h2>Doanh thu theo {{$u.Grain.Lower}}{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
     {{template "linechart" .RevChart}}
   </section>
   <section class="card{{if .Rev.Sample}} is-sample{{end}}">
-    <h2>Doanh thu theo kênh{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
+    <h2>Doanh thu đến từ đâu{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
     {{$total := 0}}{{range .Rev.ByChannel}}{{$total = add $total .Value}}{{end}}
-    <div class="channels">{{range $i, $c := .Rev.ByChannel}}<div class="bar"><span>{{$c.Label}}</span><span class="muted">{{pct $c.Value $total}}%</span>
-      <progress class="{{if $i}}cat{{end}}" max="{{$total}}" value="{{$c.Value}}" aria-label="{{$c.Label}}: {{pct $c.Value $total}}%"></progress></div>{{end}}</div>
-    <p class="muted small">Kênh theo kế hoạch kinh doanh: quảng bá quán trước, affiliate sau. Lợi nhuận = doanh thu trừ chi phí (máy chủ, dữ liệu, nhân sự).</p>
+    {{range $i, $c := .Rev.ByChannel}}<div class="bar"><span>{{$c.Label}}</span><span class="muted">{{pct $c.Value $total}}%</span>
+      <progress class="{{if $i}}cat{{end}}" max="{{$total}}" value="{{$c.Value}}" aria-label="{{$c.Label}}: {{pct $c.Value $total}}%"></progress></div>{{end}}
+    <p class="muted small">Quảng bá quán trước, affiliate sau (kế hoạch kinh doanh). Lợi nhuận = doanh thu trừ chi phí máy chủ, dữ liệu, nhân sự.</p>
   </section>
 </div>
 
-<section class="card map-card">
-  <div class="row"><h2>Khách tìm đường từ đâu{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="muted small">theo tỉnh, thành xuất phát · bấm một tỉnh để xem chi tiết</span></div>
-  {{template "vnmap" .Map}}
+<section class="card">
+  <div class="row"><h2>Khách đi đâu nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="muted small">TP.HCM theo phường, xã · màu đậm = nhiều lượt tìm đường kết thúc ở đó · rê chuột để xem tên</span></div>
+  {{template "hotmap" .}}
 </section>
 
-<div class="cols">
-  <section class="card">
-    <div class="row"><h2>Điểm đến được tìm nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><a href="/admin/reports?grain={{$u.Grain.Key}}">Xem tất cả →</a></div>
-    {{with .TopPlaces}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $p := .}}
-      <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}}</span>
-        <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
-    {{else}}<p class="muted">Chưa có địa điểm nào được tìm đường tới đủ {{.MinShown}} lần. Danh sách hiện khi nhiều người dùng app hơn.</p>{{end}}
-  </section>
-  <section class="card">
-    <h2>Hành trình của khách{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
-    <ol class="funnel">
-      <li><span class="step t1">1</span><div><strong>{{num $u.Opens}}</strong> lượt mở app</div></li>
-      <li><span class="step t2">2</span><div><strong>{{count $u.Total}}</strong> lượt tìm đường{{if and $u.Opens (ge $u.Total .MinShown)}} <span class="muted">· {{pct $u.Total $u.Opens}} lượt mỗi 100 lần mở</span>{{end}}</div></li>
-      <li><span class="step t3">3</span><div><strong>{{num .Starts}}</strong> lượt bấm "Bắt đầu" đi theo tuyến <span class="sample">Mẫu</span> <span class="muted">· chưa đo, cần bản app mới</span></div></li>
-    </ol>
-  </section>
-</div>
+<section class="card">
+  <div class="row"><h2>Địa điểm được tìm đường tới nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><a href="/admin/reports?grain={{$u.Grain.Key}}">Xem báo cáo →</a></div>
+  <p class="muted small">Đang đo: lượt tìm đường có điểm đến cách địa điểm dưới 30 m (ý định đi). Bấm "Bắt đầu" và "đã tới nơi" sẽ có khi phát hành bản app mới.</p>
+  {{with .TopPlaces}}<ol class="rank two-col">{{$max := (index . 0).Value}}{{range $i, $p := .}}
+    <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}} lượt</span>
+      <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
+  {{else}}<p class="muted">Chưa có địa điểm nào được tìm đường tới đủ {{.MinShown}} lần.</p>{{end}}
+</section>
 {{end}}

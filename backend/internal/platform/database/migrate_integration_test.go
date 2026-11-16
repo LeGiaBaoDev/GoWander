@@ -25,10 +25,10 @@ var discoverTables = []string{"food_items", "historical_stories", "place_categor
 var adminTables = []string{"admin_audit_logs", "admin_credentials", "admin_password_resets", "admin_sessions", "roles", "user_contacts", "user_roles", "users"}
 
 // usageTables (0005, ADR-038): daily counters the public API writes.
-var usageTables = []string{"usage_app_opens", "usage_bus_lines", "usage_place_routes", "usage_route_plans"}
+var usageTables = []string{"usage_app_opens", "usage_bus_lines", "usage_dest_cells", "usage_place_routes", "usage_route_plans"}
 
 func allTables() []string {
-	all := append(append(append([]string{"admin_areas"}, discoverTables...), adminTables...), usageTables...)
+	all := append(append(append([]string{"admin_areas", "city_wards"}, discoverTables...), adminTables...), usageTables...) // city_wards: 0012, the Admin map only
 	sort.Strings(all)
 	return all
 }
@@ -116,7 +116,7 @@ func TestMigrationsUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(content, ",") != "food_items:INSERT,food_items:SELECT,historical_stories:INSERT,historical_stories:SELECT,place_categories:SELECT,place_media:SELECT,places:SELECT" {
+	if content, err := pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || strings.Join(content, ",") != "food_items:INSERT,food_items:SELECT,historical_stories:INSERT,historical_stories:SELECT,place_categories:SELECT,place_media:DELETE,place_media:INSERT,place_media:SELECT,places:SELECT" {
 		t.Fatalf("gowander_admin on content: %v %v", content, err)
 	}
 	if v, dirty, err := m.Version(); err != nil || dirty || v == 0 {

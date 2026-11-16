@@ -48,6 +48,17 @@ class GoWanderApiTest {
     }
 
     @Test
+    fun popularParsesRanksFromTheServer() = runTest {
+        // Shape of GET /api/v1/places/popular (backend discover.PopularPlace).
+        val body = """{"days":7,"places":[{"id":"p1","name":"Chợ Bến Thành","slug":"cho","lat":10.77,"lon":106.69,
+            "category":{"slug":"market","name":"Chợ"},"source":{"kind":"OSM"},"rank":1,"thumbUrl":"https://cdn.example.vn/media/img/a-480.jpg"}]}"""
+        val p = api(HttpStatusCode.OK, body).popular()
+        assertEquals("/api/v1/places/popular", requests.single().url.encodedPath)
+        assertEquals(1, p.single().rank)
+        assertEquals("Chợ", p.single().category?.name)
+    }
+
+    @Test
     fun guideParsesTheServerDishesAndStories() = runTest {
         // Shape of GET /api/v1/guide/hcm (backend discover.Guide); unknown fields are ignored.
         val body = """{"dishes":[{"id":"hcm-food-pho","name":"Phở","summary":"S","description":"D","shops":[{"name":"Quán A","address":"1 Lê Lợi"}],"sources":"Nguồn A","extra":1}],

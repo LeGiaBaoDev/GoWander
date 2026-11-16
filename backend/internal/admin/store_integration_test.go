@@ -220,6 +220,33 @@ func TestAccounts(t *testing.T) {
 		}
 	})
 
+	t.Run("notifications: security lines for everyone, my own edits are not news", func(t *testing.T) {
+		var me string
+		if err := s.Pool.QueryRow(ctx, `SELECT user_id::text FROM admin_credentials WHERE login = 'baole'`).Scan(&me); err != nil {
+			t.Fatal(err)
+		}
+		b, err := s.Notifications(ctx, me, 100)
+		if err != nil || b.Unread == 0 || b.Unread != len(b.Notices) {
+			t.Fatalf("all unread before the first look: %d of %d %v", b.Unread, len(b.Notices), err)
+		}
+		actions := map[string]bool{}
+		for _, n := range b.Notices {
+			actions[n.Action] = true
+			if n.Action == "admin.login_failed" && (!n.Bad || n.Object != "Gia Bảo" && n.Object != "baole") {
+				t.Errorf("failed sign-in: %+v", n)
+			}
+		}
+		if !actions["admin.login_failed"] || !actions["admin.password_reset_requested"] || actions["admin.login"] || actions["account.rename"] {
+			t.Fatalf("which lines notify: %v", actions)
+		}
+		if err := s.MarkNotificationsSeen(ctx, me); err != nil {
+			t.Fatal(err)
+		}
+		if after, _ := s.Notifications(ctx, me, 100); after.Unread != 0 || len(after.Notices) != len(b.Notices) {
+			t.Fatalf("read, still listed: %d unread of %d", after.Unread, len(after.Notices))
+		}
+	})
+
 	t.Run("the overview reads content counts as the admin role", func(t *testing.T) {
 		o, err := s.Overview(ctx)
 		if err != nil || o.Places < o.Published || o.WithPhoto > o.Places {
@@ -305,6 +332,37 @@ func TestEditPlaces(t *testing.T) {
 	if err := s.UpdatePlace(ctx, actor, Place{ID: "00000000-0000-0000-0000-000000000000", Name: "x", Status: "DRAFT"}, "r"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown place: %v", err)
 	}
+	// Photos: the first is the cover; deleting the cover passes it on; files go only when nothing uses the key.
+	in := PhotoInput{Credit: "Gia Bảo", License: "CC0"}
+	if err := s.AddPlacePhoto(ctx, actor, placeID, "img/aaaa", in, "r-p1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddPlacePhoto(ctx, actor, placeID, "img/bbbb", in, "r-p2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddPlacePhoto(ctx, actor, placeID, "img/cccc", PhotoInput{Credit: "x", License: "của tôi"}, "r"); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("unknown licence: %v", err)
+	}
+	photos, err := s.PlacePhotos(ctx, placeID)
+	if err != nil || len(photos) != 2 || !photos[0].Cover || photos[0].Key != "img/aaaa" || photos[1].Cover {
+		t.Fatalf("photos %+v %v", photos, err)
+	}
+	if err := s.SetPlaceCover(ctx, actor, placeID, photos[1].ID, "r-p3"); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := s.PlacePhotos(ctx, placeID); again[0].Key != "img/bbbb" || !again[0].Cover || again[1].Cover {
+		t.Fatalf("one cover only: %+v", again)
+	}
+	orphan, err := s.DeletePlacePhoto(ctx, actor, placeID, photos[1].ID, "r-p4")
+	if err != nil || orphan != "img/bbbb" {
+		t.Fatalf("delete returns the unused key: %q %v", orphan, err)
+	}
+	if left, _ := s.PlacePhotos(ctx, placeID); len(left) != 1 || !left[0].Cover {
+		t.Fatalf("the cover passes to the next photo: %+v", left)
+	}
+	if _, err := s.DeletePlacePhoto(ctx, actor, placeID, photos[1].ID, "r"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted twice: %v", err)
+	}
 	// Provenance is import-only: the admin role has no UPDATE on it.
 	if _, err := s.Pool.Exec(ctx, `UPDATE places SET source_ref = 'x' WHERE id = $1::uuid`, placeID); err == nil {
 		t.Fatal("the admin role could change source_ref")
@@ -332,7 +390,9 @@ func TestUsageReadsCounters(t *testing.T) {
 	defer owner.Close(ctx)
 	// Test database only: two provinces, app starts, counters for today and one day past the 30-day window.
 	_, err = owner.Exec(ctx, `
-		DELETE FROM admin_areas; DELETE FROM usage_route_plans; DELETE FROM usage_bus_lines; DELETE FROM usage_place_routes; DELETE FROM usage_app_opens;
+		DELETE FROM admin_areas; DELETE FROM usage_route_plans; DELETE FROM usage_bus_lines; DELETE FROM usage_place_routes; DELETE FROM usage_app_opens; DELETE FROM usage_dest_cells; DELETE FROM city_wards;
+		INSERT INTO city_wards (code, name, geom) VALUES ('wA', 'Phường A', ST_Multi(ST_MakeEnvelope(0, 0, 0.0045, 0.0045, 4326))),
+		  ('wB', 'Phường B', ST_Multi(ST_MakeEnvelope(0.0045, 0, 0.009, 0.0045, 4326)));
 		INSERT INTO usage_app_opens VALUES ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 12), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 30, 99);
 		INSERT INTO admin_areas (code, name, geom) VALUES
 		  ('rA', 'Tỉnh A', ST_Multi(ST_MakeEnvelope(0, 0, 1, 1, 4326))), ('rB', 'Tỉnh B', ST_Multi(ST_MakeEnvelope(1, 0, 2, 1, 4326)));
@@ -341,7 +401,9 @@ func TestUsageReadsCounters(t *testing.T) {
 		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'CAR', 'FROM', 'rB', 2), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'CAR', 'TO', '', 2),
 		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 30, 'WALK', 'FROM', 'rA', 50);
 		INSERT INTO usage_bus_lines VALUES
-		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'b19', '19', 'rA', 6), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'b8', '8', 'rA', 4)`)
+		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'b19', '19', 'rA', 6, 'BUS'), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'b8', '8', 'rA', 4, 'BUS'),
+		  ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 'm1', 'Metro số 1', 'rA', 8, 'METRO');
+		INSERT INTO usage_dest_cells VALUES ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 0, 0, 7), ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, 0, 1, 3)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,32 +411,38 @@ func TestUsageReadsCounters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(u.Series) != 30 || u.Total != 9 || u.PrevTotal != 50 || len(u.Areas) != 2 || u.Opens != 12 || u.PrevOpens != 99 {
+	if len(u.Series) != 30 || u.Total != 9 || u.PrevTotal != 50 || u.Opens != 12 || u.PrevOpens != 99 {
 		t.Fatalf("30 days, origin side only; the day 30 days ago is in the previous period: days %d total %d prev %d opens %d/%d",
 			len(u.Series), u.Total, u.PrevTotal, u.Opens, u.PrevOpens)
 	}
 	if m, err := s.Usage(ctx, UsageQuery{Grain: grainOf("month")}); err != nil || len(m.Series) != 12 || m.Series[11].Value < 9 {
 		t.Fatalf("by month: %+v %v", m.Series, err)
 	}
-	if len(u.Lines) != 1 || u.Lines[0].Label != "19" || len(u.From) != 1 || u.From[0].Label != "Tỉnh A" || len(u.To) != 1 || u.To[0].Label != "Tỉnh B" {
-		t.Fatalf("items under 5 are left out of the rankings: lines %v from %v to %v", u.Lines, u.From, u.To)
+	if len(u.Lines) != 2 || u.Lines[0].Title() != "Metro số 1" || u.Lines[1] != (BusLine{"b19", "19", "BUS", 6}) {
+		t.Fatalf("lines under 5 are left out of the ranking: %v", u.Lines)
+	}
+	if b, _ := s.Usage(ctx, UsageQuery{Grain: grainOf("day"), Kind: "BUS"}); len(b.Lines) != 1 || b.Lines[0].ID != "b19" {
+		t.Fatalf("the bus tab: %v", b.Lines)
+	}
+	if len(u.Wards) != 1 || u.Wards[0] != (WardCount{"wA", "Phường A", 7, 0}) {
+		t.Fatalf("wards: cells grouped by ward, under 5 left out: %+v", u.Wards)
+	}
+	shapes, err := s.WardShapes(ctx)
+	if err != nil || len(shapes) != 2 || !strings.HasPrefix(shapes[0].Path, "M") || shapes[0].Y > 0 || shapes[0].MinX > shapes[0].MaxX {
+		t.Fatalf("ward shapes (SVG path, y = -latitude): %+v %v", shapes, err)
+	}
+	if len(u.LineOptions) != 3 || u.LineOptions[0].Name != "8" || u.LineOptions[1].Name != "19" || u.LineOptions[2].Vehicle != "METRO" {
+		t.Fatalf("every line is in the filter, in natural order: %v", u.LineOptions)
 	}
 	if len(u.Modes) != 2 || u.Modes[0].Label != "Xe buýt" {
 		t.Fatalf("modes %v", u.Modes)
 	}
-	if u.AreaCounts["rA"] != 7 || len(u.AreaCounts) != 1 {
-		t.Fatalf("map counts leave out provinces under 5: %v", u.AreaCounts)
+	l, err := s.Usage(ctx, UsageQuery{Grain: grainOf("day"), Line: "b8"})
+	if err != nil || l.Total != 4 || l.LineName != "8" || l.Lines != nil || l.Modes != nil {
+		t.Fatalf("one line: its suggestions per day, nothing else: %+v %v", l, err)
 	}
-	shapes, err := s.AreaShapes(ctx)
-	if err != nil || len(shapes) != 2 || !strings.HasPrefix(shapes[0].Path, "M") || shapes[0].Y > 0 {
-		t.Fatalf("shapes for the map (SVG path, y = -latitude): %+v %v", shapes, err)
-	}
-	b, err := s.Usage(ctx, UsageQuery{Grain: grainOf("day"), Area: "rB"})
-	if err != nil || b.Total != 2 || b.AreaName != "Tỉnh B" || b.To != nil {
-		t.Fatalf("filtered by origin ward, no destinations: %+v %v", b, err)
-	}
-	if x, _ := s.Usage(ctx, UsageQuery{Grain: grainOf("week"), Area: "nope"}); x.Area != "" || x.Total != 59 { // 12 weeks hold both days
-		t.Fatalf("an unknown ward is ignored: %+v", x)
+	if x, _ := s.Usage(ctx, UsageQuery{Grain: grainOf("week"), Line: "nope"}); x.Line != "" || x.Total != 59 { // 12 weeks hold both days
+		t.Fatalf("an unknown line is ignored: %+v", x)
 	}
 }
 
@@ -432,6 +500,16 @@ func TestGuideItems(t *testing.T) {
 	// Saving without a change writes no audit line.
 	if _, err := s.SaveGuideItem(ctx, actor, "stories", st, "req-s3"); err != nil {
 		t.Fatal(err)
+	}
+	// A dish photo; the same file used by a place is not deleted when the dish lets it go.
+	if _, err := s.SetGuideImage(ctx, actor, "foods", id1, "img/shared", PhotoInput{Credit: "x", License: "CC0"}, "r-g1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GuideItem(ctx, "foods", id1); got.ImageKey != "img/shared" || got.ImageCredit != "x" {
+		t.Fatalf("dish photo %+v", got)
+	}
+	if orphan, err := s.SetGuideImage(ctx, actor, "foods", id1, "", PhotoInput{}, "r-g2"); err != nil || orphan != "img/shared" {
+		t.Fatalf("removing returns the unused key: %q %v", orphan, err)
 	}
 	// The slug is the app's id: the Admin role cannot change it.
 	if _, err := s.Pool.Exec(ctx, `UPDATE food_items SET slug = 'x' WHERE id::text = $1`, id1); err == nil {

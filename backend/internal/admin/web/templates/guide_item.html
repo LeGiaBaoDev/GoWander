@@ -32,10 +32,26 @@
     <h2>Trong app</h2>
     <dl>
       <dt>Mã</dt><dd>{{if .G.Slug}}<code>{{.G.Slug}}</code>{{else}}<span class="muted">tạo từ tên khi lưu lần đầu, không đổi sau đó</span>{{end}}</dd>
-      <dt>Ảnh</dt><dd>Chưa có (cần nơi lưu ảnh R2)</dd>
+      <dt>Ảnh</dt><dd>{{if .G.ImageKey}}có · <a href="#photo">xem</a>{{else}}chưa có{{end}}</dd>
       {{if .G.ID}}<dt>Cập nhật</dt><dd>{{at .G.UpdatedAt}}</dd>{{end}}
     </dl>
     <p class="muted small">{{if $food}}Quán gợi ý chưa được kiểm tra tại chỗ; app luôn hiện lời nhắc hỏi giá và giờ mở cửa.{{else}}Không thêm chi tiết lịch sử không có nguồn.{{end}}</p>
   </aside>
 </div>
+
+<section class="card" id="photo">
+  <div class="row"><h2>Ảnh</h2><span class="muted small">Một ảnh cho {{.K.Noun}}, hiện trong cẩm nang của app kèm ghi công.</span></div>
+  {{with .PhotoNotice}}<p class="notice ok" role="status">{{.}}</p>{{end}}
+  {{with .PhotoProblem}}<p class="notice bad" role="alert">Chưa lưu ảnh: {{.}}.</p>{{end}}
+  {{if not .G.ID}}<p class="muted">Lưu {{.K.Noun}} trước, rồi thêm ảnh.</p>
+  {{else}}
+    {{if .G.ImageKey}}<div class="single-photo">
+      <img src="{{.MediaURL}}/{{.G.ImageKey}}-480.jpg" alt="" width="320" height="213">
+      <div class="photo-meta"><span>© {{.G.ImageCredit}}</span><span class="muted small">{{.G.ImageLicense}}</span>
+        <form method="post" action="/admin/{{.K.Path}}/{{.G.ID}}/image/delete"><input type="hidden" name="csrf" value="{{.Me.CSRF}}"><button class="small-button danger" type="submit">Gỡ ảnh</button></form></div>
+    </div>{{end}}
+    {{if .MediaReady}}{{template "photoform" (photoForm (print "/admin/" .K.Path "/" .G.ID "/image") .Me.CSRF .Licenses (or (and .G.ImageKey "Thay ảnh") "Tải ảnh lên"))}}
+    {{else}}<p class="notice bad">Chưa cấu hình nơi lưu ảnh.</p>{{end}}
+  {{end}}
+</section>
 {{end}}

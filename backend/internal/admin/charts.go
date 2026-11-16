@@ -2,7 +2,6 @@ package admin
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,29 +28,6 @@ func delta(now, before int) change {
 	return change{Text: fmt.Sprintf("%d%%", pct), Show: true}
 }
 
-// slice is one ring segment of a donut drawn with stroke-dasharray on a circle of circumference 100.
-type slice struct {
-	Label        string
-	Value, Pct   int
-	Dash, Offset string
-	Tone         int // 1..5, colour class
-}
-
-func donut(parts []bar, total int) []slice {
-	if total <= 0 {
-		return nil
-	}
-	var out []slice
-	start := 0.0
-	for i, p := range parts {
-		share := float64(p.Value) * 100 / float64(total)
-		out = append(out, slice{Label: p.Label, Value: p.Value, Pct: int(share + 0.5),
-			Dash: fmt.Sprintf("%.2f %.2f", share, 100-share), Offset: fmt.Sprintf("%.2f", 25-start), Tone: i%5 + 1})
-		start += share
-	}
-	return out
-}
-
 // greeting by the hour in Ho Chi Minh City.
 func greeting(now time.Time) string {
 	switch h := now.In(hcm).Hour(); {
@@ -62,63 +38,6 @@ func greeting(now time.Time) string {
 	default:
 		return "Chào buổi tối"
 	}
-}
-
-// mapArea is one province on the dashboard map. Level 0 = fewer than MinShown searches (or none), 1..4 = share of the
-// busiest province. Rank 1..5 gets a numbered badge, like the owner's reference map.
-type mapArea struct {
-	AreaShape
-	Count, Level, Rank int
-	Selected           bool
-}
-
-type mapLabel struct {
-	Text1, Text2 string
-	X, Y         float64
-}
-
-// vnMap is the province map: fixed frame over Vietnam with Hoàng Sa and Trường Sa (OSM has no polygon for either
-// archipelago; they are drawn as island dots and named as in the app's region map). Labels sit just above the dots.
-type vnMap struct {
-	Areas   []mapArea
-	Islands []mapLabel
-	Sea     mapLabel
-	Top     []mapArea // the ranked provinces, for the list beside the map
-	Link    string    // a province's link is Link + its code (the reports page filtered by it)
-}
-
-func newVNMap(shapes []AreaShape, counts map[string]int, selected, link string) vnMap {
-	most := 0
-	for _, n := range counts {
-		most = max(most, n)
-	}
-	m := vnMap{
-		Islands: []mapLabel{{"QĐ. Hoàng Sa", "(Việt Nam)", 112.0, -17.3}, {"QĐ. Trường Sa", "(Việt Nam)", 113.7, -12.3}},
-		Sea:     mapLabel{"Biển", "Đông", 115.6, -15.0},
-		Link:    link,
-	}
-	for _, s := range shapes {
-		a := mapArea{AreaShape: s, Count: counts[s.Code], Selected: s.Code == selected}
-		if a.Count > 0 && most > 0 {
-			a.Level = min(4, 1+a.Count*4/(most+1))
-		}
-		m.Areas = append(m.Areas, a)
-	}
-	ranked := slices.Clone(m.Areas)
-	slices.SortStableFunc(ranked, func(a, b mapArea) int { return b.Count - a.Count })
-	for i := range ranked {
-		if i == 5 || ranked[i].Count == 0 {
-			break
-		}
-		ranked[i].Rank = i + 1
-		m.Top = append(m.Top, ranked[i])
-		for j := range m.Areas {
-			if m.Areas[j].Code == ranked[i].Code {
-				m.Areas[j].Rank = i + 1
-			}
-		}
-	}
-	return m
 }
 
 // lineChart is the current period as a line + area and the previous period as a dashed line, with a hover/focus
@@ -203,6 +122,72 @@ func revenueChart(r Revenue) lineChart {
 	c := newLineChart("revenue", r.Series, r.PrevSeries, "nghìn ₫", groupDigits, r.Partial)
 	c.Class = "money"
 	return c
+}
+
+// wardArea is one ward on the "Khách đi đâu" map. Level 0 = under MinShown searches (left white), 1..4 = share of
+// the busiest ward. Few = busy (level 3+) with at most fewShops published places: where to look for affiliate shops.
+type wardArea struct {
+	WardShape
+	Plans, Places, Level, Rank int
+	Few                        bool
+}
+
+// wardMap is the old province map's look (owner, 16-11-2026: "giữ giống cái cũ") on Ho Chi Minh City's wards.
+type wardMap struct {
+	ViewBox string
+	Areas   []wardArea // only the wards inside the frame
+	Top     []wardArea // the five busiest, numbered
+	Pin     float64    // badge radius in degrees, from the frame size
+	PinDY   float64    // badge number baseline offset
+	PinFont float64    // badge number size
+}
+
+const fewShops = 2
+
+// newWardMap frames the wards with searches (at least central HCMC, ~20 km across) and keeps the wards in view.
+func newWardMap(shapes []WardShape, counts []WardCount) wardMap {
+	minX, minY, maxX, maxY := 106.60, -10.88, 106.80, -10.70 // central HCMC
+	byCode := map[string]WardCount{}
+	most := 0
+	for _, c := range counts {
+		byCode[c.Code] = c
+		most = max(most, c.Plans)
+	}
+	for _, s := range shapes {
+		if _, ok := byCode[s.Code]; ok {
+			minX, minY, maxX, maxY = min(minX, s.MinX), min(minY, s.MinY), max(maxX, s.MaxX), max(maxY, s.MaxY)
+		}
+	}
+	side := max(maxX-minX, maxY-minY) * 1.04
+	cx, cy := (minX+maxX)/2, (minY+maxY)/2
+	minX, minY, maxX, maxY = cx-side/2, cy-side/2, cx+side/2, cy+side/2
+	m := wardMap{ViewBox: fmt.Sprintf("%.4f %.4f %.4f %.4f", minX, minY, side, side), Pin: side / 55, PinDY: side / 55 * .38, PinFont: side / 55 * 1.1}
+	rank := map[string]int{}
+	for i, c := range counts {
+		if i < 5 {
+			rank[c.Code] = i + 1
+		}
+	}
+	for _, s := range shapes {
+		if s.MaxX < minX || s.MinX > maxX || s.MaxY < minY || s.MinY > maxY {
+			continue
+		}
+		c := byCode[s.Code]
+		a := wardArea{WardShape: s, Plans: c.Plans, Places: c.Places, Rank: rank[s.Code]}
+		if a.Plans > 0 && most > 0 {
+			a.Level = min(4, 1+a.Plans*4/(most+1))
+		}
+		a.Few = a.Level >= 3 && a.Places <= fewShops
+		m.Areas = append(m.Areas, a)
+	}
+	for r := 1; r <= 5; r++ {
+		for _, a := range m.Areas {
+			if a.Rank == r {
+				m.Top = append(m.Top, a)
+			}
+		}
+	}
+	return m
 }
 
 // countText: usage numbers 1-4 show as "<5" (ADR-038 §5), the same rule as the template's count.

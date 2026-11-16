@@ -44,3 +44,14 @@ Chủ dự án xem trang đầu tiên và sửa: "khu vực là theo thành ph�
 - **Số liệu nằm ở trang Tổng quan**, phần "Khách dùng app", lọc theo khoảng ngày và tỉnh, thành xuất phát; trang "Lượt sử dụng" riêng bị bỏ. Mọi vai trò Admin xem được (chỉ là số gộp).
 - **Lượt mở app** (khách truy cập, tính theo lượt): app gửi `POST /api/v1/usage/open` mỗi lần khởi động, không kèm mã, vị trí hay nội dung gì; server cộng 1 vào `usage_app_opens` của ngày. Không phân theo tỉnh vì không có vị trí. Đây là số lượt, không phải số người khác nhau. Ai cũng gọi được endpoint này nên số có thể bị thổi phồng; chấp nhận ở giai đoạn pilot.
 - Điểm đến được tìm nhiều nhất hiện kèm loại địa điểm (chợ, quán ăn, bảo tàng...).
+
+## Cập nhật 16-11-2026 (chiều): thống kê theo tuyến xe buýt thay cho tỉnh, thành
+
+Chủ dự án: "lúc trước tôi nói thống kê tỉnh thành, thì bỏ đi mà thống kê theo tuyến xe buýt nha, và xem chart nào quan trọng cần thiết mới giữ". Admin **không còn hiện** bản đồ tỉnh, bộ lọc tỉnh, danh sách tỉnh xuất phát và tỉnh đến. Thay vào đó: bảng xếp hạng tuyến xe buýt, metro có trong gợi ý, và bộ lọc một tuyến (số lần tuyến đó có trong gợi ý theo ngày, tuần, tháng, năm, so với kỳ trước). Ngưỡng 5 vẫn áp dụng cho bảng xếp hạng. Bộ đếm phía API giữ nguyên (`usage_route_plans` và `usage_bus_lines` vẫn ghi `area_code`); bỏ việc ghi theo tỉnh là việc riêng nếu chủ dự án muốn.
+
+## Cập nhật 16-11-2026 (tối): loại xe, ô điểm đến, đo "khách đi đâu"
+
+Chủ dự án duyệt đợt A ("OK LÀM ĐI"):
+- **Tuyến theo loại xe:** `usage_bus_lines.vehicle` (BUS, METRO, BOAT) lấy từ loại chặng của OTP (SUBWAY/RAIL/TRAM là metro, FERRY là buýt sông). Admin có tab Tất cả / Xe buýt / Metro / Buýt sông.
+- **Ô điểm đến ~500 m** (`usage_dest_cells`, ô = floor(vĩ độ / 0.0045), floor(kinh độ / 0.0045)): mỗi lượt tìm đường thành công cộng 1 vào ô chứa điểm đến. Không lưu toạ độ, không gắn với điểm đi; ô dưới 5 lượt không hiện; giữ 25 tháng như các bộ đếm khác. Admin vẽ bản đồ điểm nóng, kèm số địa điểm đang hiển thị trong ô; ô đông (mức 3–4) mà có từ 2 địa điểm trở xuống được đánh dấu "Ít quán" để ưu tiên tìm quán affiliate.
+- **Đo "khách đến":** hiện chỉ có mức 1 (tìm đường tới, cách địa điểm ≤ 30 m). Mức 2 (bấm "Bắt đầu") và mức 3 (app thấy còn cách đích < 50 m khi đang dẫn đường) cần bản app mới (đợt B); app chỉ gửi id địa điểm, không gửi vị trí; có nút tắt trong Cài đặt. Chưa làm.

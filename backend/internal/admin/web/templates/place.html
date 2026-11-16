@@ -28,10 +28,29 @@
       <dt>Nguồn</dt><dd>{{.P.Source}} · <code>{{.P.SourceRef}}</code>{{with .P.SourceURL}} · <a href="{{.}}" rel="noopener noreferrer" target="_blank">mở nguồn</a>{{end}}</dd>
       <dt>Giấy phép</dt><dd>{{.P.License}}</dd>
       <dt>Toạ độ</dt><dd><code>{{printf "%.6f, %.6f" .P.Lat .P.Lon}}</code></dd>
-      <dt>Ảnh</dt><dd>{{if .P.Photos}}{{.P.Photos}} ảnh{{else}}Chưa có (thêm ảnh làm ở lát sau, cần nơi lưu ảnh R2){{end}}</dd>
+      <dt>Ảnh</dt><dd>{{len .Photos}} ảnh · <a href="#photos">quản lý</a></dd>
       <dt>Cập nhật</dt><dd>{{at .P.UpdatedAt}}</dd>
     </dl>
     <p class="muted small">Nguồn, giấy phép và toạ độ đến từ dữ liệu gốc nên không sửa ở đây.</p>
   </aside>
 </div>
+
+<section class="card" id="photos">
+  <div class="row"><h2>Ảnh</h2><span class="muted small">Ảnh bìa hiện trên thẻ địa điểm trong app; mỗi ảnh hiện kèm ghi công.</span></div>
+  {{with .PhotoNotice}}<p class="notice ok" role="status">{{.}}</p>{{end}}
+  {{with .PhotoProblem}}<p class="notice bad" role="alert">Chưa lưu ảnh: {{.}}.</p>{{end}}
+  {{if .Photos}}<ul class="photo-grid">{{range .Photos}}
+    <li>
+      <img src="{{$.MediaURL}}/{{.Key}}-480.jpg" alt="{{.Alt}}" loading="lazy" width="240" height="160">
+      {{if .Cover}}<span class="cover-badge">Ảnh bìa</span>{{end}}
+      <div class="photo-meta"><span class="small">© {{.Credit}}</span><span class="muted small">{{.License}}</span></div>
+      <div class="photo-actions">
+        {{if not .Cover}}<form method="post" action="/admin/places/{{$.P.ID}}/photos/{{.ID}}/cover"><input type="hidden" name="csrf" value="{{$.Me.CSRF}}"><button class="small-button" type="submit">Đặt làm ảnh bìa</button></form>{{end}}
+        <form method="post" action="/admin/places/{{$.P.ID}}/photos/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.Me.CSRF}}"><button class="small-button danger" type="submit" aria-label="Xoá ảnh {{.Alt}}">Xoá</button></form>
+      </div>
+    </li>{{end}}
+  </ul>{{else}}<p class="muted">Chưa có ảnh nào.</p>{{end}}
+  {{if .MediaReady}}{{template "photoform" (photoForm (print "/admin/places/" .P.ID "/photos") .Me.CSRF .Licenses "Tải ảnh lên")}}
+  {{else}}<p class="notice bad">Chưa cấu hình nơi lưu ảnh.</p>{{end}}
+</section>
 {{end}}

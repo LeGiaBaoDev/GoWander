@@ -435,7 +435,7 @@ private fun AppContent() {
                         onOpenPlace = { p -> nav = nav.openPlace(p.id) }, onSeeAll = { nav = nav.select(Tab.Discover) },
                     )
                     Tab.Discover -> DiscoverScreen(
-                        discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, nearby = nearby,
+                        discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, onOpenId = { id -> nav = nav.openPlace(id) }, nearby = nearby,
                         onRegion = { nav = nav.push(Screen.Region(it)) }, onTrip = { nav = nav.push(Screen.Trip(it)) }, onShowMap = { nav = nav.select(Tab.Map) },
                     )
                     Tab.Journey -> JourneyScreen(

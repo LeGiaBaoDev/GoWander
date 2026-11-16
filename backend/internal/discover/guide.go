@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
 
@@ -24,6 +25,16 @@ type Dish struct {
 	Description string `json:"description"`
 	Shops       []Shop `json:"shops"`
 	Sources     string `json:"sources"`
+	Photo       *Photo `json:"photo,omitempty"`
+}
+
+// Photo is the picture of a dish or story with its credit (shown next to it in the app).
+type Photo struct {
+	URL      string `json:"url"`
+	ThumbURL string `json:"thumbUrl"`
+	Credit   string `json:"credit"`
+	License  string `json:"license"`
+	key      string
 }
 
 type Story struct {
@@ -33,6 +44,7 @@ type Story struct {
 	Paragraphs []string `json:"paragraphs"`
 	TryThis    string   `json:"tryThis"`
 	Sources    string   `json:"sources"`
+	Photo      *Photo   `json:"photo,omitempty"`
 }
 
 type Guide struct {
@@ -65,7 +77,8 @@ func Paragraphs(text string) []string {
 
 func (s *PG) Guide(ctx context.Context) (Guide, error) {
 	g := Guide{Dishes: []Dish{}, Stories: []Story{}}
-	rows, err := s.Pool.Query(ctx, `SELECT slug, name, coalesce(summary, ''), coalesce(description, ''), coalesce(shops, ''), coalesce(sources, '')
+	rows, err := s.Pool.Query(ctx, `SELECT slug, name, coalesce(summary, ''), coalesce(description, ''), coalesce(shops, ''), coalesce(sources, ''),
+		coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '')
 		FROM food_items WHERE status = 'PUBLISHED' ORDER BY sort_order, name`)
 	if err != nil {
 		return g, fmt.Errorf("guide dishes: %w", err)
@@ -73,11 +86,15 @@ func (s *PG) Guide(ctx context.Context) (Guide, error) {
 	for rows.Next() {
 		var d Dish
 		var shops string
-		if err := rows.Scan(&d.ID, &d.Name, &d.Summary, &d.Description, &shops, &d.Sources); err != nil {
+		var ph Photo
+		if err := rows.Scan(&d.ID, &d.Name, &d.Summary, &d.Description, &shops, &d.Sources, &ph.key, &ph.Credit, &ph.License); err != nil {
 			rows.Close()
 			return g, fmt.Errorf("guide dishes: %w", err)
 		}
 		d.Shops = ParseShops(shops)
+		if ph.key != "" {
+			d.Photo = &ph
+		}
 		g.Dishes = append(g.Dishes, d)
 	}
 	if err := rows.Err(); err != nil {
@@ -85,7 +102,7 @@ func (s *PG) Guide(ctx context.Context) (Guide, error) {
 	}
 	// Stories without a slug (made outside the Admin) are left out: the app needs a stable id.
 	rows, err = s.Pool.Query(ctx, `SELECT slug, title, coalesce(summary, ''), content, coalesce(try_this, ''),
-		coalesce(nullif(btrim(sources), ''), source_url, '')
+		coalesce(nullif(btrim(sources), ''), source_url, ''), coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '')
 		FROM historical_stories WHERE status = 'PUBLISHED' AND language_code = 'vi' AND slug IS NOT NULL ORDER BY sort_order, title`)
 	if err != nil {
 		return g, fmt.Errorf("guide stories: %w", err)
@@ -93,11 +110,15 @@ func (s *PG) Guide(ctx context.Context) (Guide, error) {
 	for rows.Next() {
 		var st Story
 		var content string
-		if err := rows.Scan(&st.ID, &st.Title, &st.Summary, &content, &st.TryThis, &st.Sources); err != nil {
+		var ph Photo
+		if err := rows.Scan(&st.ID, &st.Title, &st.Summary, &content, &st.TryThis, &st.Sources, &ph.key, &ph.Credit, &ph.License); err != nil {
 			rows.Close()
 			return g, fmt.Errorf("guide stories: %w", err)
 		}
 		st.Paragraphs = Paragraphs(content)
+		if ph.key != "" {
+			st.Photo = &ph
+		}
 		g.Stories = append(g.Stories, st)
 	}
 	if err := rows.Err(); err != nil {
@@ -112,5 +133,23 @@ func (h Handler) guide(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	for _, p := range photosOf(g) {
+		p.URL, p.ThumbURL = media.URL(h.MediaURL, p.key, 1600), media.URL(h.MediaURL, p.key, 480)
+	}
 	httpx.WriteJSON(w, http.StatusOK, g)
+}
+
+func photosOf(g Guide) []*Photo {
+	var out []*Photo
+	for _, d := range g.Dishes {
+		if d.Photo != nil {
+			out = append(out, d.Photo)
+		}
+	}
+	for _, s := range g.Stories {
+		if s.Photo != nil {
+			out = append(out, s.Photo)
+		}
+	}
+	return out
 }

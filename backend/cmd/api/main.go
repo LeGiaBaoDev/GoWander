@@ -16,6 +16,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/analytics"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/geocode"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility/otp"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/config"
@@ -128,8 +129,11 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		usage.Mount(mux)
 	}
 	mux.Post("/api/v1/routes/plan", plan.Plan)
-	discover.Handler{Store: places, Log: log}.Mount(mux)
-	adminHandler := admin.Handler{Store: adminStore, BaseURL: cfg.AdminBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
+	discover.Handler{Store: places, Log: log, MediaURL: cfg.MediaBaseURL}.Mount(mux)
+	// Development photo storage (ADR-035: production uses R2; config refuses MEDIA_DIR behind https).
+	photos := media.Local{Dir: cfg.MediaDir}
+	mux.Handle("/media/*", photos)
+	adminHandler := admin.Handler{Store: adminStore, BaseURL: cfg.AdminBaseURL, Media: photos, MediaURL: cfg.MediaBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
 	if cfg.MailEnabled() {
 		adminHandler.Mailer = admin.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}

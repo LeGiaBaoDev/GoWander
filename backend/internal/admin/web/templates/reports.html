@@ -16,66 +16,54 @@
     <h2 id="usage-title" class="sr-only">Khách dùng app</h2>
     <form class="filters inline" method="get" action="/admin/reports">
       <input type="hidden" name="grain" value="{{$u.Grain.Key}}">
-      <label><span class="sr-only">Tỉnh, thành xuất phát</span>
-        <select name="area"><option value="">Cả nước</option>{{range $u.Areas}}<option value="{{.Code}}"{{if eq .Code $u.Area}} selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-      <button type="submit" class="button ghost">Xem</button>
+      <label><span class="sr-only">Tuyến xe buýt</span>
+        <select name="line" data-submit><option value="">Mọi tuyến</option>{{range $u.LineOptions}}<option value="{{.ID}}"{{if eq .ID $u.Line}} selected{{end}}>{{.Title}}</option>{{end}}</select></label>
+      <noscript><button type="submit" class="button ghost">Xem</button></noscript>
     </form>
     <nav class="seg" aria-label="Xem theo">{{range .Grains}}<a href="{{$.GrainBase}}grain={{.Key}}"{{if eq .Key $.U.Grain.Key}} aria-current="true"{{end}}>{{.Name}}<small>{{.Span}}</small></a>{{end}}</nav>
   </div>
-  <div class="kpis">
-    <div class="card kpi stat"><span class="icon t2" aria-hidden="true">{{template "icon" "route"}}</span><div><span class="label">Lượt tìm đường</span>
-      <strong>{{count $u.Total}}</strong><span class="muted">{{with .SearchChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với {{$u.Grain.Span}} trước{{end}}{{end}}{{with $u.AreaName}} · xuất phát ở {{.}}{{end}}</span></div></div>
-    <div class="card kpi stat"><span class="icon t1" aria-hidden="true">{{template "icon" "phone"}}</span><div><span class="label">Lượt mở app</span>
-      <strong>{{num $u.Opens}}</strong><span class="muted">cả nước, {{$u.Grain.Span}} gần nhất</span></div></div>
-  </div>
-  <section class="card map-card">
-    <div class="row"><h3>Lượt tìm đường theo tỉnh, thành xuất phát</h3>{{with $u.AreaName}}<a href="/admin/reports?grain={{$u.Grain.Key}}">Bỏ lọc {{.}} ×</a>{{end}}</div>
-    {{template "vnmap" $.Map}}
+  {{if $u.Line}}
+  <section class="card">
+    <div class="row"><h3>{{$u.LineTitle}}: số lần có trong gợi ý theo {{$u.Grain.Lower}}</h3><a href="/admin/reports?grain={{$u.Grain.Key}}">Bỏ lọc tuyến ×</a></div>
+    <p class="big-number"><strong>{{count $u.Total}}</strong> lần trong {{$u.Grain.Span}} gần nhất{{with .SearchChange}}{{if .Show}} · <span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</p>
+    {{template "linechart" $.Searches}}
+    <p class="muted small">Số lần tuyến có trong kết quả tìm đường; chưa biết khách có thật sự đi hay không.</p>
   </section>
-  {{if lt $u.Total .MinShown}}
-  <p class="muted small">Chưa đủ lượt tìm đường để xếp hạng{{with $u.AreaName}} ở {{.}}{{end}} (mục dưới {{.MinShown}} lượt không hiện, để không lần ra một người). Số liệu sẽ có khi nhiều người dùng app hơn.</p>
+  {{else if lt $u.Total .MinShown}}
+  <p class="muted small">Chưa đủ lượt tìm đường để xếp hạng (mục dưới {{.MinShown}} lượt không hiện, để không lần ra một người).</p>
   {{else}}
   <section class="card">
     <div class="row"><h3>Lượt tìm đường theo {{$u.Grain.Lower}}</h3><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
+    <p class="big-number"><strong>{{count $u.Total}}</strong> lượt · <strong>{{num $u.Opens}}</strong> lượt mở app{{with .SearchChange}}{{if .Show}} · <span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</p>
     {{template "linechart" $.Searches}}
   </section>
-  <div class="cols">
-    {{if not $u.Area}}
+  <div class="cols three">
     <section class="card">
-      <h3>Điểm đến được tìm đường tới nhiều nhất</h3>
-      <p class="muted small">Điểm đến cách một địa điểm đang hiển thị không quá 30 m.</p>
-      {{with $u.Places}}{{$max := (index . 0).Value}}{{range .}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}}</span>
-        <progress class="cat" max="{{$max}}" value="{{.Value}}" aria-label="{{.Label}}: {{.Value}}"></progress></div>{{end}}
+      <h3>Tuyến được gợi ý nhiều nhất</h3>
+      <nav class="mini-tabs" aria-label="Loại phương tiện">{{range $.Vehicles}}<a href="/admin/reports?grain={{$u.Grain.Key}}{{with .Key}}&amp;kind={{.}}{{end}}"{{if eq .Key $u.Kind}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</nav>
+      {{with $u.Lines}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $l := .}}
+        <li><span class="no">{{add $i 1}}</span><a class="name" href="/admin/reports?grain={{$u.Grain.Key}}&amp;line={{$l.ID}}">{{$l.Title}}</a><span class="muted">{{count $l.Value}}</span>
+          <progress class="cat" max="{{$max}}" value="{{$l.Value}}" aria-label="{{$l.Title}}: {{$l.Value}}"></progress></li>{{end}}</ol>
+      {{else}}<p class="muted">Chưa có tuyến nào đủ {{$.MinShown}} lượt.</p>{{end}}
+      <p class="muted small">Bấm một tuyến để xem riêng. Đếm số lần có trong kết quả tìm đường, chưa biết khách có đi hay không.</p>
+    </section>
+    <section class="card">
+      <h3>Điểm đến được tìm nhiều nhất</h3>
+      <p class="muted small">Điểm đến cách địa điểm không quá 30 m.</p>
+      {{with $u.Places}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $p := .}}
+        <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}}</span>
+          <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
       {{else}}<p class="muted">Chưa có địa điểm nào đủ {{$.MinShown}} lượt.</p>{{end}}
     </section>
-    {{end}}
     <section class="card">
       <h3>Phương tiện được chọn</h3>
+      <p class="muted small">Tỉ lệ trên mọi lượt tìm đường.</p>
       {{range $u.Modes}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}} · {{pct .Value $u.Total}}%</span>
         <progress max="{{$u.Total}}" value="{{.Value}}" aria-label="{{.Label}}: {{pct .Value $u.Total}}%"></progress></div>{{end}}
     </section>
-    <section class="card">
-      <h3>Tuyến xe buýt, metro có trong gợi ý</h3>
-      <p class="muted small">Số lần tuyến có trong kết quả tìm đường{{with $u.AreaName}} xuất phát ở {{.}}{{end}}; chưa biết khách có đi hay không.</p>
-      {{with $u.Lines}}{{$max := (index . 0).Value}}{{range .}}<div class="bar"><span>Tuyến {{.Label}}</span><span class="muted">{{count .Value}}</span>
-        <progress class="cat" max="{{$max}}" value="{{.Value}}" aria-label="Tuyến {{.Label}}: {{.Value}}"></progress></div>{{end}}
-      {{else}}<p class="muted">Chưa có tuyến nào đủ {{$.MinShown}} lượt.</p>{{end}}
-    </section>
-    {{if not $u.Area}}
-    {{range $box := list "Tỉnh, thành xuất phát" 0 "Tỉnh, thành được tìm đường tới" 1}}
-    <section class="card">
-      <h3>{{$box.Label}}</h3>
-      {{$rows := $u.From}}{{if eq $box.Value 1}}{{$rows = $u.To}}{{end}}
-      {{with $rows}}{{$max := (index . 0).Value}}{{range .}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}}</span>
-        <progress class="cat" max="{{$max}}" value="{{.Value}}" aria-label="{{.Label}}: {{.Value}}"></progress></div>{{end}}
-      {{else}}<p class="muted">Chưa có nơi nào đủ {{$.MinShown}} lượt.</p>{{end}}
-    </section>
-    {{end}}
-    {{end}}
   </div>
-  {{if $u.Area}}<p class="muted small">Khi lọc theo nơi xuất phát, trang không hiện nơi đến: hai đầu được đếm riêng để không lộ cặp đi–đến của một người.</p>{{end}}
   {{end}}
-  <p class="muted small">Đếm gộp theo ngày từ lượt mở app và lượt tìm đường thành công; không lưu vị trí hay lịch sử của từng người (ADR-038). Chưa đo: số người khác nhau, lượt xem và lưu địa điểm.</p>
+  <p class="muted small">Đếm gộp theo ngày; không lưu vị trí hay lịch sử của từng người (ADR-038).</p>
 </section>
 
 {{else}}

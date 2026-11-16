@@ -19,6 +19,7 @@ import (
 // GuideItem is the edit form of a dish or a story.
 type GuideItem struct {
 	ID, Slug, Title, NameEN, Summary, Body, Extra, Sources, SourceURL, Status string
+	ImageKey, ImageCredit, ImageLicense                                       string
 	SortOrder                                                                 int
 	UpdatedAt                                                                 time.Time
 	EditedAt                                                                  *time.Time
@@ -45,7 +46,8 @@ var GuideKinds = map[string]guideKind{
 		Path: "foods", Noun: "món ăn", Nouns: "Món ăn", Audit: "food", SlugPrefix: "hcm-food-", TitleMax: 150, SummaryMax: 300, BodyMax: 3000,
 		list: `SELECT id::text, slug, name, status, sort_order, updated_at FROM food_items ORDER BY sort_order, name`,
 		get: `SELECT id::text, slug, name, coalesce(name_en, ''), coalesce(summary, ''), coalesce(description, ''), coalesce(shops, ''),
-			coalesce(sources, ''), '', status, sort_order, updated_at, edited_at FROM food_items WHERE id::text = $1`,
+			coalesce(sources, ''), '', status, sort_order, updated_at, edited_at,
+			coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '') FROM food_items WHERE id::text = $1`,
 		insert: `INSERT INTO food_items (slug, name, name_en, summary, description, shops, sources, status, sort_order, edited_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING id::text`,
 		update: `UPDATE food_items SET name = $2, name_en = $3, summary = $4, description = $5, shops = $6, sources = $7, status = $8,
@@ -59,7 +61,8 @@ var GuideKinds = map[string]guideKind{
 		BodyRequired: true, SourceAlways: true,
 		list: `SELECT id::text, coalesce(slug, ''), title, status, sort_order, updated_at FROM historical_stories WHERE language_code = 'vi' ORDER BY sort_order, title`,
 		get: `SELECT id::text, coalesce(slug, ''), title, '', coalesce(summary, ''), content, coalesce(try_this, ''), coalesce(sources, ''),
-			coalesce(source_url, ''), status, sort_order, updated_at, edited_at FROM historical_stories WHERE id::text = $1 AND language_code = 'vi'`,
+			coalesce(source_url, ''), status, sort_order, updated_at, edited_at,
+			coalesce(image_key, ''), coalesce(image_credit, ''), coalesce(image_license, '') FROM historical_stories WHERE id::text = $1 AND language_code = 'vi'`,
 		// A story is published with a date (database CHECK): set it the first time, keep it afterwards.
 		insert: `INSERT INTO historical_stories (slug, title, summary, content, try_this, sources, source_url, status, sort_order, language_code, published_at, edited_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8::varchar, $9, 'vi', CASE WHEN $8::varchar = 'PUBLISHED' THEN now() END, now()) RETURNING id::text`,
@@ -123,7 +126,8 @@ func (s *PG) GuideItems(ctx context.Context, kind string) ([]GuideRow, error) {
 
 func scanGuide(row pgx.Row) (GuideItem, error) {
 	var g GuideItem
-	err := row.Scan(&g.ID, &g.Slug, &g.Title, &g.NameEN, &g.Summary, &g.Body, &g.Extra, &g.Sources, &g.SourceURL, &g.Status, &g.SortOrder, &g.UpdatedAt, &g.EditedAt)
+	err := row.Scan(&g.ID, &g.Slug, &g.Title, &g.NameEN, &g.Summary, &g.Body, &g.Extra, &g.Sources, &g.SourceURL, &g.Status, &g.SortOrder, &g.UpdatedAt, &g.EditedAt,
+		&g.ImageKey, &g.ImageCredit, &g.ImageLicense)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return g, ErrNotFound
 	}

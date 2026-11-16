@@ -29,4 +29,6 @@ class FakeApi : GoWanderApi {
     override suspend fun imageBytes(url: String): ByteArray = ByteArray(0)
     override suspend fun guide(): com.gowander.content.GuideContent = com.gowander.content.GuideContent()
     override suspend fun recordOpen() {}
+    var popularResult: suspend () -> List<PopularPlace> = { emptyList() }
+    override suspend fun popular(): List<PopularPlace> = popularResult()
 }

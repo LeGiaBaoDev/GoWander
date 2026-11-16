@@ -20,7 +20,7 @@ import (
 
 // fixtures replaces every Discover row in the TEST database (URL forced through database.TestDatabaseURL).
 const fixtures = `
-DELETE FROM place_foods; DELETE FROM food_items; DELETE FROM place_media; DELETE FROM place_category_links;
+DELETE FROM usage_place_routes; DELETE FROM place_foods; DELETE FROM food_items; DELETE FROM place_media; DELETE FROM place_category_links;
 DELETE FROM historical_stories; DELETE FROM places; DELETE FROM place_categories;
 ALTER TABLE place_categories ALTER COLUMN id RESTART WITH 1;
 INSERT INTO place_categories (name, name_en, slug, sort_order) VALUES
@@ -94,6 +94,26 @@ func names(ps []PlaceSummary) string {
 func TestStore(t *testing.T) {
 	ctx := context.Background()
 	s := setup(t)
+
+	t.Run("popular: ranked by searches over 7 days, 5 at least, published only", func(t *testing.T) {
+		owner, err := pgx.Connect(ctx, database.TestDatabaseURL(os.Getenv("MIGRATE_DATABASE_URL")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer owner.Close(ctx)
+		today := "(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date"
+		_, err = owner.Exec(ctx, `INSERT INTO usage_place_routes (day, place_id, plans) VALUES
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000001', 6), (`+today+` - 3, '0190f0c2-0000-7000-8000-000000000002', 9),
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000003', 4), (`+today+` - 8, '0190f0c2-0000-7000-8000-000000000003', 50),
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000005', 99)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ps, err := s.Popular(ctx)
+		if err != nil || len(ps) != 2 || ps[0].ID != "0190f0c2-0000-7000-8000-000000000002" || ps[1].ID != "0190f0c2-0000-7000-8000-000000000001" {
+			t.Fatalf("popular %+v %v", ps, err)
+		}
+	})
 
 	t.Run("categories count only published places and skip inactive", func(t *testing.T) {
 		cats, err := s.Categories(ctx)

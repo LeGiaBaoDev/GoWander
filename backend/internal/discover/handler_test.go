@@ -51,15 +51,19 @@ func (f *fakeStore) Place(_ context.Context, id string) (PlaceDetail, error) {
 	return f.detail, f.err
 }
 func (f *fakeStore) Ready(context.Context) error { return f.err }
+func (f *fakeStore) Popular(context.Context) ([]PopularPlace, error) {
+	return []PopularPlace{{PlaceSummary: PlaceSummary{ID: "p1", Name: "Chợ Bến Thành"}, photoKey: "img/abc"}, {PlaceSummary: PlaceSummary{ID: "p2", Name: "Dinh Độc Lập"}}}, f.err
+}
 func (f *fakeStore) Guide(context.Context) (Guide, error) {
-	return Guide{Dishes: []Dish{{ID: "hcm-food-pho", Name: "Phở", Shops: []Shop{{"Quán A", "1 Lê Lợi"}}}}, Stories: []Story{}}, f.err
+	return Guide{Dishes: []Dish{{ID: "hcm-food-pho", Name: "Phở", Shops: []Shop{{"Quán A", "1 Lê Lợi"}},
+		Photo: &Photo{Credit: "Quán A", License: "CC0", key: "img/abc"}}}, Stories: []Story{}}, f.err
 }
 
 func get(t *testing.T, s Store, target string) (int, map[string]any) {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := httpx.NewRouter(log)
-	Handler{Store: s, Log: log}.Mount(mux)
+	Handler{Store: s, Log: log, MediaURL: "https://cdn.example.vn/media"}.Mount(mux)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 	var body map[string]any
@@ -262,5 +266,34 @@ func TestParseShopsAndParagraphs(t *testing.T) {
 	}
 	if ParseShops("") == nil || Paragraphs("  ") == nil {
 		t.Fatal("empty lists must be [] in JSON, not null")
+	}
+}
+
+func TestPhotoURLs(t *testing.T) {
+	_, body := get(t, &fakeStore{}, "/api/v1/guide/hcm")
+	photo := body["dishes"].([]any)[0].(map[string]any)["photo"].(map[string]any)
+	if photo["url"] != "https://cdn.example.vn/media/img/abc-1600.jpg" || photo["thumbUrl"] != "https://cdn.example.vn/media/img/abc-480.jpg" || photo["credit"] != "Quán A" {
+		t.Fatalf("dish photo %v", photo)
+	}
+	f := &fakeStore{detail: PlaceDetail{Media: []Media{{StorageKey: "img/xyz", MediaType: "IMAGE", SourceCredit: "A", License: "CC0", IsCover: true}}}}
+	_, place := get(t, f, "/api/v1/places/0190f0c2-0000-7000-8000-000000000001")
+	m := place["media"].([]any)[0].(map[string]any)
+	if m["url"] != "https://cdn.example.vn/media/img/xyz-1600.jpg" || m["thumbUrl"] != "https://cdn.example.vn/media/img/xyz-480.jpg" {
+		t.Fatalf("place photo %v", m)
+	}
+}
+
+func TestPopular(t *testing.T) {
+	code, body := get(t, &fakeStore{}, "/api/v1/places/popular")
+	places := body["places"].([]any)
+	first, second := places[0].(map[string]any), places[1].(map[string]any)
+	if code != 200 || body["days"] != float64(7) || first["rank"] != float64(1) || first["thumbUrl"] != "https://cdn.example.vn/media/img/abc-480.jpg" ||
+		second["rank"] != float64(2) || second["thumbUrl"] != nil || first["name"] != "Chợ Bến Thành" {
+		t.Fatalf("%d %v", code, body)
+	}
+	for _, k := range []string{"count", "plans", "searches"} {
+		if _, leaked := first[k]; leaked {
+			t.Fatalf("the count must not be public: %v", first)
+		}
 	}
 }

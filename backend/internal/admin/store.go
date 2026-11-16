@@ -23,8 +23,8 @@ import (
 type PG struct {
 	Pool *pgxpool.Pool
 
-	shapesMu sync.Mutex
-	shapes   []AreaShape // province outlines for the map, read once
+	wardsMu sync.Mutex
+	wards   []WardShape // ward outlines for the map, read once
 }
 
 func (s *PG) Ready(ctx context.Context) error { return s.Pool.Ping(ctx) }

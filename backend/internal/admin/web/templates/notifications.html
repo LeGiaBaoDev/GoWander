@@ -1,0 +1,14 @@
+{{define "title"}}Thông báo · GoWander Admin{{end}}
+{{define "main"}}
+<div class="settings">
+<header class="head">
+  <h1>Thông báo</h1>
+  <p class="muted">7 ngày gần nhất: đăng nhập và tài khoản, và nội dung do người khác sửa. Mở trang này là đã đọc hết.</p>
+</header>
+<section class="card">
+  {{with .List.Notices}}<ul class="nts">{{range .}}{{template "notice" .}}{{end}}</ul>
+  {{else}}<p class="muted">Không có thông báo nào trong 7 ngày qua.</p>{{end}}
+</section>
+<p class="muted small">Muốn xem mọi thao tác: <a href="/admin/audit">Nhật ký thao tác</a>.</p>
+</div>
+{{end}}
