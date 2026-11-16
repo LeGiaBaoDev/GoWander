@@ -136,7 +136,7 @@ func TestAccounts(t *testing.T) {
 			t.Fatalf("%q %v", email, err)
 		}
 		if _, _, err := s.StartPasswordReset(ctx, "baole", "r6"); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("a second email within 2 minutes: %v", err)
+			t.Fatalf("a second email within a minute: %v", err)
 		}
 		if err := s.ResetPassword(ctx, token, "ngắn", "r7"); !errors.Is(err, ErrBadInput) {
 			t.Fatalf("weak password: %v", err)
@@ -175,6 +175,23 @@ func TestAccounts(t *testing.T) {
 		}
 		if err := s.SetDisplayName(ctx, id, " ", "r"); !errors.Is(err, ErrBadInput) {
 			t.Fatalf("empty name: %v", err)
+		}
+		if err := s.SetEmail(ctx, id, "New@Example.VN", "sai", "r"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("email change without the password: %v", err)
+		}
+		temp, _ := s.SetTemporaryPassword(ctx, "baole")
+		if err := s.SetEmail(ctx, id, "New@Example.VN", temp, "r-mail"); err != nil {
+			t.Fatal(err)
+		}
+		var stored string
+		if err := s.Pool.QueryRow(ctx, `SELECT email_normalized FROM user_contacts WHERE user_id = $1`, id).Scan(&stored); err != nil || stored != "new@example.vn" {
+			t.Fatalf("reset links now go to the new address: %q %v", stored, err)
+		}
+		if _, other, _ := s.CreateAccount(ctx, "nguoikhac", "other@example.vn", "", RoleContentEditor); other == "" {
+			t.Fatal("second account")
+		}
+		if err := s.SetEmail(ctx, id, "other@example.vn", temp, "r"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("an address of another account: %v", err)
 		}
 		now := time.Now()
 		q := AuditQuery{From: now.Add(-time.Hour), To: now.Add(time.Minute), Action: "account.rename", Limit: 10}
@@ -219,7 +236,7 @@ func TestAccounts(t *testing.T) {
 		for _, e := range entries {
 			actions[e.Action]++
 		}
-		if actions["account.create"] != 1 || actions["admin.login_failed"] < maxFailedLogins || actions["admin.password_reset"] != 1 || actions["admin.password_change"] != 1 {
+		if actions["account.create"] != 2 || actions["account.email_change"] != 1 || actions["admin.login_failed"] < maxFailedLogins || actions["admin.password_reset"] != 1 || actions["admin.password_change"] != 1 {
 			t.Fatalf("audit actions: %v", actions)
 		}
 		// Expected to be refused: gowander_admin only has INSERT and SELECT on the log, and cannot rename a login.

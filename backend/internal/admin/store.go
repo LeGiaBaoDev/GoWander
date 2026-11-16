@@ -110,8 +110,8 @@ func (s *PG) PasswordLogin(ctx context.Context, rawLogin, password, requestID st
 const (
 	maxFailedLogins = 5
 	lockFor         = 15 * time.Minute
-	resetValidFor   = 30 * time.Minute
-	resetEvery      = 2 * time.Minute // at most one "quên mật khẩu" email per account in this time
+	resetValidFor   = 5 * time.Minute // owner, 16-11-2026: "giảm thời gian đợi otp lại còn 5 phút"
+	resetEvery      = time.Minute     // at most one "quên mật khẩu" email per account in this time
 )
 
 // setPassword stores a new hash, unlocks the account, and signs the person out of every session except keepToken.
@@ -159,6 +159,41 @@ func (s *PG) SetDisplayName(ctx context.Context, userID, name, requestID string)
 			return err
 		}
 		return audit(ctx, tx, AuditEntry{ActorID: userID, Action: "account.rename", EntityType: "user", EntityID: userID, RequestID: requestID, Metadata: map[string]any{"name": name}})
+	})
+}
+
+// SetEmail changes where "quên mật khẩu" links go. The current password is asked: whoever controls this address can
+// take over the account. The address itself is not written to the audit log (private data).
+func (s *PG) SetEmail(ctx context.Context, userID, rawEmail, password, requestID string) error {
+	email := NormalizeEmail(rawEmail)
+	if email == "" {
+		return bad("email không hợp lệ")
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var hash string
+		if err := tx.QueryRow(ctx, `SELECT password_hash FROM admin_credentials WHERE user_id = $1`, userID).Scan(&hash); err != nil {
+			return err
+		}
+		if !CheckPassword(hash, password) {
+			return bad("mật khẩu hiện tại không đúng")
+		}
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM user_contacts WHERE email_normalized = $1 AND user_id <> $2)`, email, userID).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return bad("email này đã thuộc một tài khoản khác")
+		}
+		tag, err := tx.Exec(ctx, `UPDATE user_contacts SET email = $2, email_normalized = $2, email_verified_at = NULL, updated_at = now() WHERE user_id = $1`, userID, email)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			if _, err := tx.Exec(ctx, `INSERT INTO user_contacts (user_id, email, email_normalized) VALUES ($1, $2, $2)`, userID, email); err != nil {
+				return err
+			}
+		}
+		return audit(ctx, tx, AuditEntry{ActorID: userID, Action: "account.email_change", EntityType: "user", EntityID: userID, RequestID: requestID})
 	})
 }
 

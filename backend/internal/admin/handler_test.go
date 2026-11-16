@@ -45,6 +45,13 @@ func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ str
 	f.changed = append(f.changed, next)
 	return nil
 }
+func (f *fakeStore) SetEmail(_ context.Context, _, email, password, _ string) error {
+	if password != "đúng mật khẩu rồi" {
+		return bad("mật khẩu hiện tại không đúng")
+	}
+	f.changed = append(f.changed, "email:"+email)
+	return nil
+}
 func (f *fakeStore) SetDisplayName(_ context.Context, _, name, _ string) error {
 	if strings.TrimSpace(name) == "" {
 		return bad("tên hiển thị dài 1–80 ký tự")
@@ -325,7 +332,7 @@ func TestTemporaryPasswordOpensOnlyThePasswordPage(t *testing.T) {
 	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusSeeOther || len(store.changed) != 1 || w.Header().Get("Location") != "/admin/?welcome=1" {
 		t.Fatalf("forced change goes on to the overview: %d %s %v", w.Code, w.Header().Get("Location"), store.changed)
 	}
-	if w := do(h, "POST", "/admin/password", "sys", url.Values{"csrf": {"csrf-s"}, "current": {"đúng mật khẩu rồi"}, "new": {"mật khẩu mới dài"}, "confirm": {"mật khẩu mới dài"}}, nil); w.Header().Get("Location") != "/admin/password?saved=1" {
+	if w := do(h, "POST", "/admin/password", "sys", url.Values{"csrf": {"csrf-s"}, "current": {"đúng mật khẩu rồi"}, "new": {"mật khẩu mới dài"}, "confirm": {"mật khẩu mới dài"}}, nil); w.Header().Get("Location") != "/admin/account?saved=1" {
 		t.Fatalf("a chosen change stays on the page with a notice: %s", w.Header().Get("Location"))
 	}
 	form.Set("current", "sai")
@@ -681,7 +688,7 @@ func TestAuditPage(t *testing.T) {
 func TestDisplayName(t *testing.T) {
 	store := newFake()
 	h := server(store, nil)
-	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"csrf": {"csrf-s"}, "name": {"Gia Bảo Lê"}}, nil); w.Header().Get("Location") != "/admin/password?named=1" || store.changed[0] != "name:Gia Bảo Lê" {
+	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"csrf": {"csrf-s"}, "name": {"Gia Bảo Lê"}}, nil); w.Header().Get("Location") != "/admin/account?named=1" || store.changed[0] != "name:Gia Bảo Lê" {
 		t.Fatalf("%d %s %v", w.Code, w.Header().Get("Location"), store.changed)
 	}
 	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"csrf": {"csrf-s"}, "name": {"  "}}, nil); w.Code != http.StatusUnprocessableEntity {
@@ -689,5 +696,29 @@ func TestDisplayName(t *testing.T) {
 	}
 	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"name": {"x"}}, nil); w.Code != http.StatusForbidden {
 		t.Fatalf("without CSRF: %d", w.Code)
+	}
+}
+
+func TestAccountPage(t *testing.T) {
+	store := newFake()
+	store.sessions["me"] = Session{UserID: "u", Login: "baole", Name: "Gia Bảo", Email: "me@example.vn", CSRF: "csrf-me", Roles: []string{RoleSystemAdmin}}
+	h := server(store, nil)
+	body := do(h, "GET", "/admin/account", "me", nil, nil).Body.String()
+	for _, want := range []string{"Tài khoản của bạn", "baole", "me@example.vn", "Quản trị hệ thống", "5 phút", `action="/admin/account/email"`, `href="/admin/account" aria-current="page"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("account page lacks %q", want)
+		}
+	}
+	// The email shows on the account page only.
+	if strings.Contains(do(h, "GET", "/admin/", "me", nil, nil).Body.String(), "me@example.vn") {
+		t.Error("the email shows outside the account page")
+	}
+	form := url.Values{"csrf": {"csrf-me"}, "email": {"new@example.vn"}, "password": {"sai"}}
+	if w := do(h, "POST", "/admin/account/email", "me", form, nil); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "new@example.vn") {
+		t.Fatalf("wrong password keeps the typed email: %d", w.Code)
+	}
+	form.Set("password", "đúng mật khẩu rồi")
+	if w := do(h, "POST", "/admin/account/email", "me", form, nil); w.Header().Get("Location") != "/admin/account?email=1" || store.changed[len(store.changed)-1] != "email:new@example.vn" {
+		t.Fatalf("email change: %d %s", w.Code, w.Header().Get("Location"))
 	}
 }

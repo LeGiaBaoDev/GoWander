@@ -64,6 +64,7 @@ var actionNames = map[string]string{
 	"account.create":                 "Tạo tài khoản",
 	"account.temporary_password":     "Cấp mật khẩu tạm",
 	"account.rename":                 "Đổi tên hiển thị",
+	"account.email_change":           "Đổi email nhận link",
 	"role.grant":                     "Cấp vai trò",
 	"role.revoke":                    "Thu hồi vai trò",
 	"place.update":                   "Sửa địa điểm",
@@ -126,6 +127,7 @@ var pages = func() map[string]*template.Template {
 		"statusName":  func(s string) string { return statusNames[s] },
 		"missingName": func(s string) string { return missingNames[s] },
 		"detail":      auditDetail,
+		"roleName":    func(code string) string { return cmpOr(roleNames[code], code) },
 		"entityName":  func(t string) string { return cmpOr(entityNames[t], t) },
 		"short": func(s string) string {
 			if len(s) > 8 {
@@ -196,7 +198,9 @@ func (h Handler) Mount(r chi.Router) {
 			r.Post("/logout", h.logout)
 			r.Get("/password", h.passwordPage)
 			r.Post("/password", h.changePassword)
+			r.Get("/account", h.passwordPage)
 			r.Post("/account/name", h.setName)
+			r.Post("/account/email", h.setEmail)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin, RoleContentEditor))
 				r.Get("/places", h.places)
@@ -353,7 +357,8 @@ func (h Handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) passwordPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, http.StatusOK, "password", map[string]any{"Saved": r.URL.Query().Get("saved") == "1", "Named": r.URL.Query().Get("named") == "1"})
+	q := r.URL.Query()
+	h.render(w, r, http.StatusOK, "password", map[string]any{"Saved": q.Get("saved") == "1", "Named": q.Get("named") == "1", "EmailSaved": q.Get("email") == "1"})
 }
 
 func (h Handler) changePassword(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +380,7 @@ func (h Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/?welcome=1", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/admin/password?saved=1", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/account?saved=1", http.StatusSeeOther)
 }
 
 func (h Handler) setName(w http.ResponseWriter, r *http.Request) {
@@ -388,7 +393,20 @@ func (h Handler) setName(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/admin/password?named=1", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/account?named=1", http.StatusSeeOther)
+}
+
+func (h Handler) setEmail(w http.ResponseWriter, r *http.Request) {
+	err := h.Store.SetEmail(r.Context(), current(r).UserID, r.PostFormValue("email"), r.PostFormValue("password"), httpx.RequestID(r))
+	if errors.Is(err, ErrBadInput) {
+		h.render(w, r, http.StatusUnprocessableEntity, "password", map[string]any{"EmailProblem": strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), "TypedEmail": r.PostFormValue("email")})
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/account?email=1", http.StatusSeeOther)
 }
 
 func (h Handler) forgotPage(w http.ResponseWriter, r *http.Request) {
@@ -407,7 +425,7 @@ func (h Handler) forgot(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		link := h.BaseURL + "/admin/reset?t=" + url.QueryEscape(token)
 		body := "Có người (có thể là bạn) yêu cầu đặt lại mật khẩu trang quản trị GoWander.\n\n" +
-			"Mở link sau trong 30 phút để đặt mật khẩu mới (chỉ dùng được một lần):\n" + link + "\n\n" +
+			"Mở link sau trong 5 phút để đặt mật khẩu mới (chỉ dùng được một lần):\n" + link + "\n\n" +
 			"Nếu bạn không yêu cầu, hãy bỏ qua email này; mật khẩu hiện tại vẫn giữ nguyên.\n"
 		requestID := httpx.RequestID(r)
 		go func() {

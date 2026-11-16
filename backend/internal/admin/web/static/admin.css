@@ -357,3 +357,30 @@ svg.area .pt .tip text.sub { font-size: 14px; font-weight: 500; opacity: .8; }
 .donut-total.long { font-size: 5.4px; }
 .hello { flex-wrap: wrap; row-gap: 12px; }
 .seg { flex: none; max-width: 100%; overflow-x: auto; }
+.cols.account { align-items: start; }
+.stack { display: grid; gap: 16px; align-content: start; }
+.stack > .card { margin-bottom: 0; }
+code.login { font-size: 14px; color: var(--ink); background: var(--soft); padding: 2px 8px; border-radius: 6px; }
+
+/* Account page as a settings page (owner: three uneven columns looked bad, 16-11-2026) */
+.settings { max-width: 920px; }
+.profile { display: flex; align-items: center; gap: 18px; }
+.avatar.big { width: 64px; height: 64px; font-size: 26px; }
+.who-big { display: grid; gap: 2px; min-width: 0; }
+.who-big strong { font-size: 20px; }
+.who-big .muted { overflow-wrap: anywhere; }
+.chip { display: inline-block; padding: 1px 10px; border-radius: 999px; background: var(--soft); color: var(--primary); font-size: 12px; font-weight: 600; }
+.setting { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 28px; align-items: start; }
+.setting-info h2 { margin-bottom: 6px; }
+.setting .form { gap: 14px; }
+.setting .actions { display: flex; justify-content: flex-end; }
+@media (max-width: 860px) { .setting { grid-template-columns: 1fr; gap: 12px; } }
+
+/* Eye button in password fields (admin.js) */
+.pw { position: relative; display: block; }
+.pw input { width: 100%; padding-right: 48px; }
+.pw-toggle { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); min-height: 36px; width: 36px; padding: 0;
+  background: transparent; box-shadow: none; color: var(--muted); border-radius: 10px; }
+.pw-toggle:hover { background: var(--soft); color: var(--primary); filter: none; }
+.pw-toggle svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pw-toggle[aria-pressed="true"] { color: var(--primary); }

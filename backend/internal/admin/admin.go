@@ -68,6 +68,7 @@ type Store interface {
 	PasswordLogin(ctx context.Context, login, password, requestID string) (userID string, err error)
 	ChangePassword(ctx context.Context, userID, current, next, keepToken, requestID string) error
 	SetDisplayName(ctx context.Context, userID, name, requestID string) error
+	SetEmail(ctx context.Context, userID, email, password, requestID string) error
 	StartPasswordReset(ctx context.Context, login, requestID string) (email, token string, err error)
 	ResetPassword(ctx context.Context, token, next, requestID string) error
 	CreateSession(ctx context.Context, userID string, ttl time.Duration) (token string, err error)
