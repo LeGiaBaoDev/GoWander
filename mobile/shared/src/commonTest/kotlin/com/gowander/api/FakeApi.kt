@@ -34,4 +34,33 @@ class FakeApi : GoWanderApi {
     val feedbacks = mutableListOf<com.gowander.feedback.FeedbackDraft>()
     var feedbackResult: suspend (com.gowander.feedback.FeedbackDraft) -> String = { "fb-1" }
     override suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String { feedbacks += draft; return feedbackResult(draft) }
+
+    // ---- App accounts (ADR-040) ----
+    var token: String? = null
+    val tokenChanges = mutableListOf<String?>()
+    override fun useToken(token: String?) { this.token = token; tokenChanges += token }
+
+    var meResult: suspend () -> AppUser = { AppUser("u1", "Lan Anh", "lananh", "lananh@example.com", emailVerified = true) }
+    var loginResult: suspend (String, String) -> AuthResponse = { _, _ -> AuthResponse(AppSession("tok", "2027-01-15T00:00:00Z"), meResult()) }
+    var registerResult: suspend () -> AuthResponse = { AuthResponse(AppSession("tok", "2027-01-15T00:00:00Z"), meResult(), codeSent = true) }
+    var error: Exception? = null
+
+    private fun fail(): Nothing? { error?.let { throw it }; return null }
+
+    override suspend fun register(name: String, username: String, email: String, phone: String, password: String, device: String) = registerResult()
+    override suspend fun login(identifier: String, password: String, device: String): AuthResponse { fail(); return loginResult(identifier, password) }
+    override suspend fun loginWithGoogle(idToken: String, device: String): AuthResponse = registerResult()
+    override suspend fun verifyEmail(code: String): AppUser = meResult()
+    override suspend fun resendCode(purpose: String) { fail() }
+    override suspend fun forgotPassword(email: String) { fail() }
+    override suspend fun resetPassword(email: String, code: String, newPassword: String) { fail() }
+    override suspend fun usernameAvailable(username: String): Boolean = true
+    override suspend fun me(): AppUser { fail(); return meResult() }
+    override suspend fun updateMe(name: String?, username: String?, phone: String?): AppUser = meResult()
+    override suspend fun changePassword(current: String, new: String) { fail() }
+    override suspend fun linkGoogle(idToken: String): AppUser = meResult()
+    override suspend fun unlinkGoogle(): AppUser = meResult()
+    override suspend fun deleteMe(password: String?, idToken: String?) { fail() }
+    override suspend fun logout() {}
+    override suspend fun logoutEverywhere() {}
 }

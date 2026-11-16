@@ -17,6 +17,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.client.request.header
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
@@ -26,6 +27,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import com.gowander.content.GuideContent
 import kotlinx.serialization.json.Json
@@ -76,6 +78,27 @@ interface GoWanderApi {
     suspend fun guide(): GuideContent
     /** One app start, counted per day on the server (ADR-038). Sends nothing else: no id, no location. */
     suspend fun recordOpen()
+
+    // ---- App accounts (AUTH-1/2, ADR-040): every call below sends the token set with [useToken] when there is one. ----
+
+    /** Bearer token for the calls that need an account; null signs out of the API (the token itself lives in the Keychain). */
+    fun useToken(token: String?)
+    suspend fun register(name: String, username: String, email: String, phone: String, password: String, device: String): AuthResponse
+    suspend fun login(identifier: String, password: String, device: String): AuthResponse
+    suspend fun loginWithGoogle(idToken: String, device: String): AuthResponse
+    suspend fun verifyEmail(code: String): AppUser
+    suspend fun resendCode(purpose: String): Unit
+    suspend fun forgotPassword(email: String): Unit
+    suspend fun resetPassword(email: String, code: String, newPassword: String): Unit
+    suspend fun usernameAvailable(username: String): Boolean
+    suspend fun me(): AppUser
+    suspend fun updateMe(name: String?, username: String?, phone: String?): AppUser
+    suspend fun changePassword(current: String, new: String): Unit
+    suspend fun linkGoogle(idToken: String): AppUser
+    suspend fun unlinkGoogle(): AppUser
+    suspend fun deleteMe(password: String?, idToken: String?): Unit
+    suspend fun logout(): Unit
+    suspend fun logoutEverywhere(): Unit
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
@@ -93,6 +116,11 @@ fun createGoWanderApi(baseUrl: String = apiBaseUrl): GoWanderApi =
 
 class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWanderApi {
     private val base = baseUrl.trimEnd('/')
+
+    /** Kept in memory only: the account store owns the real copy (Keychain / Keystore). */
+    private var token: String? = null
+
+    override fun useToken(token: String?) { this.token = token }
 
     override suspend fun planRoute(request: PlanRequest): PlanResponse = call("/api/v1/routes/plan") {
         method = HttpMethod.Post
@@ -231,6 +259,131 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
         return if (sameApi && parsed.encodedPath.startsWith("/media/") || cdn) raw else null
     }
 
+    // ---------- App accounts (ADR-040) ----------
+
+    @Serializable
+    private data class RegisterBody(val name: String, val username: String, val email: String, val phone: String, val password: String, val device: String)
+
+    @Serializable
+    private data class LoginBody(val identifier: String, val password: String, val device: String)
+
+    @Serializable
+    private data class TokenBody(val idToken: String, val device: String? = null)
+
+    @Serializable
+    private data class ProfileBody(val name: String? = null, val username: String? = null, val phone: String? = null)
+
+    @Serializable
+    private data class PasswordBody(val current: String, val new: String)
+
+    @Serializable
+    private data class EmailBody(val email: String)
+
+    @Serializable
+    private data class CodeBody(val code: String)
+
+    @Serializable
+    private data class ResetBody(val email: String, val code: String, val newPassword: String)
+
+    @Serializable
+    private data class DeleteBody(val password: String? = null, val idToken: String? = null)
+
+    @Serializable
+    private data class PurposeBody(val purpose: String)
+
+    override suspend fun register(name: String, username: String, email: String, phone: String, password: String, device: String): AuthResponse =
+        call("/api/v1/auth/register") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(RegisterBody(name, username, email, phone, password, device))
+        }
+
+    override suspend fun login(identifier: String, password: String, device: String): AuthResponse =
+        call("/api/v1/auth/login") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(LoginBody(identifier, password, device))
+        }
+
+    override suspend fun loginWithGoogle(idToken: String, device: String): AuthResponse =
+        call("/api/v1/auth/google") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(TokenBody(idToken, device))
+        }
+
+    override suspend fun verifyEmail(code: String): AppUser =
+        call<MeResponse>("/api/v1/auth/verify-email") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(CodeBody(code))
+        }.user
+
+    override suspend fun resendCode(purpose: String) {
+        callNoContent("/api/v1/auth/resend-code") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(PurposeBody(purpose))
+        }
+    }
+
+    override suspend fun forgotPassword(email: String) {
+        callNoContent("/api/v1/auth/forgot") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(EmailBody(email))
+        }
+    }
+
+    override suspend fun resetPassword(email: String, code: String, newPassword: String) {
+        callNoContent("/api/v1/auth/reset") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(ResetBody(email, code, newPassword))
+        }
+    }
+
+    override suspend fun usernameAvailable(username: String): Boolean =
+        call<AvailableResponse>("/api/v1/auth/username-available") { parameter("u", username) }.available
+
+    override suspend fun me(): AppUser = call<MeResponse>("/api/v1/me") {}.user
+
+    override suspend fun updateMe(name: String?, username: String?, phone: String?): AppUser =
+        call<MeResponse>("/api/v1/me") {
+            method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(ProfileBody(name, username, phone))
+        }.user
+
+    override suspend fun changePassword(current: String, new: String) {
+        callNoContent("/api/v1/me/password") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(PasswordBody(current, new))
+        }
+    }
+
+    override suspend fun linkGoogle(idToken: String): AppUser =
+        call<MeResponse>("/api/v1/me/google") {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(TokenBody(idToken))
+        }.user
+
+    override suspend fun unlinkGoogle(): AppUser = call<MeResponse>("/api/v1/me/google") { method = HttpMethod.Delete }.user
+
+    override suspend fun deleteMe(password: String?, idToken: String?) {
+        callNoContent("/api/v1/me") {
+            method = HttpMethod.Delete
+            contentType(ContentType.Application.Json)
+            setBody(DeleteBody(password?.takeIf { it.isNotBlank() }, idToken?.takeIf { it.isNotBlank() }))
+        }
+    }
+
+    override suspend fun logout() { callNoContent("/api/v1/auth/logout") { method = HttpMethod.Post } }
+
+    override suspend fun logoutEverywhere() { callNoContent("/api/v1/auth/logout-all") { method = HttpMethod.Post } }
+
     private companion object {
         val IMAGE_HOSTS = listOf("fbcdn.net", "mapillary.com")
         // The R2 bucket's public address (docs/runbooks/cloudflare-r2.md). shortcut: r2.dev is rate-limited by
@@ -242,7 +395,10 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     // Not named `build`: inside the request lambda that would call HttpRequestBuilder.build() instead.
     private suspend inline fun <reified T> call(path: String, crossinline configure: HttpRequestBuilder.() -> Unit): T {
         val (status, text) = try {
-            val response = client.request(base + path) { configure() }
+            val response = client.request(base + path) {
+                token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                configure()
+            }
             response.status to response.bodyAsText()
         } catch (e: CancellationException) {
             throw e
@@ -264,6 +420,30 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             throw ApiError.Unexpected("response does not match the API contract", e)
         } catch (e: IllegalArgumentException) {
             throw ApiError.Unexpected("response does not match the API contract", e)
+        }
+    }
+
+    /** For 204 answers and other responses whose body carries nothing (the status is the whole answer). */
+    private suspend fun callNoContent(path: String, configure: HttpRequestBuilder.() -> Unit) {
+        val (status, text) = try {
+            val response = client.request(base + path) {
+                token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                configure()
+            }
+            response.status to response.bodyAsText()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw ApiError.Network(e)
+        } catch (e: HttpRequestTimeoutException) {
+            throw ApiError.Network(e)
+        } catch (e: Exception) {
+            throw ApiError.Unexpected("request failed: ${e::class.simpleName}", e)
+        }
+        if (!status.isSuccess()) {
+            val envelope = try { apiJson.decodeFromString<ErrorEnvelope>(text) } catch (e: SerializationException) { null }
+            throw envelope?.let { ApiError.Server(it.error.code, it.error.message, status.value) }
+                ?: ApiError.Unexpected("HTTP ${status.value} without error envelope")
         }
     }
 }

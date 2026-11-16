@@ -183,3 +183,40 @@ data class PlaceCluster(val lat: Double, val lon: Double, val count: Int)
 
 @Serializable
 data class ClustersResponse(val clusters: List<PlaceCluster>)
+
+// ---------- App accounts (AUTH, ADR-040) ----------
+
+/** A session token from the API; the app keeps it in the Keychain (iOS) or Keystore (Android), never in Prefs. */
+@Serializable
+data class AppSession(val token: String, val expiresAt: String)
+
+/** The signed-in person; the server never sends a password, a code or a session here. */
+@Serializable
+data class AppUser(
+    val id: String,
+    val name: String,
+    val username: String? = null,
+    val email: String? = null,
+    val emailVerified: Boolean = false,
+    val phone: String? = null,
+    val phoneVerified: Boolean = false,
+    val hasPassword: Boolean = false,
+    val google: Boolean = false,
+)
+
+@Serializable
+data class AuthResponse(
+    val session: AppSession,
+    val user: AppUser,
+    val created: Boolean = false,
+    val codeSent: Boolean = true,
+)
+
+@Serializable
+internal data class MeResponse(val user: AppUser)
+
+@Serializable
+internal data class AvailableResponse(val available: Boolean = false)
+
+@Serializable
+internal data class OkResponse(val ok: Boolean = false)
