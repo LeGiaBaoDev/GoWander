@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,6 +165,44 @@ func TestAccounts(t *testing.T) {
 		}
 	})
 
+	t.Run("display name and the filtered audit log", func(t *testing.T) {
+		var id string
+		if err := s.Pool.QueryRow(ctx, `SELECT user_id::text FROM admin_credentials WHERE login = 'baole'`).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetDisplayName(ctx, id, "  Gia Bảo  ", "r-name2"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetDisplayName(ctx, id, " ", "r"); !errors.Is(err, ErrBadInput) {
+			t.Fatalf("empty name: %v", err)
+		}
+		now := time.Now()
+		q := AuditQuery{From: now.Add(-time.Hour), To: now.Add(time.Minute), Action: "account.rename", Limit: 10}
+		list, total, err := s.AuditPage(ctx, q)
+		if err != nil || total != 1 || list[0].ActorName != "Gia Bảo" || list[0].EntityName != "Gia Bảo" {
+			t.Fatalf("named actor and object, filtered by action: %d %+v %v", total, list, err)
+		}
+		all, _, _ := s.AuditPage(ctx, AuditQuery{From: now.Add(-time.Hour), To: now.Add(time.Minute), Limit: 500})
+		for _, e := range all {
+			if strings.Contains(e.ActorName+e.EntityName, "@") {
+				t.Fatalf("an email in the audit log: %+v", e)
+			}
+		}
+		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, hcm)
+		hours, err := s.AuditActivity(ctx, AuditQuery{From: day, To: day.AddDate(0, 0, 1)})
+		if err != nil || len(hours) != 24 {
+			t.Fatalf("one day = 24 hourly buckets: %d %v", len(hours), err)
+		}
+		days, err := s.AuditActivity(ctx, AuditQuery{From: day.AddDate(0, 0, -6), To: day.AddDate(0, 0, 1)})
+		sum := 0
+		for _, d := range days {
+			sum += d.Value
+		}
+		if err != nil || len(days) != 7 || sum == 0 {
+			t.Fatalf("seven days = 7 daily buckets with today's lines: %d %d %v", len(days), sum, err)
+		}
+	})
+
 	t.Run("the overview reads content counts as the admin role", func(t *testing.T) {
 		o, err := s.Overview(ctx)
 		if err != nil || o.Places < o.Published || o.WithPhoto > o.Places {
@@ -289,12 +328,16 @@ func TestUsageReadsCounters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.Usage(ctx, UsageQuery{Days: 30})
+	u, err := s.Usage(ctx, UsageQuery{Grain: grainOf("day")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(u.Daily) != 30 || u.Total != 9 || len(u.Areas) != 2 || u.Opens != 12 {
-		t.Fatalf("30 days, origin side only, older rows left out: days %d total %d areas %d", len(u.Daily), u.Total, len(u.Areas))
+	if len(u.Series) != 30 || u.Total != 9 || u.PrevTotal != 50 || len(u.Areas) != 2 || u.Opens != 12 || u.PrevOpens != 99 {
+		t.Fatalf("30 days, origin side only; the day 30 days ago is in the previous period: days %d total %d prev %d opens %d/%d",
+			len(u.Series), u.Total, u.PrevTotal, u.Opens, u.PrevOpens)
+	}
+	if m, err := s.Usage(ctx, UsageQuery{Grain: grainOf("month")}); err != nil || len(m.Series) != 12 || m.Series[11].Value < 9 {
+		t.Fatalf("by month: %+v %v", m.Series, err)
 	}
 	if len(u.Lines) != 1 || u.Lines[0].Label != "19" || len(u.From) != 1 || u.From[0].Label != "Tỉnh A" || len(u.To) != 1 || u.To[0].Label != "Tỉnh B" {
 		t.Fatalf("items under 5 are left out of the rankings: lines %v from %v to %v", u.Lines, u.From, u.To)
@@ -302,11 +345,18 @@ func TestUsageReadsCounters(t *testing.T) {
 	if len(u.Modes) != 2 || u.Modes[0].Label != "Xe buýt" {
 		t.Fatalf("modes %v", u.Modes)
 	}
-	b, err := s.Usage(ctx, UsageQuery{Days: 30, Area: "rB"})
+	if u.AreaCounts["rA"] != 7 || len(u.AreaCounts) != 1 {
+		t.Fatalf("map counts leave out provinces under 5: %v", u.AreaCounts)
+	}
+	shapes, err := s.AreaShapes(ctx)
+	if err != nil || len(shapes) != 2 || !strings.HasPrefix(shapes[0].Path, "M") || shapes[0].Y > 0 {
+		t.Fatalf("shapes for the map (SVG path, y = -latitude): %+v %v", shapes, err)
+	}
+	b, err := s.Usage(ctx, UsageQuery{Grain: grainOf("day"), Area: "rB"})
 	if err != nil || b.Total != 2 || b.AreaName != "Tỉnh B" || b.To != nil {
 		t.Fatalf("filtered by origin ward, no destinations: %+v %v", b, err)
 	}
-	if x, _ := s.Usage(ctx, UsageQuery{Days: 7, Area: "nope"}); x.Area != "" || x.Total != 9 {
+	if x, _ := s.Usage(ctx, UsageQuery{Grain: grainOf("week"), Area: "nope"}); x.Area != "" || x.Total != 59 { // 12 weeks hold both days
 		t.Fatalf("an unknown ward is ignored: %+v", x)
 	}
 }

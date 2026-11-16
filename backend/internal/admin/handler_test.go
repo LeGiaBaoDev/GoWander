@@ -27,6 +27,7 @@ type fakeStore struct {
 	audits    []AuditEntry
 	usage     Usage
 	usageQ    []UsageQuery
+	auditQ    []AuditQuery
 	guide     map[string]GuideItem
 	guideSave []GuideItem
 }
@@ -42,6 +43,13 @@ func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ str
 		return bad("mật khẩu hiện tại không đúng")
 	}
 	f.changed = append(f.changed, next)
+	return nil
+}
+func (f *fakeStore) SetDisplayName(_ context.Context, _, name, _ string) error {
+	if strings.TrimSpace(name) == "" {
+		return bad("tên hiển thị dài 1–80 ký tự")
+	}
+	f.changed = append(f.changed, "name:"+name)
 	return nil
 }
 func (f *fakeStore) StartPasswordReset(_ context.Context, login, _ string) (string, string, error) {
@@ -79,7 +87,16 @@ func (f *fakeStore) Audit(_ context.Context, e AuditEntry) error {
 	return nil
 }
 func (f *fakeStore) AuditLog(context.Context, int) ([]AuditEntry, error) { return nil, nil }
-func (f *fakeStore) Ready(context.Context) error                         { return nil }
+func (f *fakeStore) AuditPage(_ context.Context, q AuditQuery) ([]AuditEntry, int, error) {
+	f.auditQ = append(f.auditQ, q)
+	return []AuditEntry{{ActorName: "Gia Bảo", Action: "place.update", EntityType: "place", EntityName: "Chợ Bến Thành", RequestID: "R65GEKS5KD7TCGUV",
+		Metadata: map[string]any{"fields": []any{"name", "address"}, "status": "PUBLISHED→HIDDEN"}, At: time.Now()},
+		{Action: "account.create", EntityType: "user", EntityID: "01a1e1e8-b74c", Metadata: map[string]any{"login": "baole", "role": "SYSTEM_ADMIN"}, At: time.Now()}}, 120, nil
+}
+func (f *fakeStore) AuditActivity(context.Context, AuditQuery) ([]bar, error) {
+	return []bar{{"07:00 16/11", 0}, {"08:00 16/11", 3}}, nil
+}
+func (f *fakeStore) Ready(context.Context) error { return nil }
 func (f *fakeStore) Places(_ context.Context, q PlaceQuery) ([]PlaceRow, int, error) {
 	var out []PlaceRow
 	for _, p := range f.places {
@@ -141,6 +158,11 @@ func (f *fakeStore) SaveGuideItem(_ context.Context, _, kind string, g GuideItem
 	}
 	f.guideSave = append(f.guideSave, g)
 	return g.ID, nil
+}
+
+func (f *fakeStore) AreaShapes(context.Context) ([]AreaShape, error) {
+	return []AreaShape{{Code: "r1", Name: "Thành phố Hồ Chí Minh", Path: "M 106 -10 L 107 -10 L 107 -11 Z", X: 106.5, Y: -10.5},
+		{Code: "r2", Name: "Tỉnh Khánh Hòa", Path: "M 109 -12 L 110 -12 L 110 -13 Z", X: 109.5, Y: -12.5}}, nil
 }
 
 func (f *fakeStore) Usage(_ context.Context, q UsageQuery) (Usage, error) {
@@ -300,8 +322,11 @@ func TestTemporaryPasswordOpensOnlyThePasswordPage(t *testing.T) {
 		t.Fatalf("confirmation differs: %d", w.Code)
 	}
 	form.Set("confirm", "mật khẩu mới dài")
-	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusSeeOther || len(store.changed) != 1 {
-		t.Fatalf("change: %d %v", w.Code, store.changed)
+	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusSeeOther || len(store.changed) != 1 || w.Header().Get("Location") != "/admin/?welcome=1" {
+		t.Fatalf("forced change goes on to the overview: %d %s %v", w.Code, w.Header().Get("Location"), store.changed)
+	}
+	if w := do(h, "POST", "/admin/password", "sys", url.Values{"csrf": {"csrf-s"}, "current": {"đúng mật khẩu rồi"}, "new": {"mật khẩu mới dài"}, "confirm": {"mật khẩu mới dài"}}, nil); w.Header().Get("Location") != "/admin/password?saved=1" {
+		t.Fatalf("a chosen change stays on the page with a notice: %s", w.Header().Get("Location"))
 	}
 	form.Set("current", "sai")
 	if w := do(h, "POST", "/admin/password", "temp", form, nil); w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "không đúng") {
@@ -389,16 +414,26 @@ func TestReportsContentTabShowsRealCountsAndWhatNeedsAttention(t *testing.T) {
 
 func TestOverviewIsCustomersAndRevenueAtAGlance(t *testing.T) {
 	store := newFake()
-	store.usage = Usage{Opens: 120, PrevOpens: 100, Total: 80, PrevTotal: 100, OpensMax: 9, OpensDaily: []bar{{"15-11", 4}, {"16-11", 9}},
-		Modes: []bar{{"Xe buýt", 60}, {"Đi bộ", 20}}, Places: []bar{{"Chợ Bến Thành · Chợ", 30}, {"Dinh Độc Lập · Di tích", 12}}}
-	body := do(server(store, nil), "GET", "/admin/?days=7", "editor", nil, nil).Body.String()
-	for _, want := range []string{"Lượt mở app", `change up">&#43;20%`, `change down">-20%`, "Doanh thu", "Chưa có", "Lợi nhuận", "Chợ Bến Thành · Chợ", "Xe buýt", "75%", "Hành trình của khách", "Chưa đo", `href="/admin/reports"`} {
+	store.usage = Usage{Opens: 120, PrevOpens: 100, Total: 80, PrevTotal: 100, OpensSeries: []bar{{"Th10/2026", 4}, {"Th11/2026", 9}},
+		PrevOpensSeries: []bar{{"Th10/2025", 2}, {"Th11/2025", 3}},
+		Modes:           []bar{{"Xe buýt", 60}, {"Đi bộ", 20}}, Places: []bar{{"Chợ Bến Thành · Chợ", 30}, {"Dinh Độc Lập · Di tích", 12}}}
+	body := do(server(store, nil), "GET", "/admin/?grain=month", "editor", nil, nil).Body.String()
+	for _, want := range []string{"Lượt mở app theo tháng", "so với 12 tháng trước", `aria-current="true">Tháng`, "Kỳ trước, cùng số ngày: 3", "Th11/2026 (đến hôm nay)", "Kỳ trước (Th10/2025): 2",
+		`href="/admin/?grain=year"`, "Lượt mở app", `change up">&#43;20%`, `change down">-20%`, "Doanh thu", "Chưa có", "Lợi nhuận", "Chợ Bến Thành · Chợ", "Xe buýt", "75%", "Hành trình của khách", "Dữ liệu mẫu", `href="/admin/reports"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("overview lacks %q", want)
 		}
 	}
-	if q := store.usageQ[len(store.usageQ)-1]; q.Days != 7 || q.Area != "" {
+	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "month" || q.Area != "" {
 		t.Fatalf("overview query %+v", q)
+	}
+	// The province map: every province, both archipelagos named, a province links to the reports filtered by it.
+	store.usage.AreaCounts = map[string]int{"r1": 40}
+	body = do(server(store, nil), "GET", "/admin/?grain=week", "editor", nil, nil).Body.String()
+	for _, want := range []string{"Khách tìm đường từ đâu", "QĐ. Hoàng Sa", "QĐ. Trường Sa", "Tỉnh Khánh Hòa", `href="/admin/reports?grain=week&amp;area=r1"`, `class="lv4"`, `class="lv0"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("map lacks %q", want)
+		}
 	}
 }
 
@@ -496,11 +531,13 @@ func TestValidatePlace(t *testing.T) {
 func TestOverviewShowsUsageWithItsFilters(t *testing.T) {
 	store := newFake()
 	h := server(store, nil)
-	// Unknown periods fall back to 30 days; the province code is passed on (reports page; the overview has no area).
-	if w := do(h, "GET", "/admin/reports?days=365&area=r1", "editor", nil, nil); w.Code != http.StatusOK {
-		t.Fatalf("overview: %d", w.Code)
+	// An unknown grain falls back to days; the province code is passed on (reports page; the overview has no area),
+	// and the grain links keep it.
+	w := do(h, "GET", "/admin/reports?grain=century&area=r1", "editor", nil, nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `href="/admin/reports?area=r1&amp;grain=year"`) {
+		t.Fatalf("reports: %d", w.Code)
 	}
-	if q := store.usageQ[len(store.usageQ)-1]; q.Days != 30 || q.Area != "r1" {
+	if q := store.usageQ[len(store.usageQ)-1]; q.Grain.Key != "day" || q.Area != "r1" {
 		t.Fatalf("query %+v", q)
 	}
 	if w := do(h, "GET", "/admin/usage", "sys", nil, nil); w.Code != http.StatusNotFound {
@@ -510,14 +547,15 @@ func TestOverviewShowsUsageWithItsFilters(t *testing.T) {
 
 func TestOverviewUsageHidesSmallNumbers(t *testing.T) {
 	store := newFake()
-	store.usage = Usage{Opens: 3, Total: 3, Daily: []bar{{"15-11", 3}}, Areas: []Area{{"r1", "Thành phố Hồ Chí Minh"}}}
+	store.usage = Usage{Opens: 3, Total: 3, Series: []bar{{"15/11", 3}}, Areas: []Area{{"r1", "Thành phố Hồ Chí Minh"}}}
 	body := do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
-	for _, want := range []string{"Khách dùng app", "Lượt mở app", "Chưa đủ lượt tìm đường", "Thành phố Hồ Chí Minh", "Cả nước"} {
+	// Too little real use: the page shows sample numbers, and says so.
+	for _, want := range []string{"Khách dùng app", "Lượt mở app", "Dữ liệu mẫu", "Chưa đủ 5 lượt tìm đường thật", "Thành phố Hồ Chí Minh", "Cả nước"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("too little data: page lacks %q", want)
 		}
 	}
-	store.usage = Usage{Opens: 5000, Total: 1240, DailyMax: 900, Daily: []bar{{"15-11", 2}, {"16-11", 900}},
+	store.usage = Usage{Opens: 5000, Total: 1240, Series: []bar{{"15/11", 2}, {"16/11", 900}},
 		Modes: []bar{{"Xe buýt", 1238}, {"Xe đạp", 2}}, Lines: []bar{{"19", 600}}, Places: []bar{{"Chợ Bến Thành · Chợ và mua sắm", 80}}}
 	body = do(server(store, nil), "GET", "/admin/reports", "sys", nil, nil).Body.String()
 	for _, want := range []string{"5.000", "1.240", "Tuyến 19", "Chợ Bến Thành · Chợ và mua sắm", "Xe buýt", "Xe đạp</span><span class=\"muted\">&lt;5"} {
@@ -597,5 +635,59 @@ func TestValidateGuide(t *testing.T) {
 		if (c.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), c.want)) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+func TestAuditRangeOnlyThePast(t *testing.T) {
+	now := time.Date(2026, 11, 16, 1, 0, 0, 0, time.UTC) // 16/11 08:00 in HCMC
+	day := func(s string) time.Time { d, _ := time.ParseInLocation(time.DateOnly, s, hcm); return d }
+	for name, c := range map[string]struct {
+		from, to, wantFrom, wantTo string
+		notice                     bool
+	}{
+		"default: last 7 days":     {"", "", "2026-11-10", "2026-11-16", false},
+		"future end pulled back":   {"2026-11-14", "2026-11-20", "2026-11-14", "2026-11-16", true},
+		"future start, future end": {"2026-12-01", "2026-12-05", "2026-11-16", "2026-11-16", true},
+		"swapped":                  {"2026-11-15", "2026-11-01", "2026-11-01", "2026-11-15", true},
+		"over 90 days":             {"2026-01-01", "2026-11-16", "2026-08-19", "2026-11-16", true},
+		"rubbish ignored":          {"hôm qua", "x", "2026-11-10", "2026-11-16", false},
+	} {
+		from, to, notice := auditRange(url.Values{"from": {c.from}, "to": {c.to}}, now)
+		if !from.Equal(day(c.wantFrom)) || !to.Equal(day(c.wantTo)) || (notice != "") != c.notice {
+			t.Errorf("%s: %s..%s %q", name, from.Format(time.DateOnly), to.Format(time.DateOnly), notice)
+		}
+	}
+}
+
+func TestAuditPage(t *testing.T) {
+	store := newFake()
+	body := do(server(store, nil), "GET", "/admin/audit?from=2026-11-01&to=2099-01-01&action=place.update&page=2", "sys", nil, nil).Body.String()
+	for _, want := range []string{"Chợ Bến Thành", "Đã sửa: tên, địa chỉ", "Trạng thái: Đang hiển thị→Đang ẩn", "Mã tài khoản: baole",
+		"Vai trò: Quản trị hệ thống", "Hệ thống (lệnh trên server)", `title="R65GEKS5KD7TCGUV">R65GEKS5<`, "nhật ký chỉ có quá khứ",
+		`max="`, "Trang 2 / 3", "08:00 16/11 · 3 thao tác"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("audit page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "@") {
+		t.Error("an email address is shown in the audit log")
+	}
+	q := store.auditQ[0]
+	if q.Action != "place.update" || q.Offset != 50 || q.To.Sub(q.From) > 91*24*time.Hour || q.To.After(time.Now().Add(48*time.Hour)) {
+		t.Fatalf("query %+v", q)
+	}
+}
+
+func TestDisplayName(t *testing.T) {
+	store := newFake()
+	h := server(store, nil)
+	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"csrf": {"csrf-s"}, "name": {"Gia Bảo Lê"}}, nil); w.Header().Get("Location") != "/admin/password?named=1" || store.changed[0] != "name:Gia Bảo Lê" {
+		t.Fatalf("%d %s %v", w.Code, w.Header().Get("Location"), store.changed)
+	}
+	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"csrf": {"csrf-s"}, "name": {"  "}}, nil); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty name: %d", w.Code)
+	}
+	if w := do(h, "POST", "/admin/account/name", "sys", url.Values{"name": {"x"}}, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("without CSRF: %d", w.Code)
 	}
 }

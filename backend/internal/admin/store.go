@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/mail"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -20,6 +22,9 @@ import (
 // PG is the PostgreSQL Store, connected as the role gowander_admin (ADR-037).
 type PG struct {
 	Pool *pgxpool.Pool
+
+	shapesMu sync.Mutex
+	shapes   []AreaShape // province outlines for the map, read once
 }
 
 func (s *PG) Ready(ctx context.Context) error { return s.Pool.Ping(ctx) }
@@ -139,6 +144,21 @@ func (s *PG) ChangePassword(ctx context.Context, userID, current, next, keepToke
 			return err
 		}
 		return audit(ctx, tx, AuditEntry{ActorID: userID, Action: "admin.password_change", EntityType: "user", EntityID: userID, RequestID: requestID})
+	})
+}
+
+// SetDisplayName is the name the Admin shows for the operator (sidebar, audit log). 1–80 characters.
+func (s *PG) SetDisplayName(ctx context.Context, userID, name, requestID string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 80 {
+		return bad("tên hiển thị dài 1–80 ký tự")
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE users SET display_name = $2, updated_at = now() WHERE id = $1 AND display_name IS DISTINCT FROM $2`, userID, name)
+		if err != nil || tag.RowsAffected() == 0 {
+			return err
+		}
+		return audit(ctx, tx, AuditEntry{ActorID: userID, Action: "account.rename", EntityType: "user", EntityID: userID, RequestID: requestID, Metadata: map[string]any{"name": name}})
 	})
 }
 
@@ -331,23 +351,81 @@ func audit(ctx context.Context, db interface {
 	return err
 }
 
-func (s *PG) AuditLog(ctx context.Context, limit int) ([]AuditEntry, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT coalesce(a.actor_id::text, ''), coalesce(u.display_name, c.email, ''), a.action, a.entity_type,
-		       coalesce(a.entity_id, ''), a.metadata, coalesce(a.request_id, ''), a.created_at
-		  FROM admin_audit_logs a LEFT JOIN users u ON u.id = a.actor_id LEFT JOIN user_contacts c ON c.user_id = a.actor_id
-		 ORDER BY a.created_at DESC LIMIT $1`, limit)
-	if err != nil {
-		return nil, err
-	}
+// AuditQuery filters the audit log: a time window [From, To) and optionally one action.
+type AuditQuery struct {
+	From, To time.Time
+	Action   string
+	Limit    int
+	Offset   int
+}
+
+// auditSelect names people by display name or login, never by email, and names the object of each line.
+const auditSelect = `SELECT coalesce(a.actor_id::text, ''), coalesce(nullif(u.display_name, ''), ac.login, ''), a.action, a.entity_type,
+       coalesce(a.entity_id, ''),
+       coalesce(CASE a.entity_type
+         WHEN 'user' THEN (SELECT coalesce(nullif(u2.display_name, ''), ac2.login) FROM users u2 LEFT JOIN admin_credentials ac2 ON ac2.user_id = u2.id WHERE u2.id::text = a.entity_id)
+         WHEN 'place' THEN (SELECT name FROM places WHERE id::text = a.entity_id)
+         WHEN 'food' THEN (SELECT name FROM food_items WHERE id::text = a.entity_id)
+         WHEN 'story' THEN (SELECT title FROM historical_stories WHERE id::text = a.entity_id)
+         WHEN 'place_category' THEN (SELECT name FROM place_categories WHERE id::text = a.entity_id)
+       END, ''),
+       a.metadata, coalesce(a.request_id, ''), a.created_at
+  FROM admin_audit_logs a LEFT JOIN users u ON u.id = a.actor_id LEFT JOIN admin_credentials ac ON ac.user_id = a.actor_id`
+
+const auditWhere = ` WHERE a.created_at >= $1 AND a.created_at < $2 AND ($3 = '' OR a.action = $3)`
+
+func scanAudit(rows pgx.Rows) ([]AuditEntry, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (AuditEntry, error) {
 		var e AuditEntry
 		var meta []byte
-		err := r.Scan(&e.ActorID, &e.ActorName, &e.Action, &e.EntityType, &e.EntityID, &meta, &e.RequestID, &e.At)
+		err := r.Scan(&e.ActorID, &e.ActorName, &e.Action, &e.EntityType, &e.EntityID, &e.EntityName, &meta, &e.RequestID, &e.At)
 		if err == nil {
 			_ = json.Unmarshal(meta, &e.Metadata)
 		}
 		return e, err
 	})
+}
+
+// AuditLog is the newest lines, whatever the time (the reports page shows the last few).
+func (s *PG) AuditLog(ctx context.Context, limit int) ([]AuditEntry, error) {
+	rows, err := s.Pool.Query(ctx, auditSelect+` ORDER BY a.created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanAudit(rows)
+}
+
+// AuditPage is one page of the filtered log, newest first, and how many lines match.
+func (s *PG) AuditPage(ctx context.Context, q AuditQuery) ([]AuditEntry, int, error) {
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM admin_audit_logs a`+auditWhere, q.From, q.To, q.Action).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("audit count: %w", err)
+	}
+	rows, err := s.Pool.Query(ctx, auditSelect+auditWhere+` ORDER BY a.created_at DESC LIMIT $4 OFFSET $5`, q.From, q.To, q.Action, q.Limit, q.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("audit page: %w", err)
+	}
+	list, err := scanAudit(rows)
+	return list, total, err
+}
+
+// AuditActivity counts the filtered lines per hour (a window of up to 2 days) or per day, every bucket present.
+func (s *PG) AuditActivity(ctx context.Context, q AuditQuery) ([]bar, error) {
+	unit, label := "day", "DD/MM"
+	if q.To.Sub(q.From) <= 48*time.Hour {
+		unit, label = "hour", "HH24:00 DD/MM"
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT to_char(b, '`+label+`'), count(a.*)::int
+		  FROM generate_series(date_trunc('`+unit+`', $1::timestamptz AT TIME ZONE 'Asia/Ho_Chi_Minh'),
+		                       date_trunc('`+unit+`', ($2::timestamptz - interval '1 second') AT TIME ZONE 'Asia/Ho_Chi_Minh'), interval '1 `+unit+`') b
+		  LEFT JOIN admin_audit_logs a ON date_trunc('`+unit+`', a.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = b
+		       AND a.created_at >= $1 AND a.created_at < $2 AND ($3 = '' OR a.action = $3)
+		 GROUP BY b ORDER BY b`, q.From, q.To, q.Action)
+	if err != nil {
+		return nil, fmt.Errorf("audit activity: %w", err)
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[bar])
 }
 
 func nullable(s string) any {

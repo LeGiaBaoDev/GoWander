@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -62,6 +63,7 @@ var actionNames = map[string]string{
 	"admin.password_reset":           "Đặt lại mật khẩu",
 	"account.create":                 "Tạo tài khoản",
 	"account.temporary_password":     "Cấp mật khẩu tạm",
+	"account.rename":                 "Đổi tên hiển thị",
 	"role.grant":                     "Cấp vai trò",
 	"role.revoke":                    "Thu hồi vai trò",
 	"place.update":                   "Sửa địa điểm",
@@ -80,6 +82,13 @@ func scaleBar(v, top, height int) int {
 	return min(max(v, MinShown), top) * height / top
 }
 
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // groupDigits: 1030 -> 1.030 (Vietnamese grouping).
 func groupDigits(n int) string {
 	s := strconv.Itoa(n)
@@ -95,7 +104,7 @@ var pages = func() map[string]*template.Template {
 	funcs := template.FuncMap{
 		"has": func(s Session, role string) bool { return s.Has(role) },
 		"initial": func(s Session) string {
-			for _, c := range strings.TrimSpace(s.Name + s.Email) {
+			for _, c := range strings.TrimSpace(s.Name + s.Login) {
 				return strings.ToUpper(string(c))
 			}
 			return "?"
@@ -116,6 +125,14 @@ var pages = func() map[string]*template.Template {
 		"num":         groupDigits,
 		"statusName":  func(s string) string { return statusNames[s] },
 		"missingName": func(s string) string { return missingNames[s] },
+		"detail":      auditDetail,
+		"entityName":  func(t string) string { return cmpOr(entityNames[t], t) },
+		"short": func(s string) string {
+			if len(s) > 8 {
+				return s[:8]
+			}
+			return s
+		},
 		"action": func(a string) string {
 			if v, ok := actionNames[a]; ok {
 				return v
@@ -126,19 +143,16 @@ var pages = func() map[string]*template.Template {
 			if t == nil {
 				return "chưa đăng nhập"
 			}
-			return t.Local().Format("02-01-2006 15:04")
+			return friendlyTime(*t, time.Now())
 		},
-		"count": func(n int) string { // usage numbers: 1-4 show as "<5" (ADR-038 §5)
-			if n > 0 && n < MinShown {
-				return "<" + strconv.Itoa(MinShown)
-			}
-			return groupDigits(n)
-		},
-		"scale": scaleBar,
-		"sub":   func(a, b int) int { return a - b },
-		"add":   func(a, b int) int { return a + b },
-		"mul":   func(a, b int) int { return a * b },
-		"at":    func(t time.Time) string { return t.Local().Format("02-01-2006 15:04:05") },
+		"count":  countText, // usage numbers: 1-4 show as "<5" (ADR-038 §5)
+		"scale":  scaleBar,
+		"sub":    func(a, b int) int { return a - b },
+		"add":    func(a, b int) int { return a + b },
+		"vnd":    vnd,
+		"mul":    func(a, b int) int { return a * b },
+		"at":     func(t time.Time) string { return friendlyTime(t, time.Now()) },
+		"atFull": func(t time.Time) string { return t.In(hcm).Format("15:04:05 · 02/01/2006") },
 		"in": func(list []string, v string) bool {
 			for _, x := range list {
 				if x == v {
@@ -182,6 +196,7 @@ func (h Handler) Mount(r chi.Router) {
 			r.Post("/logout", h.logout)
 			r.Get("/password", h.passwordPage)
 			r.Post("/password", h.changePassword)
+			r.Post("/account/name", h.setName)
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin, RoleContentEditor))
 				r.Get("/places", h.places)
@@ -338,7 +353,7 @@ func (h Handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) passwordPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, http.StatusOK, "password", map[string]any{"Saved": r.URL.Query().Get("saved") == "1"})
+	h.render(w, r, http.StatusOK, "password", map[string]any{"Saved": r.URL.Query().Get("saved") == "1", "Named": r.URL.Query().Get("named") == "1"})
 }
 
 func (h Handler) changePassword(w http.ResponseWriter, r *http.Request) {
@@ -356,7 +371,24 @@ func (h Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if current(r).MustChange { // the forced first change is done: straight into the Admin
+		http.Redirect(w, r, "/admin/?welcome=1", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/admin/password?saved=1", http.StatusSeeOther)
+}
+
+func (h Handler) setName(w http.ResponseWriter, r *http.Request) {
+	err := h.Store.SetDisplayName(r.Context(), current(r).UserID, r.PostFormValue("name"), httpx.RequestID(r))
+	if errors.Is(err, ErrBadInput) {
+		h.render(w, r, http.StatusUnprocessableEntity, "password", map[string]any{"Problem": strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": ")})
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/password?named=1", http.StatusSeeOther)
 }
 
 func (h Handler) forgotPage(w http.ResponseWriter, r *http.Request) {
@@ -433,10 +465,7 @@ func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 // usageQuery reads the period (and, on the reports page, the departure province) from the query string.
 func usageQuery(r *http.Request, withArea bool) UsageQuery {
 	q := UsageQuery{}
-	q.Days, _ = strconv.Atoi(r.URL.Query().Get("days"))
-	if !slices.Contains(UsageDays, q.Days) {
-		q.Days = UsageDays[0]
-	}
+	q.Grain = grainOf(r.URL.Query().Get("grain"))
 	if withArea {
 		q.Area = r.URL.Query().Get("area")
 	}
@@ -460,12 +489,22 @@ func (h Handler) health(r *http.Request) (states []map[string]any, down []string
 
 // home is the overview: customers and revenue at a glance (owner, 16-11-2026); details live on /admin/reports.
 func (h Handler) home(w http.ResponseWriter, r *http.Request) {
-	u, err := h.Store.Usage(r.Context(), usageQuery(r, false))
+	q := usageQuery(r, false)
+	u, err := h.Store.Usage(r.Context(), q)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
 	_, down := h.health(r)
+	shapes, err := h.Store.AreaShapes(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if u.Total < MinShown { // not enough real use yet: sample numbers, badged (mock.go)
+		u = sampleUsage(q, u.Areas, shapes)
+	}
+	rev := sampleRevenue(q.Grain) // no revenue source yet (mock.go)
 	var top []bar
 	if len(u.Places) > 5 {
 		top = u.Places[:5]
@@ -473,16 +512,19 @@ func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 		top = u.Places
 	}
 	h.render(w, r, http.StatusOK, "home", map[string]any{
-		"U": u, "DaysOptions": UsageDays, "MinShown": MinShown, "Down": down, "Greeting": greeting(time.Now()),
+		"U": u, "Grains": Grains, "GrainBase": "/admin/?", "MinShown": MinShown, "Down": down, "Greeting": greeting(time.Now()), "Welcome": r.URL.Query().Get("welcome") == "1",
 		"OpensChange": delta(u.Opens, u.PrevOpens), "SearchChange": delta(u.Total, u.PrevTotal),
-		"Opens": areaPaths(u.OpensDaily, u.OpensMax, 600, 160), "Modes": donut(u.Modes, u.Total), "TopPlaces": top,
+		"Opens": newLineChart("opens", u.OpensSeries, u.PrevOpensSeries, "lượt mở", groupDigits, u.Grain.partial()), "Modes": donut(u.Modes, u.Total), "TopPlaces": top,
+		"Map": newVNMap(shapes, u.AreaCounts, "", "/admin/reports?grain="+u.Grain.Key+"&area="),
+		"Rev": rev, "RevChange": delta(int(rev.Total/1000), int(rev.Prev/1000)), "ProfitChange": delta(int(rev.Profit/1000), int(rev.PrevProfit/1000)),
+		"RevChart": revenueChart(rev), "Starts": SampleStarts(u.Total),
 	})
 }
 
 // reports is "Báo cáo thống kê": how the app is used (filters, rankings) and the state of the content.
 func (h Handler) reports(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
-	data := map[string]any{"Tab": tab, "DaysOptions": UsageDays, "MinShown": MinShown}
+	data := map[string]any{"Tab": tab, "Grains": Grains, "MinShown": MinShown}
 	if tab == "noi-dung" {
 		o, err := h.Store.Overview(r.Context())
 		if err != nil {
@@ -504,7 +546,17 @@ func (h Handler) reports(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, r, err)
 			return
 		}
-		data["U"], data["Searches"] = u, areaPaths(u.Daily, u.DailyMax, 600, 160)
+		shapes, err := h.Store.AreaShapes(r.Context())
+		if err != nil {
+			h.fail(w, r, err)
+			return
+		}
+		if u.Total < MinShown { // not enough real use yet: sample numbers, badged (mock.go)
+			u = sampleUsage(u.UsageQuery, u.Areas, shapes)
+		}
+		data["U"], data["Searches"] = u, newLineChart("searches", u.Series, u.PrevSeries, "lượt tìm", countText, u.Grain.partial())
+		data["GrainBase"] = "/admin/reports?" + map[bool]string{true: "area=" + url.QueryEscape(u.Area) + "&", false: ""}[u.Area != ""]
+		data["Map"] = newVNMap(shapes, u.AreaCounts, u.Area, "/admin/reports?grain="+u.Grain.Key+"&area=")
 		data["SearchChange"] = delta(u.Total, u.PrevTotal)
 	}
 	h.render(w, r, http.StatusOK, "reports", data)
@@ -546,13 +598,7 @@ func (h Handler) places(w http.ResponseWriter, r *http.Request) {
 		return "/admin/places?" + u.Encode()
 	}
 	data := map[string]any{"List": list, "Total": total, "Q": q, "Categories": cats, "Statuses": PlaceStatuses,
-		"From": (q.Page-1)*PageSize + 1, "To": (q.Page-1)*PageSize + len(list)}
-	if q.Page > 1 {
-		data["Prev"] = pageURL(q.Page - 1)
-	}
-	if q.Page*PageSize < total {
-		data["Next"] = pageURL(q.Page + 1)
-	}
+		"From": (q.Page-1)*PageSize + 1, "To": (q.Page-1)*PageSize + len(list), "Pager": newPager(q.Page, total, PageSize, pageURL)}
 	h.render(w, r, http.StatusOK, "places", data)
 }
 
@@ -693,11 +739,129 @@ func (h Handler) saveGuide(kind string) http.HandlerFunc {
 	}
 }
 
+const auditPageSize = 50
+
+// auditRange reads ?from=&to= (YYYY-MM-DD, Ho Chi Minh City days). The log only holds the past: a day after today is
+// pulled back to today, from after to is swapped, and a window is at most 90 days. The notice says what was changed.
+func auditRange(v url.Values, now time.Time) (from, to time.Time, notice string) {
+	today := time.Date(now.In(hcm).Year(), now.In(hcm).Month(), now.In(hcm).Day(), 0, 0, 0, 0, hcm)
+	from, to = today.AddDate(0, 0, -6), today
+	parse := func(key string, def time.Time) time.Time {
+		if d, err := time.ParseInLocation(time.DateOnly, v.Get(key), hcm); err == nil {
+			return d
+		}
+		return def
+	}
+	from, to = parse("from", from), parse("to", to)
+	var notes []string
+	if to.After(today) {
+		to, notes = today, append(notes, "nhật ký chỉ có quá khứ: ngày kết thúc lùi về hôm nay")
+	}
+	if from.After(today) {
+		from = today
+	}
+	if from.After(to) {
+		from, to, notes = to, from, append(notes, "ngày bắt đầu sau ngày kết thúc nên đã đổi chỗ")
+	}
+	if to.Sub(from) > 89*24*time.Hour {
+		from, notes = to.AddDate(0, 0, -89), append(notes, "xem tối đa 90 ngày một lần")
+	}
+	return from, to, strings.Join(notes, "; ")
+}
+
+var entityNames = map[string]string{"user": "Tài khoản", "place": "Địa điểm", "food": "Món ăn", "story": "Câu chuyện", "place_category": "Loại địa điểm"}
+
+var fieldNames = map[string]string{"name": "tên", "name_en": "tên tiếng Anh", "short_description": "mô tả", "address": "địa chỉ",
+	"status": "trạng thái", "primary_category_id": "loại"}
+
+// auditDetail turns an audit line's metadata into short Vietnamese phrases.
+func auditDetail(meta map[string]any) []string {
+	var out []string
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		v := meta[k]
+		switch k {
+		case "fields":
+			var names []string
+			if list, ok := v.([]any); ok {
+				for _, f := range list {
+					name := fmt.Sprint(f)
+					if n, ok := fieldNames[name]; ok {
+						name = n
+					}
+					names = append(names, name)
+				}
+			}
+			out = append(out, "Đã sửa: "+strings.Join(names, ", "))
+		case "status":
+			text := fmt.Sprint(v)
+			for code, name := range statusNames {
+				text = strings.ReplaceAll(text, code, name)
+			}
+			out = append(out, "Trạng thái: "+text)
+		case "role":
+			out = append(out, "Vai trò: "+roleNames[fmt.Sprint(v)])
+		case "login":
+			out = append(out, "Mã tài khoản: "+fmt.Sprint(v))
+		case "title", "name":
+			out = append(out, "Tên: "+fmt.Sprint(v))
+		case "active":
+			out = append(out, map[bool]string{true: "Đang bật", false: "Đã tắt"}[v == true])
+		default:
+			out = append(out, k+": "+fmt.Sprint(v))
+		}
+	}
+	return out
+}
+
+var roleNames = map[string]string{RoleContentEditor: "Biên tập nội dung", RoleModerator: "Kiểm duyệt", RoleOperationsAdmin: "Vận hành",
+	RoleBusinessAdmin: "Kinh doanh", RoleSystemAdmin: "Quản trị hệ thống"}
+
 func (h Handler) audit(w http.ResponseWriter, r *http.Request) {
-	entries, err := h.Store.AuditLog(r.Context(), 200)
+	v := r.URL.Query()
+	from, to, notice := auditRange(v, time.Now())
+	q := AuditQuery{From: from, To: to.AddDate(0, 0, 1), Limit: auditPageSize}
+	if _, ok := actionNames[v.Get("action")]; ok {
+		q.Action = v.Get("action")
+	}
+	page, _ := strconv.Atoi(v.Get("page"))
+	page = max(page, 1)
+	q.Offset = (page - 1) * auditPageSize
+	entries, total, err := h.Store.AuditPage(r.Context(), q)
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	h.render(w, r, http.StatusOK, "audit", map[string]any{"Entries": entries})
+	activity, err := h.Store.AuditActivity(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	link := func(p int) string {
+		u := url.Values{"from": {from.Format(time.DateOnly)}, "to": {to.Format(time.DateOnly)}, "page": {strconv.Itoa(p)}}
+		if q.Action != "" {
+			u.Set("action", q.Action)
+		}
+		return "/admin/audit?" + u.Encode()
+	}
+	actions := make([]string, 0, len(actionNames))
+	for a := range actionNames {
+		actions = append(actions, a)
+	}
+	slices.SortFunc(actions, func(a, b string) int { return strings.Compare(actionNames[a], actionNames[b]) })
+	today := time.Now().In(hcm).Format(time.DateOnly)
+	h.render(w, r, http.StatusOK, "audit", map[string]any{
+		"Entries": entries, "Total": total, "From": from.Format(time.DateOnly), "To": to.Format(time.DateOnly), "Today": today,
+		"Action": q.Action, "Actions": actions, "Notice": notice, "Pager": newPager(page, total, auditPageSize, link),
+		"Chart": newLineChart("audit", activity, nil, "thao tác", groupDigits),
+		"Quick": []map[string]string{
+			{"Label": "Hôm nay", "URL": "/admin/audit?from=" + today + "&to=" + today},
+			{"Label": "7 ngày", "URL": "/admin/audit?from=" + time.Now().In(hcm).AddDate(0, 0, -6).Format(time.DateOnly) + "&to=" + today},
+			{"Label": "30 ngày", "URL": "/admin/audit?from=" + time.Now().In(hcm).AddDate(0, 0, -29).Format(time.DateOnly) + "&to=" + today},
+		},
+	})
 }

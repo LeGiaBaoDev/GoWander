@@ -5,49 +5,43 @@
   <div>
     <p class="hi">{{.Greeting}}{{with .Me.Name}}, {{.}}{{end}} 👋</p>
     <h1>Tổng quan</h1>
-    <p class="muted">Khách dùng GoWander thế nào và app kiếm được gì, {{$u.Days}} ngày gần nhất.</p>
+    <p class="muted">Khách dùng GoWander thế nào và app kiếm được gì: {{$u.Grain.Span}} gần nhất, theo từng {{$u.Grain.Lower}}, so với {{$u.Grain.Span}} trước đó.</p>
   </div>
-  <form class="filters inline" method="get" action="/admin/">
-    <label><span class="sr-only">Khoảng thời gian</span>
-      <select name="days">{{range .DaysOptions}}<option value="{{.}}"{{if eq . $u.Days}} selected{{end}}>{{.}} ngày gần nhất</option>{{end}}</select></label>
-    <button type="submit" class="button ghost">Xem</button>
-  </form>
+  <nav class="seg" aria-label="Xem theo">{{range .Grains}}<a href="{{$.GrainBase}}grain={{.Key}}"{{if eq .Key $.U.Grain.Key}} aria-current="true"{{end}}>{{.Name}}<small>{{.Span}}</small></a>{{end}}</nav>
 </header>
 
+{{if or .Rev.Sample $u.Sample}}<p class="notice sample-note" role="note"><span class="sample">Dữ liệu mẫu</span> Các thẻ gắn nhãn này đang hiện số mẫu vì chưa có số thật{{if $u.Sample}} (khách dùng app: chưa đủ {{.MinShown}} lượt tìm đường){{end}}{{if .Rev.Sample}} (doanh thu, lợi nhuận: chưa bật kênh kiếm tiền){{end}}. Danh sách cần thay ghi trong PIPELINE.md, mục "Admin sample data".</p>{{end}}
+{{if .Welcome}}<p class="notice ok" role="status">Đã đặt mật khẩu của bạn. Lần sau đăng nhập bằng mật khẩu này; trang đổi mật khẩu sẽ không tự hiện nữa.</p>{{end}}
 {{with .Down}}<p class="notice bad" role="alert">Đang có dịch vụ không phản hồi: {{range $i, $n := .}}{{if $i}}, {{end}}{{$n}}{{end}}. <a href="/admin/reports?tab=noi-dung">Xem tình trạng hệ thống →</a></p>{{end}}
 
 <section class="kpis" aria-label="Chỉ số chính">
   <div class="card kpi stat"><span class="icon t1" aria-hidden="true">{{template "icon" "phone"}}</span><div>
-    <span class="label">Lượt mở app</span><strong>{{num $u.Opens}}</strong>
-    <span class="muted">{{with .OpensChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+    <span class="label">Lượt mở app{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong>{{num $u.Opens}}</strong>
+    <span class="muted">{{with .OpensChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với {{$u.Grain.Span}} trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
   <div class="card kpi stat"><span class="icon t2" aria-hidden="true">{{template "icon" "route"}}</span><div>
-    <span class="label">Lượt tìm đường</span><strong>{{count $u.Total}}</strong>
-    <span class="muted">{{with .SearchChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
-  <div class="card kpi stat"><span class="icon t3" aria-hidden="true">{{template "icon" "coins"}}</span><div>
-    <span class="label">Doanh thu</span><strong class="text">Chưa có</strong>
-    <span class="muted">Chưa bật kênh kiếm tiền (quảng bá quán, affiliate)</span></div></div>
-  <div class="card kpi stat"><span class="icon t4" aria-hidden="true">{{template "icon" "trend"}}</span><div>
-    <span class="label">Lợi nhuận</span><strong class="text">Chưa có</strong>
-    <span class="muted">Tính khi có doanh thu và chi phí thật</span></div></div>
+    <span class="label">Lượt tìm đường{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong>{{count $u.Total}}</strong>
+    <span class="muted">{{with .SearchChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với {{$u.Grain.Span}} trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat{{if .Rev.Sample}} is-sample{{end}}"><span class="icon t3" aria-hidden="true">{{template "icon" "coins"}}</span><div>
+    <span class="label">Doanh thu{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong class="money">{{vnd .Rev.Total}}</strong>
+    <span class="muted">{{with .RevChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat{{if .Rev.Sample}} is-sample{{end}}"><span class="icon t4" aria-hidden="true">{{template "icon" "trend"}}</span><div>
+    <span class="label">Lợi nhuận{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong class="money">{{vnd .Rev.Profit}}</strong>
+    <span class="muted">{{with .ProfitChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</span></div></div>
 </section>
 
 <div class="cols wide-first">
   <section class="card">
-    <div class="row"><h2>Lượt mở app theo ngày</h2><span class="muted small">cả nước</span></div>
-    <svg class="area" viewBox="0 0 600 160" preserveAspectRatio="none" role="img" aria-label="Lượt mở app theo ngày, tổng {{num $u.Opens}}, cao nhất {{num $u.OpensMax}} một ngày">
-      <defs><linearGradient id="fill-o" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="g-top"/><stop offset="1" class="g-bottom"/></linearGradient></defs>
-      <path d="{{.Opens.Area}}" fill="url(#fill-o)"/><path d="{{.Opens.Line}}" class="line"/>
-    </svg>
-    {{$n := len $u.OpensDaily}}{{if $n}}<div class="row muted small"><span>{{(index $u.OpensDaily 0).Label}}</span><span>Cao nhất {{num $u.OpensMax}} lượt/ngày</span><span>{{(index $u.OpensDaily (sub $n 1)).Label}}</span></div>{{end}}
+    <div class="row"><h2>Lượt mở app theo {{$u.Grain.Lower}}{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
+    {{template "linechart" .Opens}}
   </section>
   <section class="card">
-    <h2>Phương tiện được chọn</h2>
+    <h2>Phương tiện được chọn{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
     {{if and .Modes (ge $u.Total .MinShown)}}
     <div class="donut-wrap">
       <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Tỉ lệ phương tiện khi tìm đường">
         <circle class="track" cx="21" cy="21" r="15.915" fill="none" stroke-width="6"/>
         {{range .Modes}}<circle class="tone{{.Tone}}" cx="21" cy="21" r="15.915" fill="none" stroke-width="6" stroke-dasharray="{{.Dash}}" stroke-dashoffset="{{.Offset}}"><title>{{.Label}}: {{.Pct}}%</title></circle>{{end}}
-        <text x="21" y="21" class="donut-total">{{count $u.Total}}</text><text x="21" y="26.5" class="donut-label">lượt tìm</text>
+        <text x="21" y="21" class="donut-total{{if gt $u.Total 9999}} long{{end}}">{{count $u.Total}}</text><text x="21" y="26.5" class="donut-label">lượt tìm</text>
       </svg>
       <ul class="legend">{{range .Modes}}<li><span class="dot tone{{.Tone}}" aria-hidden="true"></span>{{.Label}}<span class="muted">{{.Pct}}%</span></li>{{end}}</ul>
     </div>
@@ -55,20 +49,39 @@
   </section>
 </div>
 
+<div class="cols wide-first">
+  <section class="card{{if .Rev.Sample}} is-sample{{end}}">
+    <div class="row"><h2>Doanh thu theo {{$u.Grain.Lower}}{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
+    {{template "linechart" .RevChart}}
+  </section>
+  <section class="card{{if .Rev.Sample}} is-sample{{end}}">
+    <h2>Doanh thu theo kênh{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
+    {{$total := 0}}{{range .Rev.ByChannel}}{{$total = add $total .Value}}{{end}}
+    <div class="channels">{{range $i, $c := .Rev.ByChannel}}<div class="bar"><span>{{$c.Label}}</span><span class="muted">{{pct $c.Value $total}}%</span>
+      <progress class="{{if $i}}cat{{end}}" max="{{$total}}" value="{{$c.Value}}" aria-label="{{$c.Label}}: {{pct $c.Value $total}}%"></progress></div>{{end}}</div>
+    <p class="muted small">Kênh theo kế hoạch kinh doanh: quảng bá quán trước, affiliate sau. Lợi nhuận = doanh thu trừ chi phí (máy chủ, dữ liệu, nhân sự).</p>
+  </section>
+</div>
+
+<section class="card map-card">
+  <div class="row"><h2>Khách tìm đường từ đâu{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="muted small">theo tỉnh, thành xuất phát · bấm một tỉnh để xem chi tiết</span></div>
+  {{template "vnmap" .Map}}
+</section>
+
 <div class="cols">
   <section class="card">
-    <div class="row"><h2>Điểm đến được tìm nhiều nhất</h2><a href="/admin/reports?days={{$u.Days}}">Xem tất cả →</a></div>
+    <div class="row"><h2>Điểm đến được tìm nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><a href="/admin/reports?grain={{$u.Grain.Key}}">Xem tất cả →</a></div>
     {{with .TopPlaces}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $p := .}}
       <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}}</span>
         <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
     {{else}}<p class="muted">Chưa có địa điểm nào được tìm đường tới đủ {{.MinShown}} lần. Danh sách hiện khi nhiều người dùng app hơn.</p>{{end}}
   </section>
   <section class="card">
-    <h2>Hành trình của khách</h2>
+    <h2>Hành trình của khách{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
     <ol class="funnel">
       <li><span class="step t1">1</span><div><strong>{{num $u.Opens}}</strong> lượt mở app</div></li>
       <li><span class="step t2">2</span><div><strong>{{count $u.Total}}</strong> lượt tìm đường{{if and $u.Opens (ge $u.Total .MinShown)}} <span class="muted">· {{pct $u.Total $u.Opens}} lượt mỗi 100 lần mở</span>{{end}}</div></li>
-      <li class="later"><span class="step">3</span><div><strong>Chưa đo</strong> lượt bấm "Bắt đầu" đi theo tuyến <span class="muted">· cần bản app mới</span></div></li>
+      <li><span class="step t3">3</span><div><strong>{{num .Starts}}</strong> lượt bấm "Bắt đầu" đi theo tuyến <span class="sample">Mẫu</span> <span class="muted">· chưa đo, cần bản app mới</span></div></li>
     </ol>
   </section>
 </div>

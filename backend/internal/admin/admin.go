@@ -36,7 +36,8 @@ func (s Session) Has(role string) bool { return slices.Contains(s.Roles, role) }
 type AuditEntry struct {
 	ActorID, Action, EntityType, EntityID, RequestID string
 	Metadata                                         map[string]any
-	ActorName                                        string    // filled when listing
+	ActorName                                        string    // filled when listing: display name or login, never email
+	EntityName                                       string    // filled when listing: the place, dish, story, account …
 	At                                               time.Time // filled when listing
 }
 
@@ -66,6 +67,7 @@ var (
 type Store interface {
 	PasswordLogin(ctx context.Context, login, password, requestID string) (userID string, err error)
 	ChangePassword(ctx context.Context, userID, current, next, keepToken, requestID string) error
+	SetDisplayName(ctx context.Context, userID, name, requestID string) error
 	StartPasswordReset(ctx context.Context, login, requestID string) (email, token string, err error)
 	ResetPassword(ctx context.Context, token, next, requestID string) error
 	CreateSession(ctx context.Context, userID string, ttl time.Duration) (token string, err error)
@@ -74,8 +76,11 @@ type Store interface {
 	DeleteSession(ctx context.Context, token string) error
 	Audit(ctx context.Context, e AuditEntry) error
 	AuditLog(ctx context.Context, limit int) ([]AuditEntry, error)
+	AuditPage(ctx context.Context, q AuditQuery) ([]AuditEntry, int, error)
+	AuditActivity(ctx context.Context, q AuditQuery) ([]bar, error)
 	Overview(ctx context.Context) (Overview, error)
 	Usage(ctx context.Context, q UsageQuery) (Usage, error)
+	AreaShapes(ctx context.Context) ([]AreaShape, error)
 	GuideItems(ctx context.Context, kind string) ([]GuideRow, error)
 	GuideItem(ctx context.Context, kind, id string) (GuideItem, error)
 	SaveGuideItem(ctx context.Context, actorID, kind string, g GuideItem, requestID string) (id string, err error)

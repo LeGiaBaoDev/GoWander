@@ -2,6 +2,9 @@
 """Build the area seed SQL (ADR-038, amended 16-11-2026): Vietnam's provinces and centrally-run cities
 (admin_level 4) from the downloaded OpenStreetMap extract. Usage counters are grouped by these areas.
 
+A province whose own boundary ring is broken in OSM (Khánh Hòa in the 2026-11 extract: osmium cannot build it) is
+rebuilt as the union of its "subarea" communes, which are all mapped.
+
 OSM is midway through the 7-2025 merger: some old provinces are still mapped next to the new ones that contain them
 (e.g. Hòa Bình inside Phú Thọ), and a few are tagged "... cũ". Those tagged "cũ" are dropped here, old provinces lying
 inside a larger one are deleted when the seed loads, and the counter still picks the largest area containing a point.
@@ -13,6 +16,7 @@ Output: data/areas/vn-provinces.sql (replaces admin_areas; load with infrastruct
 """
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -55,8 +59,14 @@ def sql(value):
     return "'" + value.replace("'", "''") + "'"
 
 
-def areas_sql(areas, header):
+def areas_sql(areas, header, unions=()):
+    """unions: (code, name, [geometry, ...]) inserted as the union of the parts."""
     out = [f"-- {line}" for line in header] + ["BEGIN;", "DELETE FROM admin_areas;"]
+    valid = "ST_CollectionExtract(ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON({}), 4326)), 3)"
+    for code, name, parts in unions:
+        values = ", ".join("(" + valid.format(sql(json.dumps(rounded(g), separators=(",", ":")))) + ")" for g in parts)
+        out.append(f"INSERT INTO admin_areas (code, name, geom) SELECT {sql(code)}, {sql(name)}, "
+                   f"ST_Multi(ST_CollectionExtract(ST_UnaryUnion(ST_Collect(g)), 3)) FROM (VALUES {values}) AS v(g);")
     for code, name, geometry in areas:
         geo = json.dumps(rounded(geometry), separators=(",", ":"))
         # ST_MakeValid: rounding can make a sliver ring touch itself; CollectionExtract keeps only the polygons.
@@ -68,15 +78,45 @@ def areas_sql(areas, header):
     return "\n".join(out)
 
 
+def opl_relations(text):
+    """id -> (tags, subarea relation ids) from osmium's OPL output."""
+    out = {}
+    for line in text.splitlines():
+        rid, _, rest = line.partition(" ")
+        tags = re.search(r" T(\S*)", " " + rest)
+        members = re.search(r" M(\S*)", " " + rest)
+        tagmap = dict(kv.split("=", 1) for kv in (tags.group(1).split(",") if tags and tags.group(1) else []) if "=" in kv)
+        tagmap = {k: opl_unescape(v) for k, v in tagmap.items()}
+        subs = [m.split("@")[0][1:] for m in (members.group(1).split(",") if members and members.group(1) else []) if m.startswith("r") and m.endswith("@subarea")]
+        out[rid[1:]] = (tagmap, subs)
+    return out
+
+
+def opl_unescape(v):
+    """OPL writes special characters as %<hex>%."""
+    return re.sub(r"%([0-9a-f]+)%", lambda m: chr(int(m.group(1), 16)), v)
+
+
 def load(osm_file):
     with tempfile.TemporaryDirectory() as tmp:
         run = lambda *a: subprocess.run(["osmium", *a], check=True, capture_output=True, text=True)
         b, l = f"{tmp}/b.osm.pbf", f"{tmp}/l.osm.pbf"
         run("tags-filter", "-O", "-o", b, str(osm_file), "r/boundary=administrative")
-        run("tags-filter", "-O", "-o", l, b, "r/admin_level=4")
+        run("tags-filter", "-O", "-o", l, b, "r/admin_level=4,6")
         out = run("export", "-f", "geojsonseq", "--geometry-types=polygon", "--add-unique-id=type_id", "-o", "-", l).stdout
+        opl = run("tags-filter", "-R", "-f", "opl", "-o", "-", l, "r/admin_level=4").stdout
     features = [json.loads(line.lstrip("\x1e")) for line in out.splitlines() if line.strip()]
-    return sorted((relation_code(f["id"]), f["properties"]["name"], f["geometry"]) for f in features if is_province(f["properties"]))
+    built = {relation_code(f["id"])[1:]: f for f in features}
+    provinces = sorted((relation_code(f["id"]), f["properties"]["name"], f["geometry"]) for f in features if is_province(f["properties"]))
+    unions = []
+    for rid, (tags, subs) in sorted(opl_relations(opl).items()):
+        if is_province(tags) and rid not in built:
+            parts = [built[s]["geometry"] for s in subs if s in built]
+            if not parts:
+                sys.exit(f"{tags.get('name')} (r{rid}): no boundary and no mapped subareas")
+            print(f"{tags['name']}: boundary broken in OSM, built from {len(parts)}/{len(subs)} subareas")
+            unions.append((f"r{rid}", tags["name"], parts))
+    return provinces, unions
 
 
 def self_test():
@@ -89,6 +129,10 @@ def self_test():
     out = areas_sql([("r1", "Thành phố Hồ Chí Minh", sq), ("r2", "Tỉnh O'Lâm", sq)], ["t"])
     assert out.startswith("-- t\nBEGIN;\nDELETE FROM admin_areas;") and out.endswith("COMMIT;\n") and "'Tỉnh O''Lâm'" in out
     assert out.count("INSERT INTO admin_areas") == 2 and out.index("ST_PointOnSurface") < out.index("COMMIT;")
+    u = areas_sql([], ["t"], [("r9", "Tỉnh Khánh Hòa", [sq, sq])])
+    assert "ST_UnaryUnion(ST_Collect(g))" in u and u.count("ST_GeomFromGeoJSON") == 2 and "'Tỉnh Khánh Hòa'" in u
+    rel = opl_relations("r42 v1 dV c0 t2026-01-01T00:00:00Z i0 u Tadmin_level=4,name=T%1ec9%nh%20%Kh%e1%nh Mw1@outer,r7@subarea,r8@subarea,n1@label")
+    assert rel["42"] == ({"admin_level": "4", "name": "Tỉnh Khánh"}, ["7", "8"]), rel
     print("self-test ok")
 
 
@@ -99,13 +143,13 @@ def main():
     if not osm_files:
         sys.exit("Thiếu data/raw/osm/vietnam-*.osm.pbf — chạy infrastructure/otp/scripts/fetch-osm.sh")
     osm_file = osm_files[-1]
-    areas = load(osm_file)
+    areas, unions = load(osm_file)
     md5 = hashlib.md5(osm_file.read_bytes()).hexdigest()
     header = ["GoWander provinces of Vietnam (ADR-038). Generated by scripts/build_area_seed.py — do not edit by hand.",
-              f"OSM: {osm_file.name} (md5 {md5}), © OpenStreetMap contributors, ODbL-1.0. Areas: {len(areas)}."]
+              f"OSM: {osm_file.name} (md5 {md5}), © OpenStreetMap contributors, ODbL-1.0. Areas: {len(areas) + len(unions)} ({len(unions)} rebuilt from subareas)."]
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(areas_sql(areas, header), encoding="utf-8")
-    print(f"{OUT.relative_to(ROOT)}: {len(areas)} areas, {OUT.stat().st_size // 1024} KiB")
+    OUT.write_text(areas_sql(areas, header, unions), encoding="utf-8")
+    print(f"{OUT.relative_to(ROOT)}: {len(areas) + len(unions)} areas, {OUT.stat().st_size // 1024} KiB")
 
 
 if __name__ == "__main__":
