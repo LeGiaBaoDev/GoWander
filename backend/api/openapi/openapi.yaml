@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: GoWander API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Hợp đồng API của backend GoWander (M04). App chỉ phụ thuộc vào file này, không phụ thuộc OpenTripPlanner.
     Quyết định: docs/decisions/ADR-027-go-routing-api.md.
@@ -105,6 +105,8 @@ paths:
       description: >-
         Chỉ ghi, không có API công khai để đọc lại. Ảnh JPEG/PNG ≤ 5 MB được mã hoá lại (bỏ EXIF/GPS) và lưu riêng tư,
         chỉ Admin (quản trị hệ thống, kiểm duyệt) xem được. Mỗi địa chỉ IP tối đa 5 feedback mỗi giờ.
+        Gửi kèm `Authorization: Bearer` của một tài khoản đã xác minh email thì server bỏ qua senderName/senderEmail
+        và dùng tên + email của tài khoản (ADR-040).
       requestBody:
         required: true
         content:
@@ -313,6 +315,320 @@ paths:
         '429': { description: 'RATE_LIMITED (quá 30 lần/phút mỗi IP)', $ref: '#/components/responses/Error' }
         '404': { description: 'STREET_IMAGE_NOT_FOUND', $ref: '#/components/responses/Error' }
         '503': { description: 'STREET_IMAGERY_UNAVAILABLE (chưa cấu hình MAPILLARY_TOKEN hoặc Mapillary lỗi)', $ref: '#/components/responses/Error' }
+  /api/v1/auth/register:
+    post:
+      operationId: registerAppAccount
+      summary: Tạo tài khoản app (tên đăng nhập + email + số điện thoại không bắt buộc + mật khẩu)
+      description: >-
+        Tài khoản app tách khỏi tài khoản Admin (ADR-040). Trả về phiên ngay và gửi mã 6 số tới email để xác minh.
+        `codeSent=false` nghĩa là tài khoản đã tạo nhưng thư chưa gửi được: app mời bấm "Gửi lại mã".
+        Email, số điện thoại hoặc tên đăng nhập đã dùng → 409 ACCOUNT_EXISTS (câu trả lời không nói cái nào trùng).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, username, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                username:
+                  type: string
+                  pattern: '^[a-z][a-z0-9._]{2,29}$'
+                  description: 3–30 ký tự, bắt đầu bằng chữ, không phân biệt hoa thường (lưu chữ thường)
+                email: { type: string, format: email, maxLength: 254 }
+                phone: { type: string, maxLength: 20, description: 'E.164 hoặc số Việt Nam bắt đầu bằng 0' }
+                password: { type: string, minLength: 8, maxLength: 128 }
+                device: { type: string, maxLength: 100, description: 'Nhãn thiết bị, ví dụ iPhone' }
+      responses:
+        '201':
+          description: Đã tạo tài khoản và phiên
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, user, codeSent]
+                properties:
+                  session: { $ref: '#/components/schemas/AppSession' }
+                  user: { $ref: '#/components/schemas/AppUser' }
+                  codeSent: { type: boolean, description: 'false = chưa gửi được mã, mời gửi lại' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { description: 'ACCOUNT_EXISTS', $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+        '503': { description: 'EMAIL_UNAVAILABLE', $ref: '#/components/responses/Error' }
+  /api/v1/auth/login:
+    post:
+      operationId: loginAppAccount
+      summary: Đăng nhập bằng email, số điện thoại hoặc tên đăng nhập + mật khẩu
+      description: >-
+        Một ô nhận cả ba kiểu. Sai 5 lần → khoá 15 phút (423 ACCOUNT_LOCKED, có giờ mở lại). Số điện thoại chỉ dùng
+        đăng nhập khi email của tài khoản đã xác minh (chưa có SMS nên số chưa xác minh được).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: 'email, số điện thoại hoặc tên đăng nhập' }
+                password: { type: string }
+                device: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Đã đăng nhập
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, user]
+                properties:
+                  session: { $ref: '#/components/schemas/AppSession' }
+                  user: { $ref: '#/components/schemas/AppUser' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { description: 'LOGIN_FAILED (một câu trả lời cho mọi lý do)', $ref: '#/components/responses/Error' }
+        '423': { description: 'ACCOUNT_LOCKED', $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+  /api/v1/auth/google:
+    post:
+      operationId: loginWithGoogle
+      summary: Đăng nhập bằng Google ID token lấy trên máy
+      description: >-
+        Server kiểm chữ ký RS256 với khoá công khai của Google, iss, aud = GOOGLE_CLIENT_ID, exp và
+        email_verified. Lần đầu thì tạo tài khoản (email đã xác minh, không mật khẩu). Email Google trùng một tài
+        khoản mật khẩu có sẵn → 409 LINK_REQUIRED, không tự gộp.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+                device: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: Đã đăng nhập
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, user, created]
+                properties:
+                  session: { $ref: '#/components/schemas/AppSession' }
+                  user: { $ref: '#/components/schemas/AppUser' }
+                  created: { type: boolean, description: 'true = vừa tạo tài khoản' }
+        '401': { description: 'GOOGLE_TOKEN_INVALID', $ref: '#/components/responses/Error' }
+        '409': { description: 'LINK_REQUIRED', $ref: '#/components/responses/Error' }
+        '503': { description: 'GOOGLE_UNAVAILABLE (chưa cấu hình GOOGLE_CLIENT_ID)', $ref: '#/components/responses/Error' }
+  /api/v1/auth/verify-email:
+    post:
+      operationId: verifyAppEmail
+      summary: Xác minh email bằng mã 6 số
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string, pattern: '^[0-9]{6}$' } } }
+      responses:
+        '200':
+          description: Đã xác minh
+          content:
+            application/json:
+              schema: { type: object, required: [user], properties: { user: { $ref: '#/components/schemas/AppUser' } } }
+        '400': { description: 'CODE_INVALID (sai, hết hạn, đã dùng hoặc hết 5 lần thử)', $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/auth/resend-code:
+    post:
+      operationId: resendAppCode
+      summary: Gửi lại mã (chờ 60 giây, tối đa 5 mã/giờ)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                purpose: { type: string, enum: [VERIFY_EMAIL, RESET_PASSWORD], default: VERIFY_EMAIL }
+      responses:
+        '202': { description: Đã gửi }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+        '503': { description: 'EMAIL_UNAVAILABLE', $ref: '#/components/responses/Error' }
+  /api/v1/auth/forgot:
+    post:
+      operationId: forgotAppPassword
+      summary: Quên mật khẩu — gửi mã 6 số qua email
+      description: >-
+        Luôn trả 202, dù email có tài khoản hay không và dù vừa yêu cầu xong: không lộ tài khoản có tồn tại.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '202': { description: Đã nhận yêu cầu (câu trả lời không đổi theo kết quả)' }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+        '503': { description: 'EMAIL_UNAVAILABLE', $ref: '#/components/responses/Error' }
+  /api/v1/auth/reset:
+    post:
+      operationId: resetAppPassword
+      summary: Đặt mật khẩu mới bằng mã trong email
+      description: Đặt xong thì mọi phiên của tài khoản bị thu hồi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, newPassword]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, pattern: '^[0-9]{6}$' }
+                newPassword: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '200':
+          description: Đã đổi mật khẩu
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
+        '400': { description: 'CODE_INVALID hoặc INVALID_REQUEST', $ref: '#/components/responses/Error' }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+  /api/v1/auth/logout:
+    post:
+      operationId: logoutAppAccount
+      summary: Đăng xuất (thu hồi phiên hiện tại)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Đã đăng xuất }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/auth/logout-all:
+    post:
+      operationId: logoutEverywhere
+      summary: Đăng xuất mọi thiết bị (giữ máy đang gọi)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Đã thu hồi các phiên khác }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/auth/username-available:
+    get:
+      operationId: usernameAvailable
+      summary: Tên đăng nhập còn trống?
+      parameters:
+        - { name: u, in: query, required: true, schema: { type: string, maxLength: 30 } }
+      responses:
+        '200':
+          description: Kết quả (tên sai định dạng trả available=false)
+          content:
+            application/json:
+              schema: { type: object, required: [available], properties: { available: { type: boolean } } }
+        '429': { description: 'RATE_LIMITED', $ref: '#/components/responses/Error' }
+  /api/v1/me:
+    get:
+      operationId: getMe
+      summary: Tài khoản đang đăng nhập
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Tài khoản
+          content:
+            application/json:
+              schema: { type: object, required: [user], properties: { user: { $ref: '#/components/schemas/AppUser' } } }
+        '401': { description: 'AUTH_REQUIRED', $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateMe
+      summary: Đổi tên hiển thị, tên đăng nhập, số điện thoại
+      security: [{ bearerAuth: [] }]
+      description: Đổi email là việc của AUTH-6; ở đây không nhận.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                username: { type: string, pattern: '^[a-z][a-z0-9._]{2,29}$' }
+                phone: { type: string, description: 'để trống để xoá số' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { type: object, required: [user], properties: { user: { $ref: '#/components/schemas/AppUser' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { description: 'ACCOUNT_EXISTS (tên đăng nhập hoặc số đã dùng)', $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteMe
+      summary: Xoá tài khoản (xoá ngay tên, email, số, mật khẩu; feedback giữ nội dung, gỡ người gửi)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string, description: 'bắt buộc khi tài khoản có mật khẩu' }
+                idToken: { type: string, description: 'dùng cho tài khoản chỉ có Google' }
+      responses:
+        '204': { description: Đã xoá }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { description: 'AUTH_REQUIRED hoặc GOOGLE_TOKEN_INVALID', $ref: '#/components/responses/Error' }
+  /api/v1/me/password:
+    post:
+      operationId: changeAppPassword
+      summary: Đổi mật khẩu (hoặc đặt mật khẩu đầu tiên cho tài khoản Google)
+      security: [{ bearerAuth: [] }]
+      description: Đổi xong, các thiết bị khác bị đăng xuất.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new]
+              properties:
+                current: { type: string, description: 'bỏ trống khi tài khoản chưa có mật khẩu' }
+                new: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '204': { description: Đã đổi }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/me/google:
+    post:
+      operationId: linkGoogle
+      summary: Liên kết Google với tài khoản đang đăng nhập
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [idToken], properties: { idToken: { type: string } } }
+      responses:
+        '200':
+          description: Đã liên kết
+          content:
+            application/json:
+              schema: { type: object, required: [user], properties: { user: { $ref: '#/components/schemas/AppUser' } } }
+        '401': { description: 'AUTH_REQUIRED hoặc GOOGLE_TOKEN_INVALID', $ref: '#/components/responses/Error' }
+        '409': { description: 'ACCOUNT_EXISTS (Google này đã gắn tài khoản khác)', $ref: '#/components/responses/Error' }
+        '503': { description: 'GOOGLE_UNAVAILABLE', $ref: '#/components/responses/Error' }
+    delete:
+      operationId: unlinkGoogle
+      summary: Huỷ liên kết Google (phải còn mật khẩu)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Đã huỷ liên kết
+          content:
+            application/json:
+              schema: { type: object, required: [user], properties: { user: { $ref: '#/components/schemas/AppUser' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
   /health/live:
     get:
       operationId: live
@@ -327,6 +643,11 @@ paths:
         '200': { $ref: '#/components/responses/Health' }
         '503': { $ref: '#/components/responses/Health' }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token của phiên app (ADR-040), server chỉ giữ bản băm SHA-256
   headers:
     RequestId:
       description: Mã request, cũng có trong log và trong body lỗi
@@ -523,6 +844,25 @@ components:
                   priceMin: { type: number }
                   priceMax: { type: number }
                   currency: { type: string }
+    AppSession:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token: { type: string, description: 'Cất trong Keychain (iOS) / Keystore (Android), không ghi log' }
+        expiresAt: { type: string, format: date-time, description: '60 ngày, tự gia hạn khi dùng' }
+    AppUser:
+      type: object
+      required: [id, name, emailVerified, phoneVerified, hasPassword, google]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        username: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        emailVerified: { type: boolean }
+        phone: { type: string, nullable: true, description: E.164 }
+        phoneVerified: { type: boolean, description: 'false cho tới khi có SMS (AUTH-5)' }
+        hasPassword: { type: boolean }
+        google: { type: boolean, description: 'đã liên kết Google' }
     ErrorResponse:
       type: object
       required: [error]

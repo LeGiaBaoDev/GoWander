@@ -24,7 +24,9 @@ var ErrConflict = errors.New("feedback changed by another operator")
 
 type Input struct {
 	Kind, Message, Context, SenderName, SenderEmail string
-	Image                                           []byte
+	// AppUserID is the signed-in account (ADR-040), empty for a guest. The server, not the app, decides it.
+	AppUserID string
+	Image     []byte
 }
 type Report struct {
 	ID, Kind, Message, Context, SenderName, SenderEmail, Status, Note string

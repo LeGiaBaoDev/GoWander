@@ -24,11 +24,14 @@ var discoverTables = []string{"food_items", "historical_stories", "place_categor
 // 0008 (ADR-039) replaced user_auth_identities with admin_credentials and admin_password_resets.
 var adminTables = []string{"admin_audit_logs", "admin_credentials", "admin_password_resets", "admin_sessions", "roles", "user_contacts", "user_roles", "users"}
 
+// appTables (0014, ADR-040): the app's own accounts, separate from the Admin tables.
+var appTables = []string{"app_codes", "app_sessions", "app_users"}
+
 // usageTables (0005, ADR-038): daily counters the public API writes.
 var usageTables = []string{"usage_app_opens", "usage_bus_lines", "usage_dest_cells", "usage_place_routes", "usage_route_plans"}
 
 func allTables() []string {
-	all := append(append(append([]string{"admin_areas", "city_wards", "feedback_events", "feedback_reports"}, discoverTables...), adminTables...), usageTables...) // city_wards: 0012, the Admin map only
+	all := append(append(append(append([]string{"admin_areas", "city_wards", "feedback_events", "feedback_reports"}, discoverTables...), adminTables...), usageTables...), appTables...) // city_wards: 0012, the Admin map only
 	sort.Strings(all)
 	return all
 }
@@ -94,6 +97,11 @@ func TestMigrationsUpDownUp(t *testing.T) {
 		want = append(want, tbl+":SELECT")
 	}
 	for _, tbl := range usageTables {
+		want = append(want, tbl+":DELETE", tbl+":INSERT", tbl+":SELECT", tbl+":UPDATE")
+	}
+	// 0014: the public API writes the app account tables (column UPDATEs on app_users are not listed here).
+	want = append(want, "app_users:INSERT", "app_users:SELECT")
+	for _, tbl := range []string{"app_codes", "app_sessions"} {
 		want = append(want, tbl+":DELETE", tbl+":INSERT", tbl+":SELECT", tbl+":UPDATE")
 	}
 	sort.Strings(want)

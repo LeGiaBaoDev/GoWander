@@ -109,3 +109,30 @@ func TestQueryValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A signed-in account with a verified email decides the sender fields (ADR-040): the form cannot claim another name.
+func TestSignedInAccountFillsTheSender(t *testing.T) {
+	s := &captureStore{}
+	h := Handler{Store: s, Limit: NewLimiter(5, time.Hour), Viewer: func(*http.Request) (Identity, bool) {
+		return Identity{ID: "5b0f1f2e-0000-4000-8000-000000000001", Name: "Lan Anh", Email: "lananh@example.com", EmailVerified: true}, true
+	}}
+	w := httptest.NewRecorder()
+	h.Create(w, request(map[string]string{"kind": "OTHER", "message": "Giờ mở cửa chưa đúng", "senderName": "Ai đó", "senderEmail": "ai-do@example.com"}, nil))
+	if w.Code != 201 {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body)
+	}
+	if s.input.SenderName != "Lan Anh" || s.input.SenderEmail != "lananh@example.com" || s.input.AppUserID != "5b0f1f2e-0000-4000-8000-000000000001" {
+		t.Fatalf("the form won over the account: %+v", s.input)
+	}
+
+	// An unverified account still writes its own feedback, but the guest fields are kept and no account is linked.
+	s = &captureStore{}
+	h = Handler{Store: s, Limit: NewLimiter(5, time.Hour), Viewer: func(*http.Request) (Identity, bool) {
+		return Identity{ID: "5b0f1f2e-0000-4000-8000-000000000002", Name: "Lan Anh", Email: "lananh@example.com"}, true
+	}}
+	w = httptest.NewRecorder()
+	h.Create(w, request(map[string]string{"kind": "OTHER", "message": "Thiếu địa điểm", "senderName": "Khách", "senderEmail": "khach@example.com"}, nil))
+	if s.input.SenderEmail != "khach@example.com" || s.input.AppUserID != "" {
+		t.Fatalf("an unverified account must not sign the feedback: %+v", s.input)
+	}
+}

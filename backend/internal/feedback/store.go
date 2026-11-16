@@ -34,7 +34,8 @@ func (s *PG) Create(ctx context.Context, in Input) (string, error) {
 		return "", err
 	}
 	id := newID()
-	_, err := s.Pool.Exec(ctx, `INSERT INTO feedback_reports(id,kind,message,context,sender_name,sender_email,image) VALUES($1,$2,$3,$4,$5,$6,$7)`, id, in.Kind, in.Message, in.Context, in.SenderName, in.SenderEmail, in.Image)
+	_, err := s.Pool.Exec(ctx, `INSERT INTO feedback_reports(id,kind,message,context,sender_name,sender_email,image,app_user_id)
+		VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid)`, id, in.Kind, in.Message, in.Context, in.SenderName, in.SenderEmail, in.Image, in.AppUserID)
 	if err != nil {
 		return "", err
 	}

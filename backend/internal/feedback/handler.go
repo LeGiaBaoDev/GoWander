@@ -7,10 +7,8 @@ import (
 	"image"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
@@ -25,6 +23,15 @@ type Handler struct {
 	Store Creator
 	Limit *Limiter
 	Log   *slog.Logger
+	// Viewer returns the signed-in app account of the request, when there is one. The server then takes the sender
+	// name and email from the account (ADR-040) and never from the form.
+	Viewer func(*http.Request) (Identity, bool)
+}
+
+// Identity is who is signed in: enough to fill the sender fields, no password or token.
+type Identity struct {
+	ID, Name, Email string
+	EmailVerified   bool
 }
 
 func (h Handler) Mount(r chi.Router) {
@@ -95,6 +102,12 @@ func (h Handler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	in := Input{Kind: fields["kind"], Message: fields["message"], Context: fields["context"], SenderName: fields["senderName"], SenderEmail: fields["senderEmail"]}
+	if h.Viewer != nil {
+		// A verified account wins over the form: the app cannot set someone else's name or email (ADR-040).
+		if who, ok := h.Viewer(r); ok && who.EmailVerified && who.Email != "" {
+			in.SenderName, in.SenderEmail, in.AppUserID = who.Name, who.Email, who.ID
+		}
+	}
 	if err := Validate(in); err != nil {
 		bad()
 		return
@@ -130,36 +143,8 @@ func (h Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 201, map[string]string{"id": id})
 }
 
-// Limiter uses only the TCP peer address (never untrusted forwarded headers), retains no IP in the database,
-// bounds memory and fails closed when its capacity is reached. Per process; a gateway must limit clustered deployments.
-type Limiter struct {
-	mu     sync.Mutex
-	counts map[string]int
-	start  time.Time
-	n      int
-	window time.Duration
-}
+// Limiter is the shared per-address limiter (platform/httpx), kept under this name for the feedback callers and tests.
+type Limiter = httpx.Limiter
 
-func NewLimiter(n int, window time.Duration) *Limiter {
-	return &Limiter{counts: map[string]int{}, start: time.Now(), n: n, window: window}
-}
-func (l *Limiter) Allow(r *http.Request) bool {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if time.Since(l.start) >= l.window {
-		l.start = time.Now()
-		l.counts = map[string]int{}
-	}
-	if _, ok := l.counts[ip]; !ok && len(l.counts) >= 10000 {
-		return false
-	}
-	if l.counts[ip] >= l.n {
-		return false
-	}
-	l.counts[ip]++
-	return true
-}
+// NewLimiter allows n feedbacks per window and peer address.
+func NewLimiter(n int, window time.Duration) *Limiter { return httpx.NewLimiter(n, window) }

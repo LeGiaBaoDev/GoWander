@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/account"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/admin"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/analytics"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
@@ -23,6 +24,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/config"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/database"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/mail"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/streetview"
 )
 
@@ -69,7 +71,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore, usage, &feedback.PG{Pool: pool}, adminFeedback),
+		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore, usage, &feedback.PG{Pool: pool}, adminFeedback, &account.PG{Pool: pool}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      max(cfg.OTPTimeout, streetImageTimeout) + 5*time.Second, // the slowest upstream wait + margin (review 15-11-2026)
@@ -103,8 +105,11 @@ func run(log *slog.Logger) error {
 
 // newHandler wires every route; integration tests use it with a real OTP.
 func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage *analytics.Counter,
-	feedbacks feedback.Creator, adminFeedback feedback.Store) http.Handler {
+	feedbacks feedback.Creator, adminFeedback feedback.Store, accounts account.Store) http.Handler {
 	mux := httpx.NewRouter(log)
+	// App accounts (ADR-040): a bearer token is read once, for every route that wants it; routes that need an account
+	// ask for it themselves, so the map, Discover and route planning keep working for guests.
+	mux.Use(account.Optional(accounts))
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -143,14 +148,25 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	} else {
 		mux.Handle("/media/*", media.Local{Dir: cfg.MediaDir})
 	}
-	// Feedbacks from the app (owner, 16-11-2026): guests may send, only the Admin reads (migration 0013).
-	feedback.Handler{Store: feedbacks, Log: log}.Mount(mux)
+	// Feedbacks from the app (owner, 16-11-2026): guests may send, only the Admin reads (migration 0013). A signed-in
+	// account with a verified email provides the sender name and email (ADR-040); the form's fields are then ignored.
+	feedback.Handler{Store: feedbacks, Log: log, Viewer: func(r *http.Request) (feedback.Identity, bool) {
+		u, ok := account.FromContext(r.Context())
+		return feedback.Identity{ID: u.ID, Name: u.Name, Email: u.Email, EmailVerified: u.EmailVerified}, ok
+	}}.Mount(mux)
 	adminHandler := admin.Handler{Store: adminStore, Feedback: adminFeedback, BaseURL: cfg.AdminBaseURL, Media: photos, MediaURL: cfg.MediaBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
 	if cfg.MailEnabled() {
-		adminHandler.Mailer = admin.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
+		adminHandler.Mailer = admin.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom, FromName: "GoWander Admin"}
 	}
 	adminHandler.Mount(mux)
+	if accounts != nil {
+		signIn := account.Handler{Store: accounts, Auth: account.NewGoogleVerifier(cfg.GoogleClientID), Log: log}
+		if cfg.MailEnabled() {
+			signIn.Mailer = mail.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
+		}
+		signIn.Mount(mux)
+	}
 	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
 	streetview.Handler{
 		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, streetImageTimeout), 24*time.Hour, 5000),

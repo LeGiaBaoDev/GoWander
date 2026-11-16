@@ -43,6 +43,10 @@ type Config struct {
 	// and MEDIA_BASE_URL must be the bucket's public https address. R2_SECRET_ACCESS_KEY is a secret: never log it.
 	R2AccountID, R2Bucket, R2AccessKeyID, R2SecretAccessKey string
 
+	// Google sign-in of the app (ADR-040 §3.5): the Web client ID is the token audience. Optional: without it
+	// POST /auth/google answers 503 and the app hides the button. Not a secret, but it stays out of logs.
+	GoogleClientID string
+
 	// SMTP for "quên mật khẩu" (ADR-039: Gmail, smtp.gmail.com:587 with an app password). Optional: without SMTP_HOST
 	// the page says email is not set up. SMTP_PASSWORD is a secret, SMTP_USERNAME/SMTP_FROM are private: never log them.
 	SMTPHost, SMTPUsername, SMTPPassword, SMTPFrom string
@@ -50,8 +54,9 @@ type Config struct {
 }
 
 var (
-	hexID      = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	bucketName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+	hexID          = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	bucketName     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+	googleClientID = regexp.MustCompile(`^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$`)
 )
 
 // R2Enabled: photos are stored in the R2 bucket.
@@ -86,6 +91,7 @@ func Load(getenv func(string) string) (Config, error) {
 		R2Bucket:          strings.TrimSpace(getenv("R2_BUCKET")),
 		R2AccessKeyID:     strings.TrimSpace(getenv("R2_ACCESS_KEY_ID")),
 		R2SecretAccessKey: strings.TrimSpace(getenv("R2_SECRET_ACCESS_KEY")),
+		GoogleClientID:    strings.TrimSpace(getenv("GOOGLE_CLIENT_ID")),
 		SMTPHost:          getenv("SMTP_HOST"),
 		SMTPUsername:      getenv("SMTP_USERNAME"),
 		SMTPPassword:      getenv("SMTP_PASSWORD"),
@@ -136,6 +142,9 @@ func Load(getenv func(string) string) (Config, error) {
 	if u, err := url.Parse(c.MediaBaseURL); err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
 		!((u.Scheme == "https" || u.Scheme == "http") && u.Host != "" || u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(c.MediaBaseURL, "//")) {
 		errs = append(errs, errors.New("MEDIA_BASE_URL must be a path on this API (/media) or an http(s) URL, without credentials"))
+	}
+	if c.GoogleClientID != "" && !googleClientID.MatchString(c.GoogleClientID) {
+		errs = append(errs, errors.New("GOOGLE_CLIENT_ID must look like 1234-abc.apps.googleusercontent.com"))
 	}
 	port, err := strconv.Atoi(or("SMTP_PORT", "587"))
 	if err != nil || port < 1 || port > 65535 {
