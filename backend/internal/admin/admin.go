@@ -96,6 +96,8 @@ type Store interface {
 	SetGuideImage(ctx context.Context, actorID, kind, id, key string, in PhotoInput, requestID string) (orphan string, err error)
 	UpdatePlace(ctx context.Context, actorID string, p Place, requestID string) error
 	Categories(ctx context.Context) ([]Category, error)
+	AppUsers(ctx context.Context, q AppUserQuery) (list []AppUserRow, total int, err error)
+	SetAppUserStatus(ctx context.Context, id, status, actorID, requestID string) error
 	UpdateCategory(ctx context.Context, actorID string, c Category, requestID string) error
 	Ready(ctx context.Context) error
 }

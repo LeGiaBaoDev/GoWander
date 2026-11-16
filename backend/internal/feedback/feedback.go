@@ -33,6 +33,12 @@ type Report struct {
 	CreatedAt, UpdatedAt                                              time.Time
 	HasImage                                                          bool
 	History                                                           []Event
+	// Who wrote it, when the app account was signed in (ADR-040 §8): enough for the detail page, nothing private.
+	AppUserID            string
+	AppUserName          string
+	AppUserEmail         string
+	AppUserEmailVerified bool
+	AppUserFeedbacks     int
 }
 type Event struct {
 	ActorName, FromStatus, ToStatus, Note string

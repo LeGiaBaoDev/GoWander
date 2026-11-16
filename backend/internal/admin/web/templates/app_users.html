@@ -1,0 +1,51 @@
+{{define "title"}}Người dùng app · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head">
+  <h1>Người dùng app</h1>
+  <p class="muted">Tài khoản của người dùng app (tách khỏi tài khoản quản trị). Không xem được mật khẩu hay mã; tạm khoá thì người đó không dùng app được nữa (lần gọi kế tiếp bị từ chối) và việc này được ghi vào nhật ký.</p>
+</header>
+{{if .Saved}}<p class="card notice" role="status">Đã cập nhật trạng thái tài khoản.</p>{{end}}
+<form class="card filters" method="get" action="/admin/app-users" role="search">
+  <label class="grow">Tìm theo tên, tên đăng nhập, email, số điện thoại
+    <input type="search" name="q" value="{{.Q.Q}}" placeholder="Ví dụ: lananh hoặc 0912" maxlength="100"></label>
+  <div class="filter-choices">
+    <label>Trạng thái <select name="status"><option value="">Tất cả</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Q.Status}} selected{{end}}>{{appStatusName .}}</option>{{end}}</select></label>
+  </div>
+  <button type="submit">Lọc</button>
+</form>
+<p class="muted small" role="status">{{if .Total}}Hiển thị {{num .From}}–{{num .To}} trên {{num .Total}} tài khoản{{else}}Không có tài khoản nào khớp bộ lọc.{{end}}</p>
+{{if .List}}
+<div class="table-wrap cards">
+<table>
+  <thead><tr><th>Người dùng</th><th>Liên hệ</th><th>Ngày tạo</th><th>Đăng nhập cuối</th><th>Feedback</th><th>Trạng thái</th>{{if has .Me "SYSTEM_ADMIN"}}<th></th>{{end}}</tr></thead>
+  <tbody>
+  {{range .List}}<tr>
+    <td><span class="strong">{{.Name}}</span>{{if .Username}}<span class="muted small"> · @{{.Username}}</span>{{end}}</td>
+    <td data-label="Liên hệ">
+      {{if .Email}}{{.Email}}{{if .EmailVerified}} <span class="state s-PUBLISHED">đã xác minh</span>{{else}} <span class="state s-DRAFT">chưa xác minh</span>{{end}}{{else}}<span class="muted">Không còn email</span>{{end}}
+      {{if .Phone}}<br><span class="muted small">{{.Phone}}{{if not .PhoneVerified}} · chưa xác minh{{end}}</span>{{end}}
+    </td>
+    <td data-label="Ngày tạo" class="muted">{{at .CreatedAt}}</td>
+    <td data-label="Đăng nhập cuối" class="muted">{{when .LastLoginAt}}</td>
+    <td data-label="Feedback" class="muted">{{if .Feedbacks}}{{num .Feedbacks}}{{else}}—{{end}}</td>
+    <td class="c-state"><span class="state {{if eq .Status "ACTIVE"}}s-PUBLISHED{{else if eq .Status "SUSPENDED"}}s-HIDDEN{{else}}s-DRAFT{{end}}">{{appStatusName .Status}}</span></td>
+    {{if has $.Me "SYSTEM_ADMIN"}}<td>
+      {{if eq .Status "ACTIVE"}}
+      <form method="post" action="/admin/app-users/{{.ID}}/status">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="status" value="SUSPENDED">
+        <button class="link danger" type="submit">Tạm khoá</button>
+      </form>
+      {{else if eq .Status "SUSPENDED"}}
+      <form method="post" action="/admin/app-users/{{.ID}}/status">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="status" value="ACTIVE">
+        <button class="link" type="submit">Mở khoá</button>
+      </form>
+      {{end}}
+    </td>{{end}}
+  </tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{template "pager" .Pager}}
+{{end}}
+{{end}}

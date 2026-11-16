@@ -77,7 +77,13 @@ func (s *PG) Get(ctx context.Context, id string) (Report, error) {
 		return Report{}, ErrNotFound
 	}
 	var f Report
-	err := s.Pool.QueryRow(ctx, `SELECT id::text,kind,message,context,sender_name,sender_email,status,note,created_at,updated_at,image IS NOT NULL FROM feedback_reports WHERE id=$1`, id).Scan(&f.ID, &f.Kind, &f.Message, &f.Context, &f.SenderName, &f.SenderEmail, &f.Status, &f.Note, &f.CreatedAt, &f.UpdatedAt, &f.HasImage)
+	err := s.Pool.QueryRow(ctx, `SELECT r.id::text, r.kind, r.message, r.context, r.sender_name, r.sender_email, r.status, r.note,
+		r.created_at, r.updated_at, r.image IS NOT NULL,
+		coalesce(u.id::text,''), coalesce(u.display_name,''), coalesce(u.email,''), u.email_verified_at IS NOT NULL,
+		(SELECT count(*) FROM feedback_reports f2 WHERE f2.app_user_id = u.id)
+		FROM feedback_reports r LEFT JOIN app_users u ON u.id = r.app_user_id WHERE r.id=$1`, id).Scan(
+		&f.ID, &f.Kind, &f.Message, &f.Context, &f.SenderName, &f.SenderEmail, &f.Status, &f.Note, &f.CreatedAt, &f.UpdatedAt, &f.HasImage,
+		&f.AppUserID, &f.AppUserName, &f.AppUserEmail, &f.AppUserEmailVerified, &f.AppUserFeedbacks)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return f, ErrNotFound
 	}

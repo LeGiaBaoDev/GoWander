@@ -73,5 +73,6 @@ fun feedbackContext(nav: AppNav, placeName: String? = null): String = when (val 
     Screen.AccountWelcome, Screen.SignIn, Screen.Register, Screen.VerifyEmail, Screen.ForgotPassword ->
         "Tài khoản · đăng nhập"
     Screen.AccountSettings -> "Tài khoản · cài đặt"
+    Screen.CompleteProfile -> "Tài khoản · hoàn tất hồ sơ"
     Screen.DeleteAccount -> "Tài khoản · xoá tài khoản"
 }

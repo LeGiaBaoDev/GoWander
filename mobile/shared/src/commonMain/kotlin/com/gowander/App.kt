@@ -4,6 +4,7 @@ import com.gowander.route.TravelMode
 import com.gowander.mock.legContext
 import com.gowander.mock.legFrom
 import com.gowander.account.AccountSettingsScreen
+import com.gowander.account.CompleteProfileScreen
 import com.gowander.account.AccountStore
 import com.gowander.account.AccountWelcomeScreen
 import com.gowander.account.DeleteAccountScreen
@@ -264,6 +265,8 @@ private fun AppContent() {
                     if (error == null) {
                         closeAccountFlow()
                         noticeText = "Chào mừng bạn, ${accounts.user?.name.orEmpty()}!"
+                        // A Google-only account is usable right away; this step just makes the next sign-in quicker.
+                        if (accounts.user?.hasPassword == false) nav = nav.push(Screen.CompleteProfile)
                     } else {
                         noticeText = error
                     }
@@ -536,6 +539,10 @@ private fun AppContent() {
                     searchHistory, onBack = ::back, persisted = accounts.isSignedIn,
                     onOpen = { e -> if (e.lat != null && e.lon != null) { nav = nav.pop(); chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) } },
                 )
+                Screen.CompleteProfile -> CompleteProfileScreen(
+                    accounts, onBack = { closeAccountFlow() },
+                    onDone = { closeAccountFlow(); noticeText = "Đã lưu. Lần sau bạn đăng nhập được bằng mật khẩu hoặc Google." },
+                )
                 Screen.AccountSettings -> AccountSettingsScreen(
                     accounts, GoogleSignIn.available, onBack = ::back,
                     onDeleteAccount = { nav = nav.push(Screen.DeleteAccount) },
@@ -577,6 +584,7 @@ private fun AppContent() {
                         onVerifyEmail = { nav = nav.push(Screen.VerifyEmail) },
                         onAccountSettings = { nav = nav.push(Screen.AccountSettings) },
                         onSearchHistory = { nav = nav.push(Screen.SearchHistory) },
+                        onCompleteProfile = { nav = nav.push(Screen.CompleteProfile) },
                     )
                 }
             }

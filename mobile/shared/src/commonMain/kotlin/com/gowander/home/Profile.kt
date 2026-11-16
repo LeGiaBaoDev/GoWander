@@ -93,6 +93,7 @@ fun ProfileScreen(
     onVerifyEmail: () -> Unit,
     onAccountSettings: () -> Unit,
     onSearchHistory: () -> Unit,
+    onCompleteProfile: () -> Unit,
 ) {
     val notice = LocalNotice.current
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -120,7 +121,7 @@ fun ProfileScreen(
             IconButton(KitIcons.gear, Strings.SETTINGS, tint = Palette.Ink, onClick = onSettings)
         }
         Segmented(listOf(Strings.PORTFOLIO, Strings.SAVED), tab, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Palette.VioletDark) { tab = it }
-        if (tab == 0) AccountStrip(account, onWelcome, onSignIn, onRegister, onVerifyEmail, onAccountSettings)
+        if (tab == 0) AccountStrip(account, onWelcome, onSignIn, onRegister, onVerifyEmail, onAccountSettings, onCompleteProfile)
         if (tab == 0) Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).sizeIn(minHeight = 52.dp).clickable(role = Role.Button, onClick = onSearchHistory),
             verticalAlignment = Alignment.CenterVertically,
@@ -331,6 +332,7 @@ private fun AccountStrip(
     onRegister: () -> Unit,
     onVerifyEmail: () -> Unit,
     onAccountSettings: () -> Unit,
+    onCompleteProfile: () -> Unit,
 ) {
     val me = account.user
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -376,6 +378,20 @@ private fun AccountStrip(
                 }
                 if (me.emailVerified) Badge(KitIcons.check, Palette.Soft, Palette.Primary, size = 32.dp)
                 Icon(KitIcons.chevron, 16.dp, Palette.Muted)
+            }
+            if (!me.hasPassword) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Soft).padding(12.dp).sizeIn(minHeight = 48.dp)
+                        .clickable(role = Role.Button, onClick = onCompleteProfile),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(KitIcons.lock, 18.dp, Palette.Primary)
+                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                        Text("Đặt mật khẩu để đăng nhập nhanh hơn", size = 13.5.sp, weight = FontWeight.SemiBold)
+                        Text("Bạn vẫn đăng nhập được bằng Google", size = 12.sp, color = Palette.Muted)
+                    }
+                    Icon(KitIcons.chevron, 16.dp, Palette.Muted)
+                }
             }
             if (!me.emailVerified) {
                 Row(

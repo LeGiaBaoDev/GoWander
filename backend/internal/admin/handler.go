@@ -143,7 +143,8 @@ var pages = func() map[string]*template.Template {
 			return part * 100 / whole
 		},
 		"num":         groupDigits,
-		"statusName":  func(s string) string { return statusNames[s] },
+		"statusName":    func(s string) string { return statusNames[s] },
+		"appStatusName": func(s string) string { return cmpOr(appStatusNames[s], s) },
 		"missingName": func(s string) string { return missingNames[s] },
 		"photoForm": func(action, csrf string, licenses []string, button string) map[string]any {
 			return map[string]any{"Action": action, "CSRF": csrf, "Licenses": licenses, "Button": button}
@@ -188,7 +189,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "notifications", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset", "feedbacks", "feedback"} {
+	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "notifications", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset", "feedbacks", "feedback", "app_users"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -252,6 +253,11 @@ func (h Handler) Mount(r chi.Router) {
 					r.Post("/"+kind+"/{id}/image", h.guideImage(kind, true))
 					r.Post("/"+kind+"/{id}/image/delete", h.guideImage(kind, false))
 				}
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole(RoleSystemAdmin, RoleModerator))
+				r.Get("/app-users", h.appUsers)
+				r.With(requireRole(RoleSystemAdmin)).Post("/app-users/{id}/status", h.appUserStatus)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin))

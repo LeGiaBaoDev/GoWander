@@ -374,3 +374,28 @@ func TestPublicRoleCannotReadAdminTables(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// AUTH-3: suspending an account in the Admin stops its sessions at the next call, without deleting any row.
+func TestSuspendedAccountIsOut(t *testing.T) {
+	s, owner := setup(t)
+	ctx := context.Background()
+	session, user, code := register(t, s, "Lan Anh", "lananh", "lananh@example.com", "")
+	if _, err := s.VerifyEmail(ctx, user.ID, code); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE app_users SET status = 'SUSPENDED' WHERE id = $1`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Me(ctx, session.Token); !errors.Is(err, ErrAuthRequired) {
+		t.Fatalf("a suspended session still works: %v", err)
+	}
+	if _, _, err := s.Login(ctx, "lananh", "cà phê sữa đá 47", ""); !errors.Is(err, ErrLoginFailed) {
+		t.Fatalf("a suspended account signed in: %v", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE app_users SET status = 'ACTIVE' WHERE id = $1`, user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Login(ctx, "lananh", "cà phê sữa đá 47", ""); err != nil {
+		t.Fatalf("restored account: %v", err)
+	}
+}

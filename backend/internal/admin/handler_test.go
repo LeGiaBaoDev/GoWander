@@ -40,6 +40,8 @@ type fakeStore struct {
 	orphan    string
 	guide     map[string]GuideItem
 	guideSave []GuideItem
+	appUsers  []AppUserRow
+	appStatus []string // "id:STATUS" for every status change the handler asked for
 }
 
 func (f *fakeStore) PasswordLogin(_ context.Context, login, password, _ string) (string, error) {
@@ -53,6 +55,13 @@ func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ str
 		return bad("mật khẩu hiện tại không đúng")
 	}
 	f.changed = append(f.changed, next)
+	return nil
+}
+func (f *fakeStore) AppUsers(context.Context, AppUserQuery) ([]AppUserRow, int, error) {
+	return f.appUsers, len(f.appUsers), nil
+}
+func (f *fakeStore) SetAppUserStatus(_ context.Context, id, status, _, _ string) error {
+	f.appStatus = append(f.appStatus, id+":"+status)
 	return nil
 }
 func (f *fakeStore) WardShapes(context.Context) ([]WardShape, error) {
@@ -1002,5 +1011,44 @@ func TestAuditDetailFeedbackStatus(t *testing.T) {
 	got := auditDetail(map[string]any{"from": "NEW", "to": "RESOLVED"})
 	if len(got) != 1 || got[0] != "Trạng thái: Mới → Đã xử lý" {
 		t.Fatalf("%v", got)
+	}
+}
+
+// AUTH-3: the app-user page is readable by a moderator, suspending is for a system admin only.
+func TestAppUsersPage(t *testing.T) {
+	f := newFake()
+	f.appUsers = []AppUserRow{{ID: "11111111-1111-4111-8111-111111111111", Name: "Lan Anh", Username: "lananh",
+		Email: "lananh@example.vn", EmailVerified: true, Status: "ACTIVE", Feedbacks: 3}}
+	h := server(f, nil)
+
+	w := do(h, "GET", "/admin/app-users", "mod", nil, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Lan Anh") || !strings.Contains(w.Body.String(), "Người dùng app") {
+		t.Fatalf("moderator reading the page: %d", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "/status") {
+		t.Fatal("a moderator must not see the suspend form")
+	}
+
+	w = do(h, "GET", "/admin/app-users", "sys", nil, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "/admin/app-users/11111111-1111-4111-8111-111111111111/status") {
+		t.Fatalf("system admin sees the action: %d", w.Code)
+	}
+
+	w = do(h, "POST", "/admin/app-users/11111111-1111-4111-8111-111111111111/status", "mod",
+		url.Values{"csrf": {"csrf-m"}, "status": {"SUSPENDED"}}, nil)
+	if w.Code != http.StatusForbidden || len(f.appStatus) != 0 {
+		t.Fatalf("a moderator suspended an account: %d %v", w.Code, f.appStatus)
+	}
+
+	w = do(h, "POST", "/admin/app-users/11111111-1111-4111-8111-111111111111/status", "sys",
+		url.Values{"csrf": {"csrf-s"}, "status": {"SUSPENDED"}}, nil)
+	if w.Code != http.StatusSeeOther || len(f.appStatus) != 1 || f.appStatus[0] != "11111111-1111-4111-8111-111111111111:SUSPENDED" {
+		t.Fatalf("suspend: %d %v", w.Code, f.appStatus)
+	}
+
+	// A malformed id is a 404, not a database error.
+	w = do(h, "POST", "/admin/app-users/not-a-uuid/status", "sys", url.Values{"csrf": {"csrf-s"}, "status": {"SUSPENDED"}}, nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("bad id: %d", w.Code)
 	}
 }

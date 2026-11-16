@@ -32,13 +32,14 @@ sealed interface Screen {
     data object VerifyEmail : Screen
     data object ForgotPassword : Screen
     data object AccountSettings : Screen
+    data object CompleteProfile : Screen
     data object DeleteAccount : Screen
 }
 
 /** The screens of the sign-in flow: after it succeeds they all close at once. */
 val ACCOUNT_SCREENS: Set<Screen> = setOf(
     Screen.AccountWelcome, Screen.SignIn, Screen.Register, Screen.VerifyEmail, Screen.ForgotPassword, Screen.AccountSettings,
-    Screen.DeleteAccount,
+    Screen.CompleteProfile, Screen.DeleteAccount,
 )
 
 private val ROUTE_FORM = setOf(Screen.Search, Screen.PickOrigin, Screen.PickDestination)
@@ -123,6 +124,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             Screen.VerifyEmail -> "verify_email"
             Screen.ForgotPassword -> "forgot_password"
             Screen.AccountSettings -> "account_settings"
+            Screen.CompleteProfile -> "complete_profile"
             Screen.DeleteAccount -> "delete_account"
         }
 
@@ -151,6 +153,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v == "verify_email" -> Screen.VerifyEmail
             v == "forgot_password" -> Screen.ForgotPassword
             v == "account_settings" -> Screen.AccountSettings
+            v == "complete_profile" -> Screen.CompleteProfile
             v == "delete_account" -> Screen.DeleteAccount
             else -> throw IllegalArgumentException(v)
         }

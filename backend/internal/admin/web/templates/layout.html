@@ -46,6 +46,7 @@
       <a href="/admin/stories"{{if and .K (eq .K.Path "stories")}} aria-current="page"{{end}}>{{template "icon" "book"}}Câu chuyện</a>
       <p class="group">Vận hành</p>
       {{if or (has .Me "SYSTEM_ADMIN") (has .Me "MODERATOR")}}<a href="/admin/feedbacks"{{if or (eq .Page "feedbacks") (eq .Page "feedback")}} aria-current="page"{{end}}>{{template "icon" "flag"}}Feedbacks</a>{{end}}
+      {{if or (has .Me "SYSTEM_ADMIN") (has .Me "MODERATOR")}}<a href="/admin/app-users"{{if eq .Page "app_users"}} aria-current="page"{{end}}>{{template "icon" "user"}}Người dùng app</a>{{end}}
       <a href="/admin/audit"{{if eq .Page "audit"}} aria-current="page"{{end}}>{{template "icon" "list"}}Nhật ký thao tác</a>
       <a class="nav-account" href="/admin/account"{{if eq .Page "password"}} aria-current="page"{{end}}>{{template "icon" "user"}}Tài khoản của tôi</a>
     </nav>
