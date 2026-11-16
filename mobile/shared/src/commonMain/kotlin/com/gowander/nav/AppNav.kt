@@ -23,7 +23,22 @@ sealed interface Screen {
     data class PlanMap(val id: String) : Screen
     data object PortfolioEdit : Screen
     data object Settings : Screen
+
+    // App accounts (AUTH-2, A2–A6, A9)
+    data object AccountWelcome : Screen
+    data object SignIn : Screen
+    data object Register : Screen
+    data object VerifyEmail : Screen
+    data object ForgotPassword : Screen
+    data object AccountSettings : Screen
+    data object DeleteAccount : Screen
 }
+
+/** The screens of the sign-in flow: after it succeeds they all close at once. */
+val ACCOUNT_SCREENS: Set<Screen> = setOf(
+    Screen.AccountWelcome, Screen.SignIn, Screen.Register, Screen.VerifyEmail, Screen.ForgotPassword, Screen.AccountSettings,
+    Screen.DeleteAccount,
+)
 
 private val ROUTE_FORM = setOf(Screen.Search, Screen.PickOrigin, Screen.PickDestination)
 private val ROUTE_SCREENS = ROUTE_FORM + setOf(Screen.Results, Screen.Detail, Screen.Steps, Screen.Navigation)
@@ -100,6 +115,13 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             is Screen.PlanMap -> "plan_map:${s.id}"
             Screen.PortfolioEdit -> "portfolio_edit"
             Screen.Settings -> "settings"
+            Screen.AccountWelcome -> "account_welcome"
+            Screen.SignIn -> "sign_in"
+            Screen.Register -> "register"
+            Screen.VerifyEmail -> "verify_email"
+            Screen.ForgotPassword -> "forgot_password"
+            Screen.AccountSettings -> "account_settings"
+            Screen.DeleteAccount -> "delete_account"
         }
 
         private fun decode(v: String): Screen = when {
@@ -120,6 +142,13 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v.startsWith("plan_map:") -> Screen.PlanMap(v.removePrefix("plan_map:"))
             v == "portfolio_edit" -> Screen.PortfolioEdit
             v == "settings" -> Screen.Settings
+            v == "account_welcome" -> Screen.AccountWelcome
+            v == "sign_in" -> Screen.SignIn
+            v == "register" -> Screen.Register
+            v == "verify_email" -> Screen.VerifyEmail
+            v == "forgot_password" -> Screen.ForgotPassword
+            v == "account_settings" -> Screen.AccountSettings
+            v == "delete_account" -> Screen.DeleteAccount
             else -> throw IllegalArgumentException(v)
         }
     }

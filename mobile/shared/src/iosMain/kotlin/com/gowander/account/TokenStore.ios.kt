@@ -26,6 +26,8 @@ import platform.CoreFoundation.CFTypeRefVar
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFStringEncodingUTF8
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -90,7 +92,11 @@ actual object SecureToken {
      * added only where they belong: a delete query carrying them would match nothing.
      */
     private fun query(returnsData: Boolean, value: CFDataRef? = null): CFDictionaryRef {
-        val dict: CFMutableDictionaryRef = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, null, null)!!
+        // The type callbacks make the dictionary retain its keys and values; with null callbacks it would keep raw
+        // pointers and the strings freed below would dangle (this crashed SecItemCopyMatching, 16-11-2026).
+        val dict: CFMutableDictionaryRef = CFDictionaryCreateMutable(
+            kCFAllocatorDefault, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
+        )!!
         CFDictionaryAddValue(dict, kSecClass, kSecClassGenericPassword)
         val service = cfString(SERVICE)
         val account = cfString(ACCOUNT)

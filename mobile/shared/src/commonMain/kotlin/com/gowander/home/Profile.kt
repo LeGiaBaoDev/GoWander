@@ -46,6 +46,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gowander.account.AccountStore
+import com.gowander.account.InitialAvatar
 import com.gowander.mock.MockPortfolio
 import com.gowander.mock.Plan
 import com.gowander.mock.PlanStatus
@@ -78,7 +80,19 @@ private val VIOLET_THEMES get() = listOf(Palette.Primary, Palette.Bus, Palette.M
  * places are the user's own ([AppStore]). Plans live in the Journey tab (owner, 15-11-2026).
  */
 @Composable
-fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit, onPlace: (String) -> Unit, onTrip: (String) -> Unit) {
+fun ProfileScreen(
+    store: AppStore,
+    account: AccountStore,
+    onDesign: () -> Unit,
+    onSettings: () -> Unit,
+    onPlace: (String) -> Unit,
+    onTrip: (String) -> Unit,
+    onWelcome: () -> Unit,
+    onSignIn: () -> Unit,
+    onRegister: () -> Unit,
+    onVerifyEmail: () -> Unit,
+    onAccountSettings: () -> Unit,
+) {
     val notice = LocalNotice.current
     var tab by rememberSaveable { mutableStateOf(0) }
     Column(
@@ -86,7 +100,14 @@ fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit,
             .verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
     ) {
         Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (tab == 0) Text(Strings.TAB_PROFILE, Modifier.weight(1f).semantics { heading() }, size = 15.sp, weight = FontWeight.Bold)
+            val me = account.user
+            if (tab == 0 && me != null) {
+                InitialAvatar(me.name, 40)
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text(me.name, size = 17.sp, weight = FontWeight.Bold, maxLines = 1)
+                    Text("@" + (me.username ?: ""), size = 12.sp, color = Palette.Muted, maxLines = 1)
+                }
+            } else if (tab == 0) Text(Strings.TAB_PROFILE, Modifier.weight(1f).semantics { heading() }, size = 15.sp, weight = FontWeight.Bold)
             else {
                 Avatar(40)
                 Text(MockPortfolio.NAME, Modifier.weight(1f).padding(start = 10.dp), size = 17.sp, weight = FontWeight.Bold)
@@ -98,6 +119,7 @@ fun ProfileScreen(store: AppStore, onDesign: () -> Unit, onSettings: () -> Unit,
             IconButton(KitIcons.gear, Strings.SETTINGS, tint = Palette.Ink, onClick = onSettings)
         }
         Segmented(listOf(Strings.PORTFOLIO, Strings.SAVED), tab, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Palette.VioletDark) { tab = it }
+        if (tab == 0) AccountStrip(account, onWelcome, onSignIn, onRegister, onVerifyEmail, onAccountSettings)
         when (tab) {
             0 -> Portfolio(onTrip, onDesign)
             else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -288,5 +310,76 @@ fun SettingsScreen(onBack: () -> Unit) {
         Segmented(listOf(Strings.LIGHT, Strings.DARK), if (Theme.dark) 1 else 0) { Theme.set(it == 1) }
         SectionTitle(Strings.DATA_SOURCES)
         Strings.SOURCES.forEach { (what, source) -> ListRow(what, source, lead = { Badge(KitIcons.globe, Palette.Subtle, Palette.Primary) }) }
+    }
+}
+
+/** A1 (guest) and A7 (signed in): the account block at the top of the Profile tab. */
+@Composable
+private fun AccountStrip(
+    account: AccountStore,
+    onWelcome: () -> Unit,
+    onSignIn: () -> Unit,
+    onRegister: () -> Unit,
+    onVerifyEmail: () -> Unit,
+    onAccountSettings: () -> Unit,
+) {
+    val me = account.user
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (me == null) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Palette.Soft).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(Palette.Bg), contentAlignment = Alignment.Center) {
+                        Icon(KitIcons.user, 20.dp, Palette.Primary)
+                    }
+                    Text(
+                        "Đăng nhập để lưu portfolio, kế hoạch và gửi feedback nhanh hơn",
+                        Modifier.padding(start = 12.dp),
+                        size = 16.sp,
+                        weight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    "Chưa đăng nhập vẫn dùng bản đồ bình thường. Đăng nhập để GoWander tự điền tên và email khi bạn gửi feedback.",
+                    size = 12.5.sp,
+                    color = Palette.Body,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button("Đăng nhập", Modifier.weight(1f), compact = true, pill = true, onClick = onSignIn)
+                    Button("Tạo tài khoản", Modifier.weight(1f), kind = ButtonKind.VioletOutline, compact = true, pill = true, onClick = onRegister)
+                }
+                Box(Modifier.fillMaxWidth().sizeIn(minHeight = 40.dp).clickable(role = Role.Button, onClick = onWelcome), contentAlignment = Alignment.Center) {
+                    Text("Xem các cách đăng nhập", size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold)
+                }
+            }
+        } else {
+            // The whole row opens the account page (A8); the gear at the top stays for the app's settings.
+            Row(
+                Modifier.fillMaxWidth().sizeIn(minHeight = 56.dp).clickable(role = Role.Button, onClick = onAccountSettings),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                InitialAvatar(me.name, 48)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(me.name, size = 16.sp, weight = FontWeight.Bold, maxLines = 1)
+                    Text(me.email ?: me.phone.orEmpty(), size = 12.5.sp, color = Palette.Muted, maxLines = 1)
+                }
+                if (me.emailVerified) Badge(KitIcons.check, Palette.Soft, Palette.Primary, size = 32.dp)
+                Icon(KitIcons.chevron, 16.dp, Palette.Muted)
+            }
+            if (!me.emailVerified) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Warn).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(KitIcons.bell, 18.dp, Palette.Ink)
+                    Text("Email chưa xác minh", Modifier.weight(1f).padding(start = 10.dp), size = 13.sp, weight = FontWeight.SemiBold)
+                    Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(role = Role.Button, onClick = onVerifyEmail), contentAlignment = Alignment.CenterEnd) {
+                        Text("Xác minh", size = 13.sp, color = Palette.Primary, weight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

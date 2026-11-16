@@ -3,6 +3,16 @@ package com.gowander
 import com.gowander.route.TravelMode
 import com.gowander.mock.legContext
 import com.gowander.mock.legFrom
+import com.gowander.account.AccountSettingsScreen
+import com.gowander.account.AccountStore
+import com.gowander.account.AccountWelcomeScreen
+import com.gowander.account.DeleteAccountScreen
+import com.gowander.account.ForgotPasswordScreen
+import com.gowander.account.RegisterScreen
+import com.gowander.account.SignInScreen
+import com.gowander.account.VerifyCodeScreen
+import com.gowander.account.googleSignInAvailable
+import com.gowander.nav.ACCOUNT_SCREENS
 import com.gowander.home.PlanMapScreen
 import com.gowander.mock.nextStop
 import com.gowander.mock.spot
@@ -159,6 +169,9 @@ private fun AppContent() {
     var nav by rememberSaveable(stateSaver = NavSaver) { mutableStateOf(AppNav()) }
     val placesListState = rememberLazyListState()
     val store = remember { AppStore(Prefs.getString(STORE_KEY), persist = { Prefs.setString(STORE_KEY, it) }, keepUnreadable = { Prefs.setString("$STORE_KEY.unreadable", it) }) }
+    // App accounts (ADR-040): the token is read once at start-up and the server is asked who it belongs to.
+    val accounts = remember { AccountStore(sharedApi) }
+    LaunchedEffect(Unit) { accounts.start() }
     val scope = rememberCoroutineScope()
     var noticeText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(noticeText) { if (noticeText != null) { delay(3500); noticeText = null } }
@@ -214,6 +227,11 @@ private fun AppContent() {
     fun back() {
         if (nav.top == Screen.Detail) routeVm.closeDetail()
         nav = nav.pop()
+    }
+
+    /** After signing in (or deleting an account) the whole flow closes, back to the tab that opened it. */
+    fun closeAccountFlow() {
+        while (nav.top in ACCOUNT_SCREENS) nav = nav.pop()
     }
 
     /** Every "go there" ends here (ADR-034): the results, from wherever the trip started. */
@@ -434,6 +452,44 @@ private fun AppContent() {
                     val plan = store.plan(top.id)
                     if (plan == null) LaunchedEffect(Unit) { nav = nav.pop() } else PlanMapScreen(plan, onBack = ::back, onChange = store::put, onGo = ::startPlan)
                 }
+                Screen.AccountWelcome -> AccountWelcomeScreen(
+                    googleEnabled = googleSignInAvailable,
+                    onBack = ::back,
+                    onGoogle = { /* AUTH-2 part 4: Credential Manager / GoogleSignIn */ },
+                    onSignIn = { nav = nav.push(Screen.SignIn) },
+                    onRegister = { nav = nav.push(Screen.Register) },
+                    onSkip = ::back,
+                )
+                Screen.SignIn -> SignInScreen(
+                    accounts, googleSignInAvailable, onBack = ::back,
+                    onGoogle = { /* AUTH-2 part 4 */ },
+                    onForgot = { nav = nav.push(Screen.ForgotPassword) },
+                    onRegister = { nav = nav.push(Screen.Register) },
+                    onSignedIn = { closeAccountFlow(); noticeText = "Chào mừng bạn quay lại, ${accounts.user?.name.orEmpty()}!" },
+                )
+                Screen.Register -> RegisterScreen(
+                    accounts, googleSignInAvailable, onBack = ::back,
+                    onGoogle = { /* AUTH-2 part 4 */ },
+                    onSignedIn = { nav = nav.push(Screen.VerifyEmail) },
+                    onSignIn = { nav = nav.push(Screen.SignIn) },
+                )
+                Screen.VerifyEmail -> VerifyCodeScreen(
+                    accounts, accounts.user?.email, onBack = { nav = nav.pop() },
+                    onVerified = { closeAccountFlow(); noticeText = "Email đã xác minh. Cảm ơn bạn!" },
+                )
+                Screen.ForgotPassword -> ForgotPasswordScreen(
+                    accounts, onBack = ::back,
+                    onDone = { closeAccountFlow(); noticeText = "Đã đặt mật khẩu mới. Bạn đã đăng nhập." },
+                )
+                Screen.AccountSettings -> AccountSettingsScreen(
+                    accounts, googleSignInAvailable, onBack = ::back,
+                    onDeleteAccount = { nav = nav.push(Screen.DeleteAccount) },
+                    onSignedOut = { closeAccountFlow(); noticeText = "Bạn đã đăng xuất." },
+                )
+                Screen.DeleteAccount -> DeleteAccountScreen(
+                    accounts, onBack = ::back,
+                    onDeleted = { closeAccountFlow(); noticeText = "Tài khoản đã được xoá. Cảm ơn bạn đã đi cùng GoWander." },
+                )
                 Screen.PortfolioEdit -> PortfolioEditScreen(onBack = ::back)
                 Screen.Settings -> SettingsScreen(onBack = ::back)
                 null -> when (nav.tab) {
@@ -457,8 +513,14 @@ private fun AppContent() {
                         onStartPlan = ::startPlan,
                     ) { nav = nav.push(Screen.Trip(it)) }
                     Tab.Profile -> ProfileScreen(
-                        store, onDesign = { nav = nav.push(Screen.PortfolioEdit) }, onSettings = { nav = nav.push(Screen.Settings) },
+                        store, accounts,
+                        onDesign = { nav = nav.push(Screen.PortfolioEdit) }, onSettings = { nav = nav.push(Screen.Settings) },
                         onPlace = { nav = nav.openPlace(it) }, onTrip = { nav = nav.push(Screen.Trip(it)) },
+                        onWelcome = { nav = nav.push(Screen.AccountWelcome) },
+                        onSignIn = { nav = nav.push(Screen.SignIn) },
+                        onRegister = { nav = nav.push(Screen.Register) },
+                        onVerifyEmail = { nav = nav.push(Screen.VerifyEmail) },
+                        onAccountSettings = { nav = nav.push(Screen.AccountSettings) },
                     )
                 }
             }

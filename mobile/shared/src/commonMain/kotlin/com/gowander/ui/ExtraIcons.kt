@@ -52,4 +52,33 @@ object ExtraIcons {
     val volume: ImageVector by lazy { strokeIcon("volume-2", "M11 5 6 9H2v6h4l5 4z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14") }
     val volumeOff: ImageVector by lazy { strokeIcon("volume-x", "M11 5 6 9H2v6h4l5 4z", "m22 9-6 6", "m16 9 6 6") }
     val swap: ImageVector by lazy { strokeIcon("arrow-up-down", "m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16") }
+
+    // Account screens (AUTH-2): the kit has no mail, phone, at-sign, eye or arrow-right.
+    val mail: ImageVector by lazy {
+        strokeIcon("mail", "M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z", "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7")
+    }
+    val phone: ImageVector by lazy {
+        strokeIcon(
+            "phone",
+            "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z",
+        )
+    }
+    val at: ImageVector by lazy {
+        strokeIcon("at-sign", "M16,12a4,4 0 1,0 -8,0a4,4 0 1,0 8,0", "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8")
+    }
+    val eye: ImageVector by lazy {
+        strokeIcon("eye", "M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0", "M12,9a3,3 0 1,0 0,6a3,3 0 1,0 0,-6")
+    }
+    val eyeOff: ImageVector by lazy {
+        strokeIcon(
+            "eye-off",
+            "m2 2 20 20",
+            "M6.71 6.71A10.75 10.75 0 0 0 2.06 11.65a1 1 0 0 0 0 .7 10.75 10.75 0 0 0 14.6 4.19",
+            "M9.88 5.09A10.75 10.75 0 0 1 21.94 11.65a1 1 0 0 1 0 .7 10.75 10.75 0 0 1-2.35 3.35",
+            "M14.12 14.12a3 3 0 1 1-4.24-4.24",
+        )
+    }
+    val arrowRight: ImageVector by lazy { strokeIcon("arrow-right", "M5 12h13", "m13 6 6 6-6 6") }
+    val logout: ImageVector by lazy { strokeIcon("log-out", "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "m16 17 5-5-5-5", "M21 12H9") }
+    val device: ImageVector by lazy { strokeIcon("smartphone", "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z", "M11 18h2") }
 }
