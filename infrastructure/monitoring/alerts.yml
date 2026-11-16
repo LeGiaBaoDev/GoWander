@@ -1,0 +1,73 @@
+# Prometheus rules for the GoWander API (M09).
+# Scrape job expected: job="gowander-api", target 127.0.0.1:8090 (loopback: see backend/README.md).
+# Every alert names the runbook section that explains what to do: docs/runbooks/incidents.md.
+groups:
+  - name: gowander-api
+    rules:
+      - alert: GowanderApiDown
+        expr: up{job="gowander-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "API GoWander không trả lời scrape"
+          description: "Prometheus không lấy được /metrics trong 2 phút. Kiểm tiến trình và cổng 8090."
+          runbook: "docs/runbooks/incidents.md#1-api-không-chạy"
+
+      - alert: GowanderNotReady
+        expr: gowander_ready == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "API chạy nhưng chưa sẵn sàng (routing hoặc database)"
+          description: "Ít nhất một phụ thuộc không trả lời trong 3 phút; app sẽ không tìm được tuyến hoặc không đọc được dữ liệu."
+          runbook: "docs/runbooks/incidents.md#2-không-sẵn-sàng"
+
+      - alert: GowanderServerErrors
+        expr: |
+          sum(rate(gowander_http_requests_total{status="5xx"}[5m]))
+            /
+          clamp_min(sum(rate(gowander_http_requests_total[5m])), 0.001) > 0.02
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Hơn 2% request trả 5xx trong 5 phút"
+          description: "Xem log theo requestId; nhóm theo route trong /metrics để biết phần nào hỏng."
+          runbook: "docs/runbooks/incidents.md#3-lỗi-5xx"
+
+      - alert: GowanderSlowRequests
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gowander_http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 thời gian trả lời trên 2 giây"
+          description: "Thường là OpenTripPlanner chậm hoặc database khoá. Kiểm route chậm nhất trong /metrics."
+          runbook: "docs/runbooks/incidents.md#4-chậm"
+
+      - alert: GowanderDatabasePoolSaturated
+        expr: gowander_db_pool_acquired / clamp_min(gowander_db_pool_max, 1) > 0.8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Hơn 80% kết nối database đang dùng trong 10 phút"
+          description: "Truy vấn chậm hoặc rò rỉ kết nối; xem pg_stat_activity."
+          runbook: "docs/runbooks/incidents.md#5-database"
+
+      - alert: GowanderGoogleVerifyFailures
+        expr: increase(gowander_account_google_verify_failures_total[1h]) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Google ID token bị từ chối nhiều lần trong 1 giờ"
+          description: "Thường là client ID trong .env không khớp project, hoặc người dùng ngoài Test users."
+          runbook: "docs/runbooks/google-sign-in.md"
+
+      - alert: GowanderEmailFailures
+        expr: increase(gowander_email_send_failures_total[1h]) > 3
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Gửi email xác minh/đặt lại mật khẩu lỗi hơn 3 lần trong 1 giờ"
+          description: "Kiểm SMTP_* trong .env và hạn mức Gmail; người dùng sẽ không đăng ký được."
+          runbook: "docs/runbooks/incidents.md#6-email"

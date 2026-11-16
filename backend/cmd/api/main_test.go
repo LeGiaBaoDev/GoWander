@@ -103,3 +103,27 @@ func TestPanicBecomesEnvelope(t *testing.T) {
 		t.Fatalf("panic: %d %s", rec.Code, rec.Body)
 	}
 }
+
+// M09: /metrics answers the machine itself and says nothing to anyone else.
+func TestMetricsIsLoopbackOnly(t *testing.T) {
+	h := newHandler(config.Config{DataStatus: "ASSUMED"}, slog.New(slog.NewTextHandler(io.Discard, nil)), stubProvider{}, stubStore{}, nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("loopback: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rec.Body.String(), "gowander_http_requests_total") {
+		t.Fatal("the exposition has no request counter")
+	}
+
+	req = httptest.NewRequest("GET", "/metrics", nil)
+	req.RemoteAddr = "203.0.113.9:5555"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("a remote caller got %d, want 404", rec.Code)
+	}
+}

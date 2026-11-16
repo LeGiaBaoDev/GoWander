@@ -19,6 +19,10 @@ import (
 type Creator interface {
 	Create(context.Context, Input) (string, error)
 }
+
+// feedbackCreated counts what the app sends (M09); it carries no name, email or content.
+var feedbackCreated = httpx.Default.RegisterCounter("gowander_feedback_created_total", "Feedbacks stored from the app")
+
 type Handler struct {
 	Store Creator
 	Limit *Limiter
@@ -140,6 +144,7 @@ func (h Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, 503, "FEEDBACK_UNAVAILABLE", "Chưa thể gửi feedback. Nội dung chưa được lưu; vui lòng thử lại.")
 		return
 	}
+	feedbackCreated.Inc()
 	httpx.WriteJSON(w, 201, map[string]string{"id": id})
 }
 

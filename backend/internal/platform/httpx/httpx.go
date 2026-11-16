@@ -27,6 +27,15 @@ func NewRouter(log *slog.Logger) *chi.Mux {
 	return r
 }
 
+// routePattern is chi's pattern for the matched route ("/api/v1/places/{id}"), the only label the metrics use: a raw
+// URL would grow without bound. Unmatched requests are grouped as "unmatched" by the registry.
+func routePattern(r *http.Request) string {
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		return rc.RoutePattern()
+	}
+	return ""
+}
+
 // RequestID returns the request ID set by the router middleware.
 func RequestID(r *http.Request) string { return middleware.GetReqID(r.Context()) }
 
@@ -46,6 +55,7 @@ func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
 			next.ServeHTTP(ww, r)
+			Default.Observe(routePattern(r), r.Method, ww.Status(), time.Since(start))
 			log.Info("http request",
 				"requestId", RequestID(r), "method", r.Method, "path", r.URL.Path,
 				"status", ww.Status(), "bytes", ww.BytesWritten(), "durationMs", time.Since(start).Milliseconds())

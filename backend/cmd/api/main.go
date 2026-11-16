@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,6 +27,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/mail"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/streetview"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Mapillary answered a small bbox query in 3 to 9 s (measured 15-11-2026); 4 s failed almost every time. Answers are
@@ -66,6 +68,7 @@ func run(log *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	registerPoolGauges(pool)          // M09: pool numbers for /metrics
 	usage := analytics.New(pool, log) // ADR-038: daily counters, written in the background
 	go usage.Run(ctx)
 
@@ -107,9 +110,26 @@ func run(log *slog.Logger) error {
 func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage *analytics.Counter,
 	feedbacks feedback.Creator, adminFeedback feedback.Store, accounts account.Store) http.Handler {
 	mux := httpx.NewRouter(log)
+	httpx.Default.RegisterGauge("gowander_ready", "1 when routing and the database answer within one second", func() float64 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if provider.Ready(ctx) != nil || places.Ready(ctx) != nil {
+			return 0
+		}
+		return 1
+	})
 	// App accounts (ADR-040): a bearer token is read once, for every route that wants it; routes that need an account
 	// ask for it themselves, so the map, Discover and route planning keep working for guests.
 	mux.Use(account.Optional(accounts))
+	// M09: numbers Prometheus can scrape. Loopback only for now (the API binds 127.0.0.1); a public deployment adds a
+	// token or a private listener before exposing it.
+	mux.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopback(r) {
+			httpx.WriteError(w, r, http.StatusNotFound, "NOT_FOUND", "Không có đường dẫn này.")
+			return
+		}
+		httpx.Default.ServeHTTP(w, r)
+	})
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -174,4 +194,24 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		Limit:  streetview.NewLimiter(30, time.Minute), // a route preview needs ~15; 30/min per IP protects the Mapillary quota
 	}.Mount(mux)
 	return mux
+}
+
+// isLoopback keeps /metrics on the machine that runs the API: no token to leak, nothing exposed by accident.
+func isLoopback(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return host == "127.0.0.1" || host == "::1"
+}
+
+// registerPoolGauges exposes how the database pool is doing; a pool that is always full is the first sign of trouble.
+func registerPoolGauges(pool *pgxpool.Pool) {
+	stat := func(name, help string, pick func(*pgxpool.Stat) int32) {
+		httpx.Default.RegisterGauge(name, help, func() float64 { return float64(pick(pool.Stat())) })
+	}
+	stat("gowander_db_pool_acquired", "Connections handed out right now", func(s *pgxpool.Stat) int32 { return s.AcquiredConns() })
+	stat("gowander_db_pool_idle", "Connections waiting in the pool", func(s *pgxpool.Stat) int32 { return s.IdleConns() })
+	stat("gowander_db_pool_total", "Connections open in the pool", func(s *pgxpool.Stat) int32 { return s.TotalConns() })
+	stat("gowander_db_pool_max", "Connections the pool may open", func(s *pgxpool.Stat) int32 { return s.MaxConns() })
 }

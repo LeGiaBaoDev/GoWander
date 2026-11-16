@@ -15,6 +15,15 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/mail"
 )
 
+// Counters for the two failures worth alerting on (M09). A refused Google token is a configuration problem; a failed
+// email send means nobody can verify an address or reset a password.
+var (
+	googleVerifyFailures = httpx.Default.RegisterCounter("gowander_account_google_verify_failures_total",
+		"Google ID tokens refused by the server")
+	emailSendFailures = httpx.Default.RegisterCounter("gowander_email_send_failures_total",
+		"Verification or reset emails the SMTP server did not take")
+)
+
 // Handler serves /api/v1/auth/* and /api/v1/me (ADR-040 §5).
 type Handler struct {
 	Store  Store
@@ -226,6 +235,7 @@ func (h Handler) Google(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.Auth.Verify(r.Context(), in.IDToken)
 	if err != nil {
+		googleVerifyFailures.Inc()
 		h.logError("google token refused", r, err)
 		httpx.WriteError(w, r, http.StatusUnauthorized, "GOOGLE_TOKEN_INVALID", "Không đăng nhập được bằng Google. Vui lòng thử lại.")
 		return
@@ -395,6 +405,7 @@ func (h Handler) LinkGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.Auth.Verify(r.Context(), in.IDToken)
 	if err != nil {
+		googleVerifyFailures.Inc()
 		h.logError("google token refused", r, err)
 		httpx.WriteError(w, r, http.StatusUnauthorized, "GOOGLE_TOKEN_INVALID", "Không xác minh được tài khoản Google. Vui lòng thử lại.")
 		return
@@ -545,7 +556,11 @@ func (h Handler) send(ctx context.Context, user User, code, purpose string) erro
 	subject, body := codeEmail(user.Name, code, purpose)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return h.Mailer.Send(ctx, user.Email, subject, body)
+	if err := h.Mailer.Send(ctx, user.Email, subject, body); err != nil {
+		emailSendFailures.Inc()
+		return err
+	}
+	return nil
 }
 
 // codeEmail is the exact letter a person receives. It never says whether an address has an account; it carries no link.
