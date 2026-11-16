@@ -11,7 +11,7 @@ import com.gowander.account.ForgotPasswordScreen
 import com.gowander.account.RegisterScreen
 import com.gowander.account.SignInScreen
 import com.gowander.account.VerifyCodeScreen
-import com.gowander.account.googleSignInAvailable
+import com.gowander.account.GoogleSignIn
 import com.gowander.nav.ACCOUNT_SCREENS
 import com.gowander.route.nowMillis
 import com.gowander.search.HistoryEntry
@@ -175,8 +175,18 @@ private fun AppContent() {
     val store = remember { AppStore(Prefs.getString(STORE_KEY), persist = { Prefs.setString(STORE_KEY, it) }, keepUnreadable = { Prefs.setString("$STORE_KEY.unreadable", it) }) }
     // App accounts (ADR-040): the token is read once at start-up and the server is asked who it belongs to.
     val accounts = remember { AccountStore(sharedApi) }
-    // A11/A12: what was chosen in a search field, on this phone only (ADR-040 §7).
-    val searchHistory = remember { SearchHistory.fromDevice() }
+    // A11/A12: what was chosen in a search field. A guest keeps it in RAM (gone when the app closes); a signed-in
+    // account keeps it on this phone. Neither is ever sent to the server (ADR-040 §7).
+    val deviceHistory = remember { SearchHistory.onDevice() }
+    val guestHistory = remember { SearchHistory.inMemory() }
+    val searchHistory = if (accounts.isSignedIn) deviceHistory else guestHistory
+    // Signing in carries the guest's last choices over, so nothing is lost at that moment.
+    LaunchedEffect(accounts.isSignedIn) {
+        if (accounts.isSignedIn) {
+            guestHistory.all().asReversed().forEach(deviceHistory::add)
+            guestHistory.clear()
+        }
+    }
     LaunchedEffect(Unit) { accounts.start() }
     val scope = rememberCoroutineScope()
     var noticeText by remember { mutableStateOf<String?>(null) }
@@ -244,6 +254,27 @@ private fun AppContent() {
     fun closeAccountFlow() {
         while (nav.top in ACCOUNT_SCREENS) nav = nav.pop()
     }
+
+    /** Opens the phone's Google sheet and signs in with the ID token it returns (ADR-040 §3.5). */
+    fun signInWithGoogle() {
+        scope.launch {
+            when (val result = GoogleSignIn.signIn()) {
+                is com.gowander.account.GoogleResult.Token -> {
+                    val error = accounts.signInWithGoogle(result.idToken)
+                    if (error == null) {
+                        closeAccountFlow()
+                        noticeText = "Chào mừng bạn, ${accounts.user?.name.orEmpty()}!"
+                    } else {
+                        noticeText = error
+                    }
+                }
+                com.gowander.account.GoogleResult.Cancelled -> Unit // closed the sheet: nothing to say
+                is com.gowander.account.GoogleResult.Failed ->
+                    noticeText = "Chưa đăng nhập được bằng Google. Thêm tài khoản Google vào máy rồi thử lại nhé."
+            }
+        }
+    }
+
 
     /** Every "go there" ends here (ADR-034): the results, from wherever the trip started. */
     fun showRoutes() {
@@ -369,6 +400,8 @@ private fun AppContent() {
                     history = searchHistory.recent(),
                     onPickHistory = { e -> if (e.lat != null && e.lon != null) chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) },
                     onDeleteHistory = { e -> searchHistory.remove(e) },
+                    historyTotal = searchHistory.all().size,
+                    onSeeAllHistory = { nav = nav.push(Screen.SearchHistory) },
                 )
                 Screen.PickOrigin, Screen.PickDestination -> PickScreen(
                     forOrigin = top == Screen.PickOrigin, location = location, state = route,
@@ -471,23 +504,23 @@ private fun AppContent() {
                     if (plan == null) LaunchedEffect(Unit) { nav = nav.pop() } else PlanMapScreen(plan, onBack = ::back, onChange = store::put, onGo = ::startPlan)
                 }
                 Screen.AccountWelcome -> AccountWelcomeScreen(
-                    googleEnabled = googleSignInAvailable,
+                    googleEnabled = GoogleSignIn.available,
                     onBack = ::back,
-                    onGoogle = { /* AUTH-2 part 4: Credential Manager / GoogleSignIn */ },
+                    onGoogle = ::signInWithGoogle,
                     onSignIn = { nav = nav.push(Screen.SignIn) },
                     onRegister = { nav = nav.push(Screen.Register) },
                     onSkip = ::back,
                 )
                 Screen.SignIn -> SignInScreen(
-                    accounts, googleSignInAvailable, onBack = ::back,
-                    onGoogle = { /* AUTH-2 part 4 */ },
+                    accounts, GoogleSignIn.available, onBack = ::back,
+                    onGoogle = ::signInWithGoogle,
                     onForgot = { nav = nav.push(Screen.ForgotPassword) },
                     onRegister = { nav = nav.push(Screen.Register) },
                     onSignedIn = { closeAccountFlow(); noticeText = "Chào mừng bạn quay lại, ${accounts.user?.name.orEmpty()}!" },
                 )
                 Screen.Register -> RegisterScreen(
-                    accounts, googleSignInAvailable, onBack = ::back,
-                    onGoogle = { /* AUTH-2 part 4 */ },
+                    accounts, GoogleSignIn.available, onBack = ::back,
+                    onGoogle = ::signInWithGoogle,
                     onSignedIn = { nav = nav.push(Screen.VerifyEmail) },
                     onSignIn = { nav = nav.push(Screen.SignIn) },
                 )
@@ -500,11 +533,11 @@ private fun AppContent() {
                     onDone = { closeAccountFlow(); noticeText = "Đã đặt mật khẩu mới. Bạn đã đăng nhập." },
                 )
                 Screen.SearchHistory -> SearchHistoryScreen(
-                    searchHistory, onBack = ::back,
+                    searchHistory, onBack = ::back, persisted = accounts.isSignedIn,
                     onOpen = { e -> if (e.lat != null && e.lon != null) { nav = nav.pop(); chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) } },
                 )
                 Screen.AccountSettings -> AccountSettingsScreen(
-                    accounts, googleSignInAvailable, onBack = ::back,
+                    accounts, GoogleSignIn.available, onBack = ::back,
                     onDeleteAccount = { nav = nav.push(Screen.DeleteAccount) },
                     onSignedOut = { closeAccountFlow(); noticeText = "Bạn đã đăng xuất." },
                 )

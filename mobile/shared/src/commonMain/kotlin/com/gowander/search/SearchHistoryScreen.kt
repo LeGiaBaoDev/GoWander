@@ -54,6 +54,8 @@ import com.gowander.ui.Text
 fun SearchHistoryScreen(
     history: SearchHistory,
     onBack: () -> Unit,
+    /** True when signed in (kept on this phone); false for a guest (this session only). */
+    persisted: Boolean = true,
     onOpen: (HistoryEntry) -> Unit,
 ) {
     var entries by remember { mutableStateOf(history.all()) }
@@ -85,7 +87,11 @@ fun SearchHistoryScreen(
         ) {
             Column(Modifier.weight(1f)) {
                 Text("Lưu lịch sử tìm kiếm", size = 15.sp, weight = FontWeight.SemiBold)
-                Text("Chỉ lưu trên máy này, không gửi đi đâu", size = 12.5.sp, color = Palette.Muted)
+                Text(
+                    if (persisted) "Lưu trên máy này, không gửi đi đâu" else "Chỉ trong phiên này — khách chưa đăng nhập",
+                    size = 12.5.sp,
+                    color = Palette.Muted,
+                )
             }
             Box(
                 Modifier.size(48.dp).semantics { contentDescription = if (enabled) "Tắt lưu lịch sử" else "Bật lưu lịch sử" }
@@ -142,7 +148,7 @@ fun SearchHistoryScreen(
             Spacer(Modifier.height(2.dp))
         }
         Text(
-            "GoWander không dùng lịch sử này cho thống kê. Tắt công tắc là xoá và ngừng lưu.",
+            "Lịch sử tự xoá sau 30 ngày. GoWander không dùng nó cho thống kê; tắt công tắc là xoá và ngừng lưu.",
             size = 12.5.sp,
             color = Palette.Muted,
         )

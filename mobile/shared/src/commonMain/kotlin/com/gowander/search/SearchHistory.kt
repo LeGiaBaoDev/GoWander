@@ -1,6 +1,7 @@
 package com.gowander.search
 
 import com.gowander.Prefs
+import com.gowander.route.nowMillis
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -26,26 +27,34 @@ private data class Stored(val entries: List<HistoryEntry> = emptyList(), val ena
 private val historyJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
 /**
- * The search history of this device (A11, A12): at most [limit] entries, newest first, duplicates moved up, switched
- * off means nothing is kept. A file makes it testable without preferences.
+ * The search history of this phone (A11, A12): newest first, duplicates moved up, anything older than
+ * [retentionDays] forgotten, switched off means nothing is kept.
+ *
+ * A guest keeps it **in RAM only** ([inMemory], empty again after the app closes); a signed-in account keeps it in
+ * Prefs ([onDevice]), still on this phone and never sent to the server (ADR-040 §7).
  */
 class SearchHistory(
-    stored: String? = null,
-    private val persist: (String) -> Unit = {},
-    private val limit: Int = 30,
+    private val read: () -> String? = { null },
+    private val write: (String) -> Unit = {},
+    private val retentionDays: Int = 30,
 ) {
-    private val loaded = stored?.let {
+    private val loaded = read()?.let {
         try { historyJson.decodeFromString<Stored>(it) } catch (e: Exception) { null } // unreadable: start empty
     }
     private val entries = (loaded?.entries ?: emptyList()).toMutableList()
     var enabled: Boolean = loaded?.enabled ?: true
         private set
 
+    init {
+        prune()
+        sort()
+    }
+
     /** Newest first. */
     fun all(): List<HistoryEntry> = entries.toList()
 
-    /** The five under the empty search field (A12). */
-    fun recent(): List<HistoryEntry> = entries.take(5)
+    /** The ten under the empty search field (A12); "Xem thêm" opens the whole list. */
+    fun recent(): List<HistoryEntry> = entries.take(RECENT_SHOWN)
 
     val isEmpty: Boolean get() = entries.isEmpty()
 
@@ -56,9 +65,18 @@ class SearchHistory(
     fun add(entry: HistoryEntry) {
         if (!enabled) return
         entries.removeAll { same(it, entry) }
-        entries.add(0, entry)
-        while (entries.size > limit) entries.removeAt(entries.lastIndex)
+        entries.add(entry)
+        prune()
+        sort() // newest first by when it was chosen, whatever order the calls arrived in
         save()
+    }
+
+    private fun sort() = entries.sortByDescending { it.at }
+
+    /** Anything older than the retention window is dropped, here and when the app starts. */
+    private fun prune() {
+        val oldest = nowMillis() - retentionDays * 24L * 3600_000L
+        entries.removeAll { it.at < oldest }
     }
 
     fun remove(entry: HistoryEntry) {
@@ -83,13 +101,18 @@ class SearchHistory(
         else -> a.kind == b.kind && a.label.equals(b.label, ignoreCase = true)
     }
 
-    private fun save() = persist(historyJson.encodeToString(Stored(entries.toList(), enabled)))
+    private fun save() = write(historyJson.encodeToString(Stored(entries.toList(), enabled)))
 
     companion object {
         const val KEY = "search.history.v1"
+        const val RECENT_SHOWN = 10 // A12: ten lines, then "Xem thêm"
 
-        /** The device's history, kept as one JSON string in Prefs (same storage the plans use). */
-        fun fromDevice(): SearchHistory = SearchHistory(Prefs.getString(KEY), persist = { Prefs.setString(KEY, it) })
+        /** Signed in: one JSON string in Prefs on this phone (the storage the plans use). */
+        fun onDevice(): SearchHistory =
+            SearchHistory(read = { Prefs.getString(KEY) }, write = { Prefs.setString(KEY, it) })
+
+        /** Guest: memory only, so nothing survives the app closing and nothing is written to disk. */
+        fun inMemory(): SearchHistory = SearchHistory()
     }
 }
 

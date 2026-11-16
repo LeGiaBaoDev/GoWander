@@ -356,6 +356,8 @@ fun SearchScreen(
     history: List<HistoryEntry> = emptyList(),
     onPickHistory: (HistoryEntry) -> Unit = {},
     onDeleteHistory: (HistoryEntry) -> Unit = {},
+    historyTotal: Int = history.size,
+    onSeeAllHistory: (() -> Unit)? = null,
     forPlaces: Boolean = false, // screen 1 place search: no "Từ:" line, place-search placeholder
 ) {
     var text by rememberSaveable { mutableStateOf("") }
@@ -432,6 +434,14 @@ fun SearchScreen(
                         lead = { Badge(if (e.kind == HistoryEntry.Kind.ADDRESS) KitIcons.pin else KitIcons.clock, Palette.Subtle, Palette.Primary) },
                         trail = { IconButton(ExtraIcons.close, "Xoá khỏi lịch sử", tint = Palette.Muted) { onDeleteHistory(e) } },
                         onClick = { onPickHistory(e) },
+                    )
+                }
+                if (onSeeAllHistory != null && historyTotal > history.size) {
+                    ListRow(
+                        "Xem thêm lịch sử",
+                        "$historyTotal mục trong 30 ngày qua",
+                        lead = { Badge(KitIcons.chevron, Palette.Subtle, Palette.Primary) },
+                        onClick = { onSeeAllHistory() },
                     )
                 }
             }

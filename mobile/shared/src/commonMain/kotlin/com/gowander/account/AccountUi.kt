@@ -1,5 +1,6 @@
 package com.gowander.account
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -178,7 +180,8 @@ fun GoogleSignInButton(onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(googleG, 22.dp, Color.Unspecified)
+        // Drawn as an image, not through Icon(): the four colours must not be flattened by a tint.
+        Image(rememberVectorPainter(googleG), contentDescription = null, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Text("Tiếp tục với Google", Modifier.weight(1f), size = 15.5.sp, weight = FontWeight.SemiBold, maxLines = 1)
         Icon(ExtraIcons.arrowRight, 18.dp, Palette.Muted)
