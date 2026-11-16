@@ -92,6 +92,7 @@ fun ProfileScreen(
     onRegister: () -> Unit,
     onVerifyEmail: () -> Unit,
     onAccountSettings: () -> Unit,
+    onSearchHistory: () -> Unit,
 ) {
     val notice = LocalNotice.current
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -120,6 +121,14 @@ fun ProfileScreen(
         }
         Segmented(listOf(Strings.PORTFOLIO, Strings.SAVED), tab, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Palette.VioletDark) { tab = it }
         if (tab == 0) AccountStrip(account, onWelcome, onSignIn, onRegister, onVerifyEmail, onAccountSettings)
+        if (tab == 0) Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).sizeIn(minHeight = 52.dp).clickable(role = Role.Button, onClick = onSearchHistory),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(KitIcons.clock, 20.dp, Palette.Muted)
+            Text("Lịch sử tìm kiếm", Modifier.weight(1f).padding(start = 12.dp), size = 15.sp, weight = FontWeight.SemiBold)
+            Icon(KitIcons.chevron, 16.dp, Palette.Muted)
+        }
         when (tab) {
             0 -> Portfolio(onTrip, onDesign)
             else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

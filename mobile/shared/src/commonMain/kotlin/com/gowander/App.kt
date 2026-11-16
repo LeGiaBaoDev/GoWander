@@ -13,6 +13,10 @@ import com.gowander.account.SignInScreen
 import com.gowander.account.VerifyCodeScreen
 import com.gowander.account.googleSignInAvailable
 import com.gowander.nav.ACCOUNT_SCREENS
+import com.gowander.route.nowMillis
+import com.gowander.search.HistoryEntry
+import com.gowander.search.SearchHistory
+import com.gowander.search.SearchHistoryScreen
 import com.gowander.home.PlanMapScreen
 import com.gowander.mock.nextStop
 import com.gowander.mock.spot
@@ -171,6 +175,8 @@ private fun AppContent() {
     val store = remember { AppStore(Prefs.getString(STORE_KEY), persist = { Prefs.setString(STORE_KEY, it) }, keepUnreadable = { Prefs.setString("$STORE_KEY.unreadable", it) }) }
     // App accounts (ADR-040): the token is read once at start-up and the server is asked who it belongs to.
     val accounts = remember { AccountStore(sharedApi) }
+    // A11/A12: what was chosen in a search field, on this phone only (ADR-040 §7).
+    val searchHistory = remember { SearchHistory.fromDevice() }
     LaunchedEffect(Unit) { accounts.start() }
     val scope = rememberCoroutineScope()
     var noticeText by remember { mutableStateOf<String?>(null) }
@@ -227,6 +233,11 @@ private fun AppContent() {
     fun back() {
         if (nav.top == Screen.Detail) routeVm.closeDetail()
         nav = nav.pop()
+    }
+
+    /** A12: only a chosen result is remembered, never what was merely typed. */
+    fun rememberSearch(text: String, kind: HistoryEntry.Kind, placeId: String? = null, lat: Double? = null, lon: Double? = null) {
+        searchHistory.add(HistoryEntry(kind, text, placeId, lat, lon, nowMillis()))
     }
 
     /** After signing in (or deleting an account) the whole flow closes, back to the tab that opened it. */
@@ -350,12 +361,14 @@ private fun AppContent() {
                     search = { q -> sharedApi.places(category = null, query = q, cursor = null, limit = 10).places },
                     geocode = { q -> sharedApi.geocode(q, near) },
                     onBack = ::back,
-                    onPick = { p -> chooseDestination(Endpoint(p.lat, p.lon, p.name), p.id) },
+                    onPick = { p -> rememberSearch(p.name, HistoryEntry.Kind.PLACE, p.id, p.lat, p.lon); chooseDestination(Endpoint(p.lat, p.lon, p.name), p.id) },
                     // Address or place: the same flow, straight to the routes (ADR-034, T2).
-                    onPickAddress = { a -> chooseDestination(Endpoint(a.lat, a.lon, a.name), null) },
+                    onPickAddress = { a -> rememberSearch(a.name, HistoryEntry.Kind.ADDRESS, null, a.lat, a.lon); chooseDestination(Endpoint(a.lat, a.lon, a.name), null) },
                     onPickOnMap = { nav = nav.push(Screen.PickDestination) },
                     origin = route.origin?.label, onChangeOrigin = { nav = nav.push(Screen.PickOrigin) },
-                    recent = route.recentDestinations, onPickRecent = { e -> chooseDestination(e, null) },
+                    history = searchHistory.recent(),
+                    onPickHistory = { e -> if (e.lat != null && e.lon != null) chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) },
+                    onDeleteHistory = { e -> searchHistory.remove(e) },
                 )
                 Screen.PickOrigin, Screen.PickDestination -> PickScreen(
                     forOrigin = top == Screen.PickOrigin, location = location, state = route,
@@ -399,14 +412,19 @@ private fun AppContent() {
                     geocode = { q -> sharedApi.geocode(q, near) },
                     onBack = ::back,
                     onPick = { p ->
+                        rememberSearch(p.name, HistoryEntry.Kind.PLACE, p.id, p.lat, p.lon)
                         val plan = top.planId
                         if (plan != null) { addToPlan(plan, PlanItem(p.name, p.category?.name ?: Strings.PLACE, 30, null, p.lat, p.lon)); nav = nav.pop() } else nav = nav.pop().openPlace(p.id)
                     },
                     onPickAddress = { a ->
+                        rememberSearch(a.name, HistoryEntry.Kind.ADDRESS, null, a.lat, a.lon)
                         val plan = top.planId
                         if (plan != null) { addToPlan(plan, PlanItem(a.name, a.detail ?: Strings.ADDRESS, 30, null, a.lat, a.lon)); nav = nav.pop() } else chooseDestination(Endpoint(a.lat, a.lon, a.name), null)
                     },
                     onPickOnMap = { nav = nav.push(Screen.PickDestination) },
+                    history = searchHistory.recent(),
+                    onPickHistory = { e -> if (e.lat != null && e.lon != null) { nav = nav.pop(); chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) } },
+                    onDeleteHistory = { e -> searchHistory.remove(e) },
                     forPlaces = true,
                 )
                 is Screen.Region -> RegionGuideScreen(
@@ -481,6 +499,10 @@ private fun AppContent() {
                     accounts, onBack = ::back,
                     onDone = { closeAccountFlow(); noticeText = "Đã đặt mật khẩu mới. Bạn đã đăng nhập." },
                 )
+                Screen.SearchHistory -> SearchHistoryScreen(
+                    searchHistory, onBack = ::back,
+                    onOpen = { e -> if (e.lat != null && e.lon != null) { nav = nav.pop(); chooseDestination(Endpoint(e.lat, e.lon, e.label), e.placeId) } },
+                )
                 Screen.AccountSettings -> AccountSettingsScreen(
                     accounts, googleSignInAvailable, onBack = ::back,
                     onDeleteAccount = { nav = nav.push(Screen.DeleteAccount) },
@@ -521,6 +543,7 @@ private fun AppContent() {
                         onRegister = { nav = nav.push(Screen.Register) },
                         onVerifyEmail = { nav = nav.push(Screen.VerifyEmail) },
                         onAccountSettings = { nav = nav.push(Screen.AccountSettings) },
+                        onSearchHistory = { nav = nav.push(Screen.SearchHistory) },
                     )
                 }
             }
@@ -553,7 +576,7 @@ private fun AppContent() {
     // Back closes the form first (registered after the screen handlers, so it wins), never the screen behind it.
     BackHandler(enabled = feedback != null) { feedback = null; feedbackShot = null }
     feedback?.let { d ->
-        FeedbackScreen(d, feedbackShot, feedbackImages, send = { sharedApi.submitFeedback(it) }) { sent ->
+        FeedbackScreen(d, feedbackShot, feedbackImages, send = { sharedApi.submitFeedback(it) }, viewer = accounts.user) { sent ->
             feedback = null
             feedbackShot = null
             if (sent) noticeText = Strings.FEEDBACK_SENT

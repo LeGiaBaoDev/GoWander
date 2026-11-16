@@ -88,7 +88,15 @@ fun FeedbackBubble(onClick: () -> Unit) {
  * the library) and, for guests, an optional name and email. Nothing leaves the phone before Send.
  */
 @Composable
-fun FeedbackScreen(start: FeedbackDraft, screenshot: ByteArray?, images: FeedbackImages, send: suspend (FeedbackDraft) -> String, onDone: (sent: Boolean) -> Unit) {
+fun FeedbackScreen(
+    start: FeedbackDraft,
+    screenshot: ByteArray?,
+    images: FeedbackImages,
+    send: suspend (FeedbackDraft) -> String,
+    // A signed-in account with a verified email provides the sender: the form cannot claim another name (ADR-040).
+    viewer: com.gowander.api.AppUser? = null,
+    onDone: (sent: Boolean) -> Unit,
+) {
     var draft by remember { mutableStateOf(start) }
     var sending by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -133,9 +141,34 @@ fun FeedbackScreen(start: FeedbackDraft, screenshot: ByteArray?, images: Feedbac
             }
         }
         Note("Ảnh chỉ được gửi khi bạn bấm Gửi feedback.")
-        Field("Tên của bạn (không bắt buộc)", draft.name, "Ví dụ: Lan Anh") { draft = draft.copy(name = it.take(100)) }
-        Field("Email (không bắt buộc, để GoWander trả lời)", draft.email, "ban@example.com", keyboard = KeyboardType.Email) { draft = draft.copy(email = it.take(254)) }
-        Note("Chỉ đội GoWander xem tên và email; GoWander không gửi vị trí của bạn.")
+        if (viewer != null && viewer.emailVerified) {
+            // A10: read-only sender block; the server takes the same identity from the session, not from this form.
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Palette.Subtle).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape).background(Palette.Soft),
+                    contentAlignment = Alignment.Center,
+                ) { Text(viewer.name.take(1).uppercase(), size = 16.sp, color = Palette.Primary, weight = FontWeight.Bold) }
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text(viewer.name, size = 15.sp, weight = FontWeight.Bold, maxLines = 1)
+                    Text(viewer.email.orEmpty(), size = 12.5.sp, color = Palette.Muted, maxLines = 1)
+                }
+                Row(
+                    Modifier.clip(RoundedCornerShape(999.dp)).background(Palette.Soft).padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(KitIcons.lock, 12.dp, Palette.Primary)
+                    Text("Từ hồ sơ", Modifier.padding(start = 4.dp), size = 11.5.sp, weight = FontWeight.SemiBold, color = Palette.Primary)
+                }
+            }
+            Note("Tên và email lấy từ tài khoản của bạn — muốn đổi thì vào Cài đặt tài khoản.")
+        } else {
+            Field("Tên của bạn (không bắt buộc)", draft.name, "Ví dụ: Lan Anh") { draft = draft.copy(name = it.take(100)) }
+            Field("Email (không bắt buộc, để GoWander trả lời)", draft.email, "ban@example.com", keyboard = KeyboardType.Email) { draft = draft.copy(email = it.take(254)) }
+            Note("Chỉ đội GoWander xem tên và email; GoWander không gửi vị trí của bạn.")
+        }
         problem?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Palette.Accent, weight = FontWeight.SemiBold) }
         Button(if (sending) "Đang gửi…" else "Gửi feedback", Modifier.fillMaxWidth(), icon = ExtraIcons.send) {
             if (sending) return@Button

@@ -105,6 +105,7 @@ import com.gowander.ui.Palette
 import com.gowander.ui.PhotoTile
 import com.gowander.ui.SearchBar
 import com.gowander.ui.SectionTitle
+import com.gowander.search.HistoryEntry
 import com.gowander.ui.Strings
 import com.gowander.ui.Text
 import com.gowander.ui.Title
@@ -351,8 +352,10 @@ fun SearchScreen(
     onPickOnMap: () -> Unit,
     origin: String? = null,
     onChangeOrigin: () -> Unit = {},
-    recent: List<Endpoint> = emptyList(),
-    onPickRecent: (Endpoint) -> Unit = {},
+    // A12: what the person chose before, kept on this phone (ADR-040 §7). Newest five, each removable.
+    history: List<HistoryEntry> = emptyList(),
+    onPickHistory: (HistoryEntry) -> Unit = {},
+    onDeleteHistory: (HistoryEntry) -> Unit = {},
     forPlaces: Boolean = false, // screen 1 place search: no "Từ:" line, place-search placeholder
 ) {
     var text by rememberSaveable { mutableStateOf("") }
@@ -420,9 +423,17 @@ fun SearchScreen(
                 }
                 if (addresses.isNotEmpty()) Note(Strings.OSM_ATTRIBUTION)
             }
-            if (text.trim().length < 2 && recent.isNotEmpty()) {
+            if (text.trim().length < 2 && history.isNotEmpty()) {
                 SectionTitle(Strings.RECENT, Modifier.padding(top = 16.dp))
-                recent.forEach { e -> ListRow(e.label, null, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Muted) }, onClick = { onPickRecent(e) }) }
+                history.take(5).forEach { e ->
+                    ListRow(
+                        e.label,
+                        if (e.kind == HistoryEntry.Kind.ADDRESS) Strings.ADDRESS else Strings.PLACE,
+                        lead = { Badge(if (e.kind == HistoryEntry.Kind.ADDRESS) KitIcons.pin else KitIcons.clock, Palette.Subtle, Palette.Primary) },
+                        trail = { IconButton(ExtraIcons.close, "Xoá khỏi lịch sử", tint = Palette.Muted) { onDeleteHistory(e) } },
+                        onClick = { onPickHistory(e) },
+                    )
+                }
             }
         }
     }
