@@ -8,9 +8,9 @@ Portfolio, tab Hồ sơ và Feedbacks cần biết người dùng là ai. App hi
 
 ## Quyết định
 1. App **không bắt đăng nhập khi mở**; Bản đồ, Khám phá, Tìm đường, gửi feedback vẫn dùng được khi là khách.
-2. Đăng nhập bằng **email hoặc số điện thoại + mật khẩu**, và **Google** (làm ngay, nút có logo G chính thức). Email phải xác minh bằng mã 6 số. Số điện thoại chưa xác minh được cho tới khi có SMS.
+2. Đăng ký bằng **tên đăng nhập + email + số điện thoại (không bắt buộc) + mật khẩu**; đăng nhập bằng **email, số điện thoại hoặc tên đăng nhập + mật khẩu**, và **Google** (đợt đầu, nút có logo G chính thức). Email phải xác minh bằng mã 6 số. Số điện thoại chưa xác minh được cho tới khi có SMS.
 3. Quên mật khẩu: **email qua SMTP** ở đợt đầu; **SMS** ở đợt mở rộng.
-4. **Face ID / vân tay**: mở khoá token đã lưu trong Keychain/Keystore để đăng nhập nhanh (không phải cách đăng nhập mới ở server).
+4. **Để sau** (chủ dự án 16-11-2026): Face ID / vân tay (mở khoá token đã lưu), SMS, đăng nhập Apple.
 5. Tài khoản app **tách khỏi Admin**: bảng `app_users`, `app_sessions`, `app_codes`; API công khai không đọc được bảng Admin.
 6. Phiên app: token ngẫu nhiên, server lưu băm, 60 ngày trượt, thu hồi được; không dùng JWT.
 7. Feedbacks khi đã đăng nhập: tên + email **lấy từ tài khoản, chỉ đọc**, server không tin dữ liệu app gửi.

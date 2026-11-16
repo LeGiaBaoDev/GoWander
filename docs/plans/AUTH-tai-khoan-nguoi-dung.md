@@ -13,6 +13,7 @@
 - "đăng nhập google ngay nha và nhớ có icon google … và dễ nhìn nha, input sẽ màu trắng"
 - "đối với ứng dụng chúng ta ban đầu ko bắt đăng nhập ngay nha"
 - "ghi thêm kế hoạch về lưu lịch sử tìm kiếm để hiện input nhanh trên chỗ tìm địa điểm và có nơi lịch sử để xem"
+- Chốt phạm vi đợt đầu (16-11-2026): "đăng nhập apple phase sau nha, đăng ký email / sđt + mật khẩu + tên đăng nhập thôi với google còn mấy cái kia để sau nha" → đợt đầu chỉ có **email, số điện thoại, tên đăng nhập + mật khẩu, và Google**. Face ID, SMS, Apple để sau.
 - Mẫu giao diện chủ dự án gửi (16-11-2026): màn đăng nhập "bear." (nền sáng, nút bo tròn lớn, ô nhập có biểu tượng) và "deeps BEERCAFE" (khối màu đầu trang, ô nhập trắng, nút đen to, nút "Continue with Google" trắng có logo G nhiều màu và mũi tên). **Chỉ lấy tinh thần bố cục, không sao chép**; dùng màu, chữ, logo của GoWander (Design Kit v4, Be Vietnam Pro).
 
 ## 1. Hiện trạng (16-11-2026)
@@ -28,9 +29,9 @@
 
 ## 2. Phạm vi
 
-**Làm:** đăng ký/đăng nhập bằng **email hoặc số điện thoại + mật khẩu**; **đăng nhập Google** (Android + iOS); xác minh email bằng mã; quên mật khẩu qua **email (SMTP)**; hồ sơ; đăng xuất; xoá tài khoản; Feedbacks lấy tên + email từ tài khoản (chỉ đọc); **Face ID / vân tay** để đăng nhập nhanh; **lịch sử tìm kiếm**; Admin xem người dùng app.
+**Làm (đợt đầu):** đăng ký bằng **tên hiển thị + tên đăng nhập + email + số điện thoại (không bắt buộc) + mật khẩu**; đăng nhập bằng **email, số điện thoại hoặc tên đăng nhập + mật khẩu**; **đăng nhập Google** (Android + iOS); xác minh email bằng mã; quên mật khẩu qua **email (SMTP)**; hồ sơ; đăng xuất; xoá tài khoản; Feedbacks lấy tên + email từ tài khoản (chỉ đọc); **lịch sử tìm kiếm** (trong máy); Admin xem người dùng app.
 
-**Không làm ở đợt này (ghi rõ để agent sau không tự làm):** SMS (đợt mở rộng), Facebook, đồng bộ Kế hoạch/Đã lưu/Portfolio lên server (AUTH-6), cộng đồng, điểm thưởng, thanh toán.
+**Để sau (agent không tự làm khi chưa được giao):** **Face ID / vân tay (AUTH-4)**, **SMS (AUTH-5)**, **đăng nhập Apple (AUTH-7)**, Facebook, đồng bộ Kế hoạch/Đã lưu/Portfolio lên server (AUTH-6), cộng đồng, điểm thưởng, thanh toán.
 
 **Nguyên tắc không đổi:** app **không bắt đăng nhập khi mở**; Bản đồ, Khám phá, Tìm đường, Feedbacks (khách) vẫn dùng được không cần tài khoản (ADR-022).
 
@@ -44,7 +45,8 @@
 - **Email** (chuẩn hoá: trim + lower) — bắt buộc khi đăng ký bằng mật khẩu, phải xác minh bằng mã trước khi dùng các chức năng cần tài khoản.
 - **Số điện thoại** (tuỳ chọn khi đăng ký, chuẩn hoá E.164, mặc định +84: `0912 345 678` → `+84912345678`) — dùng được làm tên đăng nhập. **Chưa xác minh được ở đợt 1** (chưa có SMS): lưu `phone_verified_at = NULL`.
   - Rủi ro (ADR-022): người khác có thể đăng ký trước số của mình. Giảm thiểu: đăng nhập bằng số điện thoại **chỉ khi tài khoản đã xác minh email**; màn Hồ sơ ghi "Số điện thoại chưa xác minh"; khi có SMS (AUTH-5), số chưa xác minh bị giải phóng nếu chủ thật xác minh.
-- Ô nhập trên màn đăng nhập: một ô "Email hoặc số điện thoại"; server nhận dạng (có `@` → email, còn lại → số).
+- **Tên đăng nhập** (bắt buộc khi đăng ký bằng mật khẩu, chủ dự án 16-11-2026): 3–30 ký tự `a-z 0-9 . _`, bắt đầu bằng chữ, không phân biệt hoa thường (lưu chữ thường), duy nhất; không trùng dạng email/số điện thoại. Tài khoản tạo bằng Google được gợi ý tên đăng nhập từ email, đổi được trong Cài đặt.
+- Ô nhập trên màn đăng nhập: một ô "Email, số điện thoại hoặc tên đăng nhập"; server nhận dạng (có `@` → email; chỉ chữ số, `+`, khoảng trắng → số điện thoại; còn lại → tên đăng nhập).
 
 ### 3.3 Mật khẩu, khoá, mã
 - argon2id, **dùng lại** `backend/internal/admin/password.go` (đưa phần băm/so sánh ra gói chung `backend/internal/platform/passwords` hoặc `internal/auth`; Admin gọi lại gói đó, test Admin phải còn đạt).
@@ -88,6 +90,7 @@
 CREATE TABLE app_users (
   id                UUID PRIMARY KEY DEFAULT uuidv7(),
   display_name      VARCHAR(100) NOT NULL CHECK (btrim(display_name) <> ''),
+  username          VARCHAR(30) UNIQUE CHECK (username ~ '^[a-z][a-z0-9._]{2,29}$'), -- tên đăng nhập, chữ thường
   email             VARCHAR(254) UNIQUE,            -- lower(btrim()), NULL only for deleted accounts
   email_verified_at TIMESTAMPTZ,
   phone             VARCHAR(16) UNIQUE,             -- E.164, optional
@@ -140,7 +143,7 @@ Gói mới `backend/internal/account` (store + handler), mount trong `cmd/api/ma
 
 | Method & path | Body | Trả | Ghi chú |
 |---|---|---|---|
-| `POST /api/v1/auth/register` | `{name, email, phone?, password}` | `201 {session, user}` + gửi mã email | email/phone trùng → `409 ACCOUNT_EXISTS` (câu chung chung) |
+| `POST /api/v1/auth/register` | `{name, username, email, phone?, password}` | `201 {session, user}` + gửi mã email | email/phone trùng → `409 ACCOUNT_EXISTS` (câu chung chung) |
 | `POST /api/v1/auth/verify-email` | `{code}` (cần Bearer) | `200 {user}` | sai → `400 CODE_INVALID`, quá 5 lần → mã hỏng |
 | `POST /api/v1/auth/resend-code` | `{purpose}` | `202` | giới hạn 60 s / 5 giờ |
 | `POST /api/v1/auth/login` | `{identifier, password, device?}` | `200 {session, user}` | sai → `401 LOGIN_FAILED`; khoá → `423 ACCOUNT_LOCKED` |
@@ -149,8 +152,9 @@ Gói mới `backend/internal/account` (store + handler), mount trong `cmd/api/ma
 | `POST /api/v1/auth/logout-all` | — | `204` | |
 | `POST /api/v1/auth/forgot` | `{email}` | `202` (luôn) | gửi mã RESET_PASSWORD nếu có tài khoản |
 | `POST /api/v1/auth/reset` | `{email, code, newPassword}` | `200` | thu hồi mọi phiên |
-| `GET /api/v1/me` | — | `200 {user}` | `{id, name, email, emailVerified, phone, phoneVerified, hasPassword, google}` |
-| `PATCH /api/v1/me` | `{name?, phone?}` | `200 {user}` | đổi email: AUTH-6 |
+| `GET /api/v1/auth/username-available?u=` | — | `200 {available}` | gợi ý khi gõ; giới hạn tần suất |
+| `GET /api/v1/me` | — | `200 {user}` | `{id, name, username, email, emailVerified, phone, phoneVerified, hasPassword, google}` |
+| `PATCH /api/v1/me` | `{name?, username?, phone?}` | `200 {user}` | đổi email: AUTH-6 |
 | `POST /api/v1/me/password` | `{current?, new}` | `204` | |
 | `POST /api/v1/me/google` | `{idToken}` | `200` | liên kết Google |
 | `DELETE /api/v1/me` | `{password? / idToken?}` | `204` | §3.8 |
@@ -179,12 +183,12 @@ Canvas: https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4 — thêm hàng "Tài 
 |---|---|---|
 | A1 | Hồ sơ (khách) | Thẻ "Đăng nhập để lưu portfolio, kế hoạch và gửi feedback nhanh hơn" + nút Đăng nhập / Tạo tài khoản; "Đã lưu" (trong máy) vẫn hiện; Cài đặt, Lịch sử tìm kiếm |
 | A2 | Chào mừng | Logo, 1 câu giới thiệu, "Tiếp tục với Google", "Đăng nhập bằng email / số điện thoại", "Tạo tài khoản", "Để sau" |
-| A3 | Đăng nhập | Ô "Email hoặc số điện thoại", "Mật khẩu", "Quên mật khẩu?", nút Đăng nhập, Google, "Đăng nhập bằng Face ID" (nếu đã bật) |
-| A4 | Tạo tài khoản | Tên hiển thị, Email, Số điện thoại (không bắt buộc), Mật khẩu (+ gợi ý độ mạnh), đồng ý điều khoản, nút Tạo tài khoản, Google |
+| A3 | Đăng nhập | Ô "Email, số điện thoại hoặc tên đăng nhập", "Mật khẩu", "Quên mật khẩu?", nút Đăng nhập, "Tiếp tục với Google" (Face ID: AUTH-4, chưa vẽ ở đợt đầu) |
+| A4 | Tạo tài khoản | Tên hiển thị, Tên đăng nhập (báo ngay còn trống hay đã có), Email, Số điện thoại (không bắt buộc), Mật khẩu (+ gợi ý độ mạnh), đồng ý điều khoản, nút Tạo tài khoản, Google |
 | A5 | Nhập mã | 6 ô số, đếm ngược gửi lại 60 s, "Đổi email" |
 | A6 | Quên mật khẩu | Nhập email → mã → mật khẩu mới |
 | A7 | Hồ sơ (đã đăng nhập) | Avatar chữ cái, tên, Portfolio, Kế hoạch, Đã lưu, Lịch sử tìm kiếm, Cài đặt |
-| A8 | Cài đặt tài khoản | Tên, email (đã xác minh), số điện thoại (chưa xác minh), đổi mật khẩu, liên kết Google, Face ID bật/tắt, đăng xuất, đăng xuất mọi thiết bị, xoá tài khoản |
+| A8 | Cài đặt tài khoản | Tên, tên đăng nhập, email (đã xác minh), số điện thoại (chưa xác minh), đổi mật khẩu, liên kết Google, đăng xuất, đăng xuất mọi thiết bị, xoá tài khoản (Face ID bật/tắt: AUTH-4) |
 | A9 | Xoá tài khoản | Giải thích mất gì, xác nhận |
 | A10 | Feedbacks (đã đăng nhập) | Khối người gửi **chỉ đọc**: avatar, tên, email, nhãn "Từ hồ sơ đã đăng nhập"; bỏ 2 ô tên/email |
 | A11 | Lịch sử tìm kiếm | Danh sách theo ngày, xoá từng mục, "Xoá tất cả", công tắc "Lưu lịch sử" |
@@ -212,15 +216,21 @@ Canvas: https://claude.ai/artifact/XtZuZY6CkCk98ZPVd3dSp4 — thêm hàng "Tài 
 | Phase | Việc | Đạt khi |
 |---|---|---|
 | **AUTH-0** | ADR-040 (đã viết, trạng thái Proposed → chủ dự án chốt), vẽ A1–A12 trên canvas | Chủ dự án duyệt canvas |
-| **AUTH-1** | Migration 0014, gói `account` (đăng ký, mã, đăng nhập, phiên, quên mật khẩu, me, xoá), tách gói mật khẩu + mail dùng chung với Admin, feedback lấy tên/email từ phiên, OpenAPI | `go vet`, `go test -race ./...`, test tích hợp (vai trò DB, khoá, mã hết hạn, xoá tài khoản), rà soát bảo mật (`ecc:security-reviewer`), test Admin vẫn đạt |
-| **AUTH-2** | App: `SecureTokenStore`, `AccountStore`, màn A1–A8, A10, Portfolio cần đăng nhập, lịch sử tìm kiếm trong máy (A11, A12) | `:shared:testAndroidHostTest`, `:shared:iosSimulatorArm64Test`, `xcodebuild`, ảnh chụp **Android và iOS** từng màn, `mobile/tools/e2e_ux.py` không lỗi |
-| **AUTH-3** | Google: server kiểm ID token (test khoá giả), app Android + iOS, liên kết trong Cài đặt; Admin trang Người dùng app | Đăng nhập Google thật trên emulator + simulator (cần OAuth client của chủ dự án) |
-| **AUTH-4** | Face ID / vân tay | Thử trên simulator (Face ID giả lập: Features › Face ID › Enrolled) và emulator (vân tay giả lập) |
-| **AUTH-5** | SMS: xác minh số, quên mật khẩu bằng SMS | Có nhà cung cấp + brandname |
+| **AUTH-1** | Migration 0014, gói `account` (đăng ký, tên đăng nhập, mã, đăng nhập bằng email/số/tên đăng nhập, phiên, quên mật khẩu, me, xoá, **kiểm tra Google ID token**), tách gói mật khẩu + mail dùng chung với Admin, feedback lấy tên/email từ phiên, OpenAPI | `go vet`, `go test -race ./...`, test tích hợp (vai trò DB, khoá, mã hết hạn, xoá tài khoản), rà soát bảo mật (`ecc:security-reviewer`), test Admin vẫn đạt |
+| **AUTH-2** | App: `SecureTokenStore`, `AccountStore`, màn A1–A10, **nút Google trên Android và iOS**, Portfolio cần đăng nhập, lịch sử tìm kiếm trong máy (A11, A12) | `:shared:testAndroidHostTest`, `:shared:iosSimulatorArm64Test`, `xcodebuild`, ảnh chụp **Android và iOS** từng màn, `mobile/tools/e2e_ux.py` không lỗi |
+| **AUTH-3** | Admin trang Người dùng app; chi tiết feedback hiện tài khoản; liên kết/huỷ liên kết Google trong Cài đặt app | Chrome máy tính + điện thoại; đăng nhập Google thật trên emulator + simulator |
+| **AUTH-4** (để sau) | Face ID / vân tay | Thử trên simulator (Face ID giả lập: Features › Face ID › Enrolled) và emulator (vân tay giả lập) |
+| **AUTH-5** (để sau) | SMS: xác minh số, quên mật khẩu bằng SMS | Có nhà cung cấp + brandname |
 | **AUTH-6** | Đồng bộ Kế hoạch, Đã lưu, Portfolio, lịch sử (tuỳ chọn) lên tài khoản; đổi email | — |
-| **AUTH-7** | Đăng nhập bằng Apple (trước khi lên App Store) | Tài khoản Apple Developer |
+| **AUTH-7** (để sau) | Đăng nhập bằng Apple (trước khi lên App Store) | Tài khoản Apple Developer |
 
-Chủ dự án muốn có đăng nhập Google "ngay": AUTH-3 làm liền sau AUTH-2 (có thể song song nếu đã có OAuth client); hướng dẫn tạo OAuth client nên gửi chủ dự án ngay khi bắt đầu AUTH-1 để kịp.
+Đăng nhập Google nằm ngay trong AUTH-1 (server) và AUTH-2 (app).
+
+### Trạng thái cấu hình Google (16-11-2026, đã xong)
+- Project Google Cloud mới **GoWander** (chủ dự án tạo lại từ đầu; client Web của Admin cũ bỏ đi). Google Auth Platform: **External**, **Testing** (tối đa 100 người thử, phải thêm Gmail vào **Test users**), Branding đã lưu (chưa có logo, chưa có trang chủ/chính sách → chưa Publish được; cần trước khi ra mắt).
+- 3 OAuth client: **Web** `GoWander server`, **Android** (package `com.gowander.app`, SHA-1 khoá debug `27:7A:BC:E9:26:7A:8E:91:D7:E5:7D:13:70:E0:C2:25:65:F4:51:5D`), **iOS** (bundle `com.legiabao.gowander.dev`).
+- `.env` (không vào Git): `GOOGLE_CLIENT_ID` = Web client ID (server dùng làm `aud`; Android truyền làm `serverClientId`), `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID` (iOS: client ID + reversed client ID làm URL scheme trong `Info.plist`). **Không dùng client secret**: dòng `GOOGLE_CLIENT_SECRET` cũ đã xoá; secret của client Web mới bị dán vào chat ngày 16-11 → chủ dự án được khuyên Reset secret trong console và không lưu ở đâu.
+- Còn cho chủ dự án: thêm Test users; kiểm tra Data Access có `openid`, `email`, `profile`; khi phát hành bản release Android thêm SHA-1 khoá release vào client Android.
 
 ## 10. Rủi ro
 - Số điện thoại chưa xác minh (§3.2). Gmail SMTP giới hạn số thư/ngày (đủ cho pilot; khi lớn chuyển dịch vụ thư). Đăng nhập Google cần cấu hình đúng SHA-1/bundle, sai là lỗi khó hiểu: ghi rõ trong runbook. Apple 4.8 (§3.5). Token trong máy bị lộ nếu máy đã root/jailbreak: chấp nhận, có "đăng xuất mọi thiết bị". Luật dữ liệu cá nhân VN: cần màn đồng ý + chính sách quyền riêng tư trước pilot.
