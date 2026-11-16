@@ -26,10 +26,10 @@ data class Shop(val name: String, val address: String = "")
 
 /** [id] is the server's slug; the bundled dishes use the same ids. */
 @Serializable
-data class Dish(val id: String, val name: String, val summary: String, val description: String, val shops: List<Shop>, val sources: String = GUIDE_FOOD_SOURCE)
+data class Dish(val id: String, val name: String, val summary: String, val description: String, val shops: List<Shop>, val sources: String = GUIDE_FOOD_SOURCE, val photo: com.gowander.api.Photo? = null)
 
 @Serializable
-data class Story(val id: String, val title: String, val summary: String, val paragraphs: List<String>, val tryThis: String, val sources: String) {
+data class Story(val id: String, val title: String, val summary: String, val paragraphs: List<String>, val tryThis: String, val sources: String, val photo: com.gowander.api.Photo? = null) {
     /** Reading time from the length of the text (about 200 words a minute). */
     val minutes: Int get() = (paragraphs.sumOf { it.split(' ').size } + 199) / 200
 }

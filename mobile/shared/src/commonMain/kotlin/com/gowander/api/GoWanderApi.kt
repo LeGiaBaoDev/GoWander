@@ -173,13 +173,16 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     }
 
     override suspend fun imageBytes(url: String): ByteArray {
-        // Only fetch photos from Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
-        val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
-        if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
-            throw ApiError.Unexpected("image host not allowed")
+        val target = photoUrl(url) ?: run {
+            // Otherwise only Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
+            val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
+            if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
+                throw ApiError.Unexpected("image host not allowed")
+            }
+            url
         }
         val response = try {
-            client.get(url)
+            client.get(target)
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
@@ -191,8 +194,24 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
         return response.bodyAsBytes().also { if (it.size > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large") }
     }
 
+    /**
+     * GoWander's own photos (ADR-035): a path under /media/ on this API (development), or an https address on
+     * [PHOTO_HOSTS] (the R2 bucket's domain, once it exists). Null for anything else.
+     */
+    fun photoUrl(raw: String): String? {
+        if (raw.startsWith("/media/") && !raw.contains("..") && !raw.contains("//")) return base + raw
+        val parsed = try { Url(raw) } catch (e: Exception) { return null }
+        val api = try { Url(base) } catch (e: Exception) { return null }
+        val sameApi = parsed.protocol == api.protocol && parsed.host == api.host && parsed.port == api.port
+        val cdn = parsed.protocol == URLProtocol.HTTPS && PHOTO_HOSTS.any { parsed.host == it }
+        return if (sameApi && parsed.encodedPath.startsWith("/media/") || cdn) raw else null
+    }
+
     private companion object {
         val IMAGE_HOSTS = listOf("fbcdn.net", "mapillary.com")
+        // The R2 bucket's public address (docs/runbooks/cloudflare-r2.md). shortcut: r2.dev is rate-limited by
+        // Cloudflare; replace it with the bucket's custom domain before launch.
+        val PHOTO_HOSTS = listOf("pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev")
         const val MAX_IMAGE_BYTES = 2_000_000L
     }
 

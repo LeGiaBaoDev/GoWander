@@ -32,6 +32,7 @@ import com.gowander.ui.ExtraIcons
 import com.gowander.ui.IconButton
 import com.gowander.ui.ListRow
 import com.gowander.ui.MockPhoto
+import com.gowander.ui.RemotePhoto
 import com.gowander.ui.Pill
 import com.gowander.ui.Segmented
 import com.gowander.ui.Stars
@@ -248,7 +249,7 @@ private fun PlaceList(
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(Strings.STORIES, Modifier.semantics { heading() }, size = 17.sp, weight = FontWeight.Bold)
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp))) {
-                    MockPhoto(story.id, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
+                    RemotePhoto(story.photo?.thumbUrl, story.id, Modifier.fillMaxWidth().height(120.dp), KitIcons.book, radius = 0.dp)
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                         Text(story.title, size = 15.sp, weight = FontWeight.Bold)
                         Text(Strings.readMinutes(story.minutes), size = 12.sp, color = Palette.Muted)
@@ -268,7 +269,7 @@ private fun PopularCard(p: PopularPlace, onClick: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box {
-            MockPhoto(p.id, Modifier.size(132.dp, 96.dp), categoryIcon(p.category?.slug))
+            RemotePhoto(p.thumbUrl, p.id, Modifier.size(132.dp, 96.dp), categoryIcon(p.category?.slug))
             Text(
                 "#${p.rank}", Modifier.padding(8.dp).clip(RoundedCornerShape(11.dp)).background(Palette.Ink).padding(horizontal = 8.dp, vertical = 2.dp),
                 size = 12.sp, color = Palette.Bg, weight = FontWeight.Bold,
@@ -338,11 +339,20 @@ private fun PlaceDetailView(p: PlaceDetail, saved: Boolean, onSave: () -> Unit, 
                 IconButton(KitIcons.bookmark, if (saved) Strings.UNSAVE_PLACE else Strings.SAVE_PLACE, Modifier.border(1.dp, if (saved) Palette.Primary else Palette.Line, CircleShape).background(if (saved) Palette.Soft else Palette.Bg, CircleShape), onClick = onSave)
                 IconButton(ExtraIcons.share, Strings.SHARE) { notice(Strings.SHARE_LATER) }
             }
+            // Real photos (cover first) with their credit; sample tiles only while the place has none (ADR-035).
+            val photos = p.media.filter { it.thumbUrl != null }.sortedByDescending { it.isCover }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MockPhoto(p.id, Modifier.size(196.dp, 128.dp), categoryIcon(p.category?.slug))
-                MockPhoto(p.id + "2", Modifier.size(150.dp, 128.dp), KitIcons.camera)
+                if (photos.isEmpty()) {
+                    MockPhoto(p.id, Modifier.size(196.dp, 128.dp), categoryIcon(p.category?.slug))
+                    MockPhoto(p.id + "2", Modifier.size(150.dp, 128.dp), KitIcons.camera)
+                } else photos.forEach { m ->
+                    Column(Modifier.width(196.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RemotePhoto(m.thumbUrl, p.id + m.storageKey, Modifier.size(196.dp, 128.dp), categoryIcon(p.category?.slug), description = m.altText)
+                        Text(Strings.photoCredit(m.sourceCredit, m.license), size = 11.sp, color = Palette.Muted, maxLines = 2)
+                    }
+                }
             }
-            Note(Strings.SAMPLE_PHOTOS, Modifier.padding(horizontal = 20.dp))
+            if (photos.isEmpty()) Note(Strings.SAMPLE_PHOTOS, Modifier.padding(horizontal = 20.dp))
             UnderlineTabs(listOf(Strings.OVERVIEW, Strings.REVIEWS, Strings.DISHES), tab) { tab = it }
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (tab) {

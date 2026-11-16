@@ -32,3 +32,14 @@ App cần ảnh thật cho quán, món ăn, cẩm nang vùng và portfolio. Hi�
 - **Chỉ cho môi trường dev:** cấu hình từ chối khởi động khi `ADMIN_BASE_URL` là https mà chưa có R2 (đúng quyết định "không lưu ảnh trên máy chủ API"). Khi có R2: viết adapter `Storage` cho R2 (S3 API), đặt `MEDIA_BASE_URL` là tên miền CDN; database, Admin và API không đổi.
 - Admin: ảnh địa điểm (nhiều ảnh, một ảnh bìa, xoá), ảnh món ăn và câu chuyện (một ảnh); bắt buộc ghi công và chọn giấy phép (Ảnh của GoWander, Chủ địa điểm cho phép, CC BY 4.0, CC BY-SA 4.0, CC0); file chỉ bị xoá khi không còn mục nào dùng.
 - API công khai trả `url` (1600 px), `thumbUrl` (480 px), ghi công và giấy phép.
+
+## Đợt 2 (16-11-2026): app hiện ảnh thật
+
+- `MEDIA_BASE_URL` mặc định `/media` (đường dẫn tương đối): app ghép với địa chỉ API nó đang dùng (emulator, simulator, Tailscale đều đúng), Admin dùng cùng đường dẫn. Khi có R2: đặt địa chỉ https của bucket.
+- App chỉ tải ảnh GoWander từ `/media/` trên chính API, hoặc từ tên miền R2 ghi cứng trong `PHOTO_HOSTS` (đang rỗng); ảnh khác vẫn chỉ từ Mapillary. Ảnh được giải mã trên luồng nền, giữ 40 ảnh gần nhất; lỗi thì hiện ô mẫu như trước.
+- Hướng dẫn tạo R2 cho chủ dự án: `docs/runbooks/cloudflare-r2.md`.
+
+## Đợt 3 (16-11-2026): R2 chạy thật
+
+- `media.R2` (`backend/internal/media/r2.go`): PUT/DELETE vào bucket qua S3 API, ký AWS SigV4 (region `auto`) bằng thư viện chuẩn, không thêm SDK; chỉ nhận tên file do `media` tạo; xoá file đã mất không lỗi; lỗi trả mã HTTP và mã lỗi S3, không có khoá. Cấu hình `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; có R2 thì `MEDIA_BASE_URL` phải là https và Admin được chạy trên https; không có R2 thì vẫn lưu trên máy như trước.
+- Đang dùng bucket `gowander-media`, địa chỉ công khai r2.dev (giới hạn tốc độ, không cache CDN): đổi sang tên miền riêng trước khi ra mắt (sửa `MEDIA_BASE_URL` và `PHOTO_HOSTS` của app).

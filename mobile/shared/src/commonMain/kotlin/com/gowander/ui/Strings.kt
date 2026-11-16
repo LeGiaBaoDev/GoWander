@@ -179,6 +179,7 @@ object Strings {
     const val SAMPLE_REVIEWS = "đánh giá mẫu"
     const val SAMPLE_USER = "[Người dùng mẫu]"
     const val SAMPLE_PHOTOS = "Ảnh mẫu: chưa có ảnh được phép dùng cho nơi này."
+    fun photoCredit(credit: String, license: String) = "© $credit · $license"
     const val SAMPLE_PHOTO_CREDIT = "Ảnh mẫu"
     const val SAMPLE_USER_PHOTO = "[Người dùng] · ảnh mẫu"
     const val SAMPLE_DISH_PHOTO = "[Ảnh món mẫu]"

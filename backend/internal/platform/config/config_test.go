@@ -23,7 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587,
-		MediaDir: "var/media", MediaBaseURL: "http://localhost:8090/media"}
+		MediaDir: "var/media", MediaBaseURL: "/media"}
 	if c != want {
 		t.Fatalf("got %+v, want %+v", c, want)
 	}
@@ -70,7 +70,12 @@ func TestLoadInvalid(t *testing.T) {
 		"ADMIN_BASE_URL plain http": only("ADMIN_BASE_URL", "http://admin.example.vn"),
 		"ADMIN_BASE_URL with path":  only("ADMIN_BASE_URL", "https://example.vn/admin"),
 		"https Admin before R2":     only("ADMIN_BASE_URL", "https://admin.example.vn"),
-		"MEDIA_BASE_URL relative":   only("MEDIA_BASE_URL", "/media"),
+		"MEDIA_BASE_URL no slash":   only("MEDIA_BASE_URL", "media"),
+		"R2 without keys":           only("R2_BUCKET", "gowander-media", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
+		"R2 bad account":            only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "not-hex", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
+		"R2 local MEDIA_BASE_URL":   only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "0b9c162bb69123ce74f23ff8cf3157b6", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s"),
+		"MEDIA_BASE_URL other host": only("MEDIA_BASE_URL", "//evil.example/media"),
+		"MEDIA_BASE_URL ftp":        only("MEDIA_BASE_URL", "ftp://cdn.example.vn"),
 		"SMTP without from":         only("SMTP_HOST", "smtp.gmail.com"),
 		"SMTP user without secret":  only("SMTP_HOST", "smtp.gmail.com", "SMTP_FROM", "a@example.vn", "SMTP_USERNAME", "a@example.vn"),
 		"SMTP_PORT not a number":    only("SMTP_PORT", "smtp"),
@@ -84,5 +89,13 @@ func TestLoadInvalid(t *testing.T) {
 				t.Fatalf("error leaks a password: %v", err)
 			}
 		})
+	}
+}
+
+func TestR2AllowsHTTPSAdmin(t *testing.T) {
+	c, err := Load(only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "0b9c162bb69123ce74f23ff8cf3157b6", "R2_ACCESS_KEY_ID", "k",
+		"R2_SECRET_ACCESS_KEY", "s", "MEDIA_BASE_URL", "https://pub-x.r2.dev/", "ADMIN_BASE_URL", "https://admin.example.vn"))
+	if err != nil || !c.R2Enabled() || c.MediaBaseURL != "https://pub-x.r2.dev" {
+		t.Fatalf("%+v %v", c.MediaBaseURL, err)
 	}
 }

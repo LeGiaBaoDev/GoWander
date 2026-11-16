@@ -67,6 +67,7 @@ import com.gowander.ui.IconButton
 import com.gowander.ui.KitIcons
 import com.gowander.ui.ListRow
 import com.gowander.ui.MockPhoto
+import com.gowander.ui.RemotePhoto
 import com.gowander.ui.Note
 import com.gowander.ui.Palette
 import com.gowander.ui.PinCard
@@ -311,7 +312,9 @@ fun RegionGuideScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { d ->
                         Column(Modifier.weight(1f).clickable(role = Role.Button) { onDish(d.id) }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(14.dp)).background(Palette.Night), contentAlignment = Alignment.Center) { Icon(KitIcons.star, 24.dp, Palette.Line) }
+                            val photo = d.photo
+                            if (photo != null) RemotePhoto(photo.thumbUrl, d.id, Modifier.fillMaxWidth().height(96.dp), KitIcons.star)
+                            else Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(14.dp)).background(Palette.Night), contentAlignment = Alignment.Center) { Icon(KitIcons.star, 24.dp, Palette.Line) }
                             Text("${d.name} ›", size = 13.sp, color = Color.White, weight = FontWeight.Bold)
                         }
                     }
@@ -326,7 +329,7 @@ fun RegionGuideScreen(
                 var open by rememberSaveable(story.id) { mutableStateOf(false) }
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp)).clickable(role = Role.Button) { open = !open }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        MockPhoto(story.id, Modifier.size(64.dp), KitIcons.book)
+                        RemotePhoto(story.photo?.thumbUrl, story.id, Modifier.size(64.dp), KitIcons.book)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(Strings.STORY_LABEL, size = 12.sp, color = Palette.Primary, weight = FontWeight.Bold)
@@ -404,7 +407,16 @@ fun DishScreen(id: String, onBack: () -> Unit, onShowMap: () -> Unit, onAddToPla
     val d = guideDish(id)
     Box(Modifier.fillMaxSize().background(Palette.Deep)) {
         Box(Modifier.fillMaxWidth().height(300.dp).background(Palette.Night), contentAlignment = Alignment.Center) {
-            Text(Strings.SAMPLE_DISH_PHOTO, size = 13.sp, color = Palette.Line)
+            val photo = d.photo
+            if (photo == null) Text(Strings.SAMPLE_DISH_PHOTO, size = 13.sp, color = Palette.Line)
+            else {
+                RemotePhoto(photo.url, d.id, Modifier.matchParentSize(), KitIcons.star, radius = 0.dp)
+                Text(
+                    Strings.photoCredit(photo.credit, photo.license), Modifier.align(Alignment.BottomEnd).padding(bottom = 40.dp, end = 12.dp)
+                        .clip(RoundedCornerShape(8.dp)).background(Palette.Deep).padding(horizontal = 8.dp, vertical = 2.dp),
+                    size = 11.sp, color = Color.White,
+                )
+            }
         }
         Box(Modifier.safeDrawingPadding().padding(16.dp)) {
             IconButton(ExtraIcons.close, Strings.CLOSE_GUIDE_ITEM, Modifier.clip(CircleShape).background(Palette.Bg), tint = Palette.Ink, onClick = onBack)

@@ -139,7 +139,8 @@ fun App() = KitTheme {
         return@KitTheme
     }
     val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
-    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent() }
+    val photos = remember { com.gowander.ui.PhotoLoader(sharedApi) }
+    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView, com.gowander.ui.LocalPhotoLoader provides photos) { AppContent() }
 }
 
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
@@ -172,8 +173,12 @@ private fun AppContent() {
         if (location.permission !is LocationPermission.Granted) location.requestPermission()
     }
 
-    // Guide dishes and stories from the server (M07 slice 3); offline the bundled copy stays.
-    LaunchedEffect(Unit) { try { Guide.use(sharedApi.guide()) } catch (e: ApiError) { /* keep the bundled copy */ } }
+    // Guide dishes and stories from the server (M07 slice 3), read again each time the guide comes into view (Discover
+    // tab, a region, a dish) so Admin edits show without restarting the app; offline the last copy stays.
+    val guideInView = nav.tab == Tab.Discover && (nav.top == null || nav.top is Screen.Region || nav.top is Screen.Dish)
+    LaunchedEffect(guideInView, nav.top) {
+        if (guideInView) try { Guide.use(sharedApi.guide()) } catch (e: ApiError) { /* keep what we have */ }
+    }
     // One anonymous count of this app start (ADR-038): the request carries nothing; a failure is not the user's concern.
     LaunchedEffect(Unit) { try { sharedApi.recordOpen() } catch (e: ApiError) { /* not counted */ } }
 

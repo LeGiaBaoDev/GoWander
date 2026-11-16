@@ -130,9 +130,15 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	}
 	mux.Post("/api/v1/routes/plan", plan.Plan)
 	discover.Handler{Store: places, Log: log, MediaURL: cfg.MediaBaseURL}.Mount(mux)
-	// Development photo storage (ADR-035: production uses R2; config refuses MEDIA_DIR behind https).
-	photos := media.Local{Dir: cfg.MediaDir}
-	mux.Handle("/media/*", photos)
+	// Photos (ADR-035): the R2 bucket when configured (read from its public address), else this machine's folder
+	// served at /media/ (development only; config refuses it behind https).
+	var photos media.Storage = media.Local{Dir: cfg.MediaDir}
+	if cfg.R2Enabled() {
+		photos = media.R2{AccountID: cfg.R2AccountID, Bucket: cfg.R2Bucket, AccessKeyID: cfg.R2AccessKeyID, SecretAccessKey: cfg.R2SecretAccessKey}
+		log.Info("photos stored in R2", "bucket", cfg.R2Bucket, "publicURL", cfg.MediaBaseURL)
+	} else {
+		mux.Handle("/media/*", media.Local{Dir: cfg.MediaDir})
+	}
 	adminHandler := admin.Handler{Store: adminStore, BaseURL: cfg.AdminBaseURL, Media: photos, MediaURL: cfg.MediaBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
 	if cfg.MailEnabled() {

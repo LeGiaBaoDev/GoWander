@@ -119,7 +119,13 @@ data class Media(
     val sourceCredit: String,
     val license: String,
     val isCover: Boolean = false,
+    val url: String? = null, // 1600 px (ADR-035), relative to the API in development
+    val thumbUrl: String? = null, // 480 px
 )
+
+/** A guide dish's or story's photo, always shown with its credit and licence. */
+@Serializable
+data class Photo(val url: String, val thumbUrl: String, val credit: String, val license: String)
 
 @Serializable
 data class Food(

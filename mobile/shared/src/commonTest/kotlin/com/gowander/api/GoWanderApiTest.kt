@@ -48,6 +48,22 @@ class GoWanderApiTest {
     }
 
     @Test
+    fun ownPhotosLoadFromThisApiOnly() = runTest {
+        val client = api { req -> respond("jpeg:" + req.url.toString(), HttpStatusCode.OK) } as KtorGoWanderApi
+        assertEquals("http://api.test/media/img/ab-480.jpg", client.photoUrl("/media/img/ab-480.jpg"))
+        assertEquals("http://api.test/media/img/ab-480.jpg", client.photoUrl("http://api.test/media/img/ab-480.jpg"))
+        val r2 = "https://pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev/img/ab-480.jpg"
+        assertEquals(r2, client.photoUrl(r2))
+        assertNull(client.photoUrl("http://pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev/img/ab-480.jpg"), "R2 over plain http")
+        assertNull(client.photoUrl("https://pub-other.r2.dev/img/ab-480.jpg"), "another bucket")
+        for (bad in listOf("/media/../.env", "//evil.test/media/a.jpg", "http://evil.test/media/a.jpg", "https://api.test/media/a.jpg", "http://api.test/admin/", "/admin/x")) {
+            assertNull(client.photoUrl(bad), bad)
+        }
+        assertEquals("jpeg:http://api.test/media/img/ab-1600.jpg", client.imageBytes("/media/img/ab-1600.jpg").decodeToString())
+        assertFailsWith<ApiError.Unexpected> { client.imageBytes("http://evil.test/media/a.jpg") }
+    }
+
+    @Test
     fun popularParsesRanksFromTheServer() = runTest {
         // Shape of GET /api/v1/places/popular (backend discover.PopularPlace).
         val body = """{"days":7,"places":[{"id":"p1","name":"Chợ Bến Thành","slug":"cho","lat":10.77,"lon":106.69,

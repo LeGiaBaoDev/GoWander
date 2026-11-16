@@ -175,6 +175,7 @@ tbody tr:hover { background: var(--subtle); }
   .side-nav .nav-account { display: none; }
   .side > .me { display: none; }
   .side .bar-tools { display: flex; }
+  .brand-row .bell { margin-left: auto; } /* the bell sits next to the account and menu buttons */
   .content { padding: 20px 16px 32px; }
   .cols.wide-first, .two { grid-template-columns: 1fr; }
   /* No sideways scrolling: the period picker becomes four equal buttons, tabs wrap. */
