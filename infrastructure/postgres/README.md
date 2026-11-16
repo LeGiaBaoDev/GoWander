@@ -12,6 +12,7 @@ infrastructure/postgres/db.sh up                      # khởi động, chờ he
 infrastructure/postgres/db.sh status
 infrastructure/postgres/db.sh psql app                # psql bằng role app (owner | app | postgres)
 infrastructure/postgres/db.sh seed data/discover/seed.sql
+infrastructure/postgres/db.sh seed data/areas/hcmc-areas.sql   # ranh giới phường/xã TP.HCM cho bộ đếm sử dụng (ADR-038)
 infrastructure/postgres/db.sh down                    # dừng, giữ dữ liệu
 infrastructure/postgres/db.sh reset --yes-delete-data # XOÁ toàn bộ dữ liệu local
 ```
@@ -22,6 +23,7 @@ Dựng từ đầu:
 infrastructure/postgres/db.sh up
 cd backend && set -a && . ../.env && set +a && go run ./cmd/migrate up && cd ..
 python3 scripts/build_discover_seed.py              # tuỳ chọn: sinh lại seed từ OSM + data/curated/places.csv
+python3 scripts/build_area_seed.py                  # tuỳ chọn: sinh lại ranh giới phường/xã từ OSM
 infrastructure/postgres/db.sh seed data/discover/seed.sql
 ```
 

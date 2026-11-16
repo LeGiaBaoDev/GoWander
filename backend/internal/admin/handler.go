@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +48,10 @@ type bar struct {
 	Value int
 }
 
+var statusNames = map[string]string{"PUBLISHED": "Đang hiển thị", "HIDDEN": "Đang ẩn", "DRAFT": "Bản nháp"}
+
+var missingNames = map[string]string{"photo": "Chưa có ảnh", "description": "Chưa có mô tả", "address": "Chưa có địa chỉ", "category": "Chưa có loại"}
+
 // actionNames shows audit actions in Vietnamese; unknown codes are shown as they are.
 var actionNames = map[string]string{
 	"admin.bootstrap": "Tạo quản trị viên đầu tiên",
@@ -53,6 +59,25 @@ var actionNames = map[string]string{
 	"admin.logout":    "Đăng xuất",
 	"role.grant":      "Cấp vai trò",
 	"role.revoke":     "Thu hồi vai trò",
+	"place.update":    "Sửa địa điểm",
+	"category.update": "Sửa loại địa điểm",
+}
+
+// scaleBar is a bar's height: values 1-4 all get the height of 5 (capped at the top), so the bar does not show them.
+func scaleBar(v, top, height int) int {
+	if v <= 0 || top <= 0 {
+		return 0
+	}
+	return min(max(v, MinShown), top) * height / top
+}
+
+// groupDigits: 1030 -> 1.030 (Vietnamese grouping).
+func groupDigits(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "." + s[i:]
+	}
+	return s
 }
 
 func current(r *http.Request) Session { s, _ := r.Context().Value(ctxKey{}).(Session); return s }
@@ -79,13 +104,9 @@ var pages = func() map[string]*template.Template {
 			}
 			return part * 100 / whole
 		},
-		"num": func(n int) string { // 1030 -> 1.030 (Vietnamese grouping)
-			s := strconv.Itoa(n)
-			for i := len(s) - 3; i > 0; i -= 3 {
-				s = s[:i] + "." + s[i:]
-			}
-			return s
-		},
+		"num":         groupDigits,
+		"statusName":  func(s string) string { return statusNames[s] },
+		"missingName": func(s string) string { return missingNames[s] },
 		"action": func(a string) string {
 			if v, ok := actionNames[a]; ok {
 				return v
@@ -98,7 +119,16 @@ var pages = func() map[string]*template.Template {
 			}
 			return t.Local().Format("02-01-2006 15:04")
 		},
-		"at": func(t time.Time) string { return t.Local().Format("02-01-2006 15:04:05") },
+		"count": func(n int) string { // usage numbers: 1-4 show as "<5" (ADR-038 §5)
+			if n > 0 && n < MinShown {
+				return "<" + strconv.Itoa(MinShown)
+			}
+			return groupDigits(n)
+		},
+		"scale": scaleBar,
+		"sub":   func(a, b int) int { return a - b },
+		"mul":   func(a, b int) int { return a * b },
+		"at":    func(t time.Time) string { return t.Local().Format("02-01-2006 15:04:05") },
 		"in": func(list []string, v string) bool {
 			for _, x := range list {
 				if x == v {
@@ -109,7 +139,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "audit", "message"} {
+	for _, name := range []string{"login", "home", "places", "place", "categories", "usage", "audit", "message"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -134,8 +164,17 @@ func (h Handler) Mount(r chi.Router) {
 			r.Get("/", h.home)
 			r.Post("/logout", h.logout)
 			r.Group(func(r chi.Router) {
+				r.Use(requireRole(RoleSystemAdmin, RoleContentEditor))
+				r.Get("/places", h.places)
+				r.Get("/places/{id}", h.placeForm)
+				r.Post("/places/{id}", h.savePlace)
+				r.Get("/categories", h.categories)
+				r.Post("/categories/{id}", h.saveCategory)
+			})
+			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin))
 				r.Get("/audit", h.audit)
+				r.Get("/usage", h.usage)
 			})
 		})
 	})
@@ -334,6 +373,140 @@ func (h Handler) home(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, http.StatusOK, "home", map[string]any{
 		"O": o, "Recent": recent, "Health": health, "Official": h.DataStatus == "OFFICIAL", "Attention": attention(o, down, h.DataStatus),
 	})
+}
+
+func (h Handler) places(w http.ResponseWriter, r *http.Request) {
+	v := r.URL.Query()
+	q := PlaceQuery{Q: v.Get("q"), Status: v.Get("status"), Missing: v.Get("missing")}
+	q.Category, _ = strconv.ParseInt(v.Get("category"), 10, 64)
+	q.Page, _ = strconv.Atoi(v.Get("page"))
+	q.Page = max(q.Page, 1)
+	if !slices.Contains(PlaceStatuses, q.Status) {
+		q.Status = ""
+	}
+	if _, ok := missingFilters[q.Missing]; !ok {
+		q.Missing = ""
+	}
+	list, total, err := h.Store.Places(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	cats, err := h.Store.Categories(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	pageURL := func(page int) string {
+		u := url.Values{}
+		for k, val := range map[string]string{"q": q.Q, "status": q.Status, "missing": q.Missing} {
+			if val != "" {
+				u.Set(k, val)
+			}
+		}
+		if q.Category != 0 {
+			u.Set("category", strconv.FormatInt(q.Category, 10))
+		}
+		u.Set("page", strconv.Itoa(page))
+		return "/admin/places?" + u.Encode()
+	}
+	data := map[string]any{"List": list, "Total": total, "Q": q, "Categories": cats, "Statuses": PlaceStatuses,
+		"From": (q.Page-1)*PageSize + 1, "To": (q.Page-1)*PageSize + len(list)}
+	if q.Page > 1 {
+		data["Prev"] = pageURL(q.Page - 1)
+	}
+	if q.Page*PageSize < total {
+		data["Next"] = pageURL(q.Page + 1)
+	}
+	h.render(w, r, http.StatusOK, "places", data)
+}
+
+func (h Handler) placeForm(w http.ResponseWriter, r *http.Request) {
+	p, err := h.Store.Place(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, ErrNotFound) {
+		h.render(w, r, http.StatusNotFound, "message", map[string]any{"Title": "Không có địa điểm này", "Text": "Địa điểm không tồn tại hoặc đường dẫn sai."})
+		return
+	}
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.renderPlace(w, r, http.StatusOK, p, "", r.URL.Query().Get("saved") == "1")
+}
+
+func (h Handler) renderPlace(w http.ResponseWriter, r *http.Request, status int, p Place, problem string, saved bool) {
+	cats, err := h.Store.Categories(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, status, "place", map[string]any{"P": p, "Categories": cats, "Statuses": PlaceStatuses, "Problem": problem, "Saved": saved})
+}
+
+func (h Handler) savePlace(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cat, _ := strconv.ParseInt(r.PostFormValue("category"), 10, 64)
+	p := Place{ID: id, Name: r.PostFormValue("name"), NameEN: r.PostFormValue("name_en"), Description: r.PostFormValue("description"),
+		Address: r.PostFormValue("address"), Status: r.PostFormValue("status"), CategoryID: cat}
+	err := h.Store.UpdatePlace(r.Context(), current(r).UserID, p, httpx.RequestID(r))
+	switch {
+	case errors.Is(err, ErrBadInput):
+		// Show the form again with what the editor typed, so nothing is lost.
+		stored, lookupErr := h.Store.Place(r.Context(), id)
+		if lookupErr != nil {
+			h.fail(w, r, lookupErr)
+			return
+		}
+		stored.Name, stored.NameEN, stored.Description, stored.Address, stored.Status, stored.CategoryID = p.Name, p.NameEN, p.Description, p.Address, p.Status, p.CategoryID
+		h.renderPlace(w, r, http.StatusUnprocessableEntity, stored, strings.TrimPrefix(err.Error(), ErrBadInput.Error()+": "), false)
+	case errors.Is(err, ErrNotFound):
+		h.render(w, r, http.StatusNotFound, "message", map[string]any{"Title": "Không có địa điểm này", "Text": "Địa điểm không tồn tại hoặc đường dẫn sai."})
+	case err != nil:
+		h.fail(w, r, err)
+	default:
+		http.Redirect(w, r, "/admin/places/"+url.PathEscape(id)+"?saved=1", http.StatusSeeOther)
+	}
+}
+
+func (h Handler) categories(w http.ResponseWriter, r *http.Request) {
+	cats, err := h.Store.Categories(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, "categories", map[string]any{"Categories": cats, "Notice": r.URL.Query().Get("n")})
+}
+
+func (h Handler) saveCategory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	order, orderErr := strconv.Atoi(strings.TrimSpace(r.PostFormValue("sort_order")))
+	if err != nil || orderErr != nil {
+		http.Redirect(w, r, "/admin/categories?n=bad", http.StatusSeeOther)
+		return
+	}
+	c := Category{ID: id, Name: r.PostFormValue("name"), NameEN: r.PostFormValue("name_en"), SortOrder: order, Active: r.PostFormValue("active") == "on"}
+	switch err := h.Store.UpdateCategory(r.Context(), current(r).UserID, c, httpx.RequestID(r)); {
+	case errors.Is(err, ErrBadInput):
+		http.Redirect(w, r, "/admin/categories?n=bad", http.StatusSeeOther)
+	case err != nil:
+		h.fail(w, r, err)
+	default:
+		http.Redirect(w, r, "/admin/categories?n=saved", http.StatusSeeOther)
+	}
+}
+
+func (h Handler) usage(w http.ResponseWriter, r *http.Request) {
+	q := UsageQuery{Area: r.URL.Query().Get("area")}
+	q.Days, _ = strconv.Atoi(r.URL.Query().Get("days"))
+	if !slices.Contains(UsageDays, q.Days) {
+		q.Days = UsageDays[0]
+	}
+	u, err := h.Store.Usage(r.Context(), q)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.render(w, r, http.StatusOK, "usage", map[string]any{"U": u, "DaysOptions": UsageDays, "MinShown": MinShown})
 }
 
 func (h Handler) audit(w http.ResponseWriter, r *http.Request) {

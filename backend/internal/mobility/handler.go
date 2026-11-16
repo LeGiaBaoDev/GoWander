@@ -16,6 +16,12 @@ type Handler struct {
 	Provider   RoutingProvider
 	DataStatus string // ASSUMED or OFFICIAL (ADR-027)
 	Log        *slog.Logger
+	Usage      Recorder // optional: counts successful searches (ADR-038)
+}
+
+// Recorder counts a successful search; it must return at once (analytics.Counter queues it).
+type Recorder interface {
+	Record(q Query, routes []Route)
 }
 
 type planResponse struct {
@@ -33,6 +39,9 @@ func (h Handler) Plan(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil {
 			httpx.WriteJSON(w, http.StatusOK, planResponse{DataStatus: h.DataStatus, Routes: routes})
+			if h.Usage != nil {
+				h.Usage.Record(q, routes)
+			}
 			return
 		}
 	}

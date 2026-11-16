@@ -1,0 +1,37 @@
+# ADR-038 — Đo lường sử dụng: chỉ lưu bộ đếm gộp theo ngày, không lưu sự kiện từng người
+
+- **Trạng thái:** Accepted · **Ngày:** 16-11-2026
+- **Liên quan:** OVERVIEW §8 (không theo dõi lộ trình GPS, không để dữ liệu cá nhân thô trong analytics), `docs/design/05-database-design-v1.2/09-dashboards-privacy-migrations-testing.md` §16, ADR-037 (Admin), PIPELINE §11 (M07)
+
+## Bối cảnh
+
+Chủ dự án muốn xem trong Admin: số khách dùng app, điểm đến được chọn nhiều, phương tiện hay dùng, tuyến xe buýt được dùng nhiều (lọc theo khu vực). Trước quyết định này hệ thống không ghi gì về việc sử dụng: server tính lộ trình xong là quên, app không gửi sự kiện, khách không có tài khoản.
+
+Vị trí xuất phát và điểm đến là **dữ liệu cá nhân** (Luật Bảo vệ dữ liệu cá nhân, hiệu lực 1-1-2026). Thiết kế cơ sở dữ liệu có bảng `usage_events` (mỗi sự kiện một dòng); một dòng "lúc 7:02 đi từ điểm A đến điểm B" đủ để lần ra nơi ở hay nơi làm của một người.
+
+## Quyết định
+
+1. **Chỉ lưu bộ đếm đã gộp theo ngày** (giờ Việt Nam), không lưu dòng sự kiện từng lượt, không lưu tọa độ, IP, mã thiết bị. Tọa độ chỉ nằm trong bộ nhớ server trong lúc tìm phường; không ghi log, không ghi database. Bảng `usage_events` trong thiết kế **không làm**.
+2. **Khu vực là phường/xã** (đơn vị cấp xã sau sáp nhập 7-2025; không còn cấp quận). Ranh giới lấy từ OpenStreetMap (ODbL), bảng `admin_areas`, chỉ trong TP.HCM mới.
+3. **Bước 2 — đếm ở server từ yêu cầu tìm đường thành công** (không cần sửa app):
+   - `usage_route_plans`: ngày × phương tiện yêu cầu × đầu (`FROM`/`TO`) × phường → số lượt. Phường đi và phường đến đếm **riêng**, không ghép cặp (cặp đi–đến lặp lại hằng ngày chính là nhà–chỗ làm).
+   - `usage_bus_lines`: ngày × tuyến × phường xuất phát → số lượt tuyến đó **có trong gợi ý** (mỗi tuyến đếm một lần mỗi lượt tìm).
+   - `usage_place_routes`: ngày × địa điểm → số lượt tìm đường tới điểm cách một địa điểm đang hiển thị không quá 30 m.
+4. **Gọi tên đúng thứ được đo.** Server chỉ biết khách đã *tìm* và tuyến nào *được gợi ý*; không biết khách có đi, có lên xe hay không. Admin ghi "lượt tìm đường", "có trong gợi ý", "được tìm đường tới".
+5. **Ẩn số nhỏ:** khi hiển thị, mục nào dưới **5** lượt trong khoảng đang xem thì không đưa vào danh sách xếp hạng, và mọi con số 1–4 hiện là "<5". Bộ đếm trong database vẫn giữ số thật để cộng dồn đúng.
+6. **Giữ 25 tháng** (đủ so sánh cùng kỳ năm trước), xoá tự động mỗi ngày.
+7. **Ghi theo kiểu "cố gắng hết sức":** tìm đường không bao giờ chờ hay thất bại vì bộ đếm. Mỗi lượt được xếp vào hàng đợi trong bộ nhớ (1.000 chỗ) và một goroutine ghi; hàng đầy hoặc server tắt thì mất lượt đó (ghi log cảnh báo). Số liệu là ước lượng, không dùng để tính tiền.
+8. **Quyền database:** role API công khai `gowander_app` vẫn chỉ đọc nội dung; được thêm `SELECT, INSERT, UPDATE, DELETE` riêng trên ba bảng bộ đếm và `SELECT` trên `admin_areas`. `gowander_admin` chỉ đọc. Trang "Hoạt động" chỉ SYSTEM_ADMIN xem.
+9. **Bước 3 (sau, cần bản app mới):** người dùng theo ngày qua một mã ngẫu nhiên đổi mỗi ngày, chỉ dùng để đếm số mã khác nhau trong ngày rồi bỏ; lượt xem, lưu địa điểm; lượt bấm "Bắt đầu" kèm tuyến đã chọn. Cũng đếm gộp như trên; app cho phép tắt trong Cài đặt.
+
+## Không chọn
+
+- **Bảng sự kiện thô (`usage_events`) + gộp sau:** linh hoạt khi cần chỉ số mới, nhưng phải giữ và bảo vệ dữ liệu vị trí từng người, phải có chính sách xoá, đơn xin xoá dữ liệu. Không đáng ở giai đoạn pilot.
+- **Firebase Analytics / dịch vụ ngoài:** gửi dữ liệu người dùng ra bên thứ ba, thêm SDK vào app; không lọc được theo tuyến buýt và phường của chính mình.
+- **Lưu tọa độ đã làm tròn (ô lưới ~1 km):** vẫn lần ra được ở vùng ít người; phường dễ hiểu hơn với người vận hành.
+
+## Hệ quả
+
+- Đổi định nghĩa bộ đếm thì số liệu cũ không tính lại được (không có sự kiện thô). Thêm chỉ số mới chỉ có số từ ngày bắt đầu đếm.
+- Trước pilot gần như chỉ có chủ dự án dùng app: trang ghi "chưa đủ dữ liệu", không hiện số 0 gây hiểu nhầm.
+- Ranh giới phường lấy từ OSM có thể lệch với văn bản chính thức; nạp lại bằng `scripts/build_area_seed.py` khi OSM cập nhật.

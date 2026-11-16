@@ -28,10 +28,18 @@ func (f *fakeProvider) PlanRoute(_ context.Context, q Query) ([]Route, error) {
 }
 func (f *fakeProvider) Ready(context.Context) error { return f.err }
 
+type fakeUsage struct{ got []Query }
+
+func (f *fakeUsage) Record(q Query, _ []Route) { f.got = append(f.got, q) }
+
 func serve(t *testing.T, p RoutingProvider, req *http.Request) *httptest.ResponseRecorder {
+	return serveCounting(t, p, nil, req)
+}
+
+func serveCounting(t *testing.T, p RoutingProvider, u Recorder, req *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httpx.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	r.Post("/api/v1/routes/plan", Handler{Provider: p, DataStatus: "ASSUMED", Log: slog.New(slog.NewTextHandler(io.Discard, nil))}.Plan)
+	r.Post("/api/v1/routes/plan", Handler{Provider: p, DataStatus: "ASSUMED", Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Usage: u}.Plan)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
@@ -114,5 +122,15 @@ func TestPlanClientCancelledWritesNothing(t *testing.T) {
 	rec := serve(t, &fakeProvider{err: context.Canceled}, post(validBody).WithContext(ctx))
 	if rec.Body.Len() != 0 {
 		t.Fatalf("expected no body for cancelled client, got %s", rec.Body)
+	}
+}
+
+func TestOnlySuccessfulSearchesAreCounted(t *testing.T) {
+	u := &fakeUsage{}
+	serveCounting(t, &fakeProvider{routes: []Route{{DurationSec: 60}}}, u, post(validBody))
+	serveCounting(t, &fakeProvider{err: Fail(NoRouteFound, nil)}, u, post(validBody))
+	serveCounting(t, &fakeProvider{}, u, post(`{}`))
+	if len(u.got) != 1 || u.got[0].Destination.Lat != 10.87 {
+		t.Fatalf("counted %+v", u.got)
 	}
 }

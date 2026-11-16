@@ -1,0 +1,79 @@
+{{define "title"}}Lượt sử dụng · GoWander Admin{{end}}
+{{define "main"}}
+{{$u := .U}}
+<header class="head">
+  <h1>Lượt sử dụng</h1>
+  <p class="muted">Đếm từ các lần tìm đường thành công trên server, gộp theo ngày. Không lưu vị trí hay lịch sử của từng người. Mục nào dưới {{.MinShown}} lượt thì không hiện.</p>
+</header>
+
+<form class="filters" method="get" action="/admin/usage">
+  <label>Khoảng thời gian
+    <select name="days">{{range .DaysOptions}}<option value="{{.}}"{{if eq . $u.Days}} selected{{end}}>{{.}} ngày gần nhất</option>{{end}}</select>
+  </label>
+  <label>Nơi xuất phát
+    <select name="area"><option value="">Toàn thành phố</option>{{range $u.Areas}}<option value="{{.Code}}"{{if eq .Code $u.Area}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+  </label>
+  <button type="submit" class="button">Xem</button>
+</form>
+
+{{if lt $u.Total .MinShown}}
+<section class="card empty">
+  <h2>Chưa đủ dữ liệu</h2>
+  <p class="muted">{{if $u.Total}}Có dưới {{.MinShown}} lượt tìm đường{{else}}Chưa có lượt tìm đường nào{{end}} trong {{$u.Days}} ngày gần nhất{{with $u.AreaName}} xuất phát ở {{.}}{{end}}. Số liệu sẽ hiện khi nhiều người dùng app hơn (pilot).</p>
+</section>
+{{else}}
+<section class="kpis" aria-label="Tóm tắt">
+  <div class="card kpi"><span class="label">Lượt tìm đường</span><strong>{{count $u.Total}}</strong><span class="muted">{{$u.Days}} ngày gần nhất{{with $u.AreaName}} · từ {{.}}{{end}}</span></div>
+</section>
+
+<section class="card">
+  <h2>Lượt tìm đường theo ngày</h2>
+  {{$n := len $u.Daily}}
+  <svg class="daily" viewBox="0 0 {{mul $n 10}} 120" preserveAspectRatio="none" role="img" aria-label="Lượt tìm đường theo ngày, {{$n}} ngày, tổng {{count $u.Total}}">
+    {{range $i, $d := $u.Daily}}{{$h := scale $d.Value $u.DailyMax 110}}<rect x="{{mul $i 10}}" y="{{sub 120 $h}}" width="8" height="{{$h}}"><title>{{$d.Label}}: {{count $d.Value}} lượt</title></rect>{{end}}
+  </svg>
+  <div class="row muted small"><span>{{(index $u.Daily 0).Label}}</span><span>Cao nhất {{count $u.DailyMax}} lượt/ngày</span><span>{{(index $u.Daily (sub $n 1)).Label}}</span></div>
+</section>
+
+<div class="cols">
+  <section class="card">
+    <h2>Phương tiện được chọn khi tìm đường</h2>
+    {{range $u.Modes}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}} · {{pct .Value $u.Total}}%</span>
+      <progress max="{{$u.Total}}" value="{{.Value}}" aria-label="{{.Label}}: {{pct .Value $u.Total}}%"></progress></div>{{end}}
+  </section>
+  <section class="card">
+    <h2>Tuyến xe buýt, metro có trong gợi ý</h2>
+    <p class="muted small">Số lần tuyến xuất hiện trong kết quả tìm đường{{with $u.AreaName}} xuất phát ở {{.}}{{end}}. Chưa biết khách có đi tuyến đó hay không.</p>
+    {{with $u.Lines}}{{$top := (index . 0).Value}}{{range .}}<div class="bar"><span>Tuyến {{.Label}}</span><span class="muted">{{count .Value}}</span>
+      <progress class="cat" max="{{$top}}" value="{{.Value}}" aria-label="Tuyến {{.Label}}: {{.Value}}"></progress></div>{{end}}
+    {{else}}<p class="muted">Chưa có tuyến nào đủ {{$.MinShown}} lượt.</p>{{end}}
+  </section>
+</div>
+
+{{if not $u.Area}}
+<div class="cols">
+  {{range $box := list "Phường, xã xuất phát nhiều nhất" 0 "Phường, xã được tìm đường tới nhiều nhất" 1}}
+  <section class="card">
+    <h2>{{$box.Label}}</h2>
+    {{$rows := $u.From}}{{if eq $box.Value 1}}{{$rows = $u.To}}{{end}}
+    {{with $rows}}{{$top := (index . 0).Value}}{{range .}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}}</span>
+      <progress class="cat" max="{{$top}}" value="{{.Value}}" aria-label="{{.Label}}: {{.Value}}"></progress></div>{{end}}
+    {{else}}<p class="muted">Chưa có nơi nào đủ {{$.MinShown}} lượt.</p>{{end}}
+  </section>
+  {{end}}
+</div>
+
+<section class="card">
+  <h2>Địa điểm được tìm đường tới nhiều nhất</h2>
+  <p class="muted small">Điểm đến cách một địa điểm đang hiển thị không quá 30 m.</p>
+  {{with $u.Places}}{{$top := (index . 0).Value}}{{range .}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}}</span>
+    <progress class="cat" max="{{$top}}" value="{{.Value}}" aria-label="{{.Label}}: {{.Value}}"></progress></div>{{end}}
+  {{else}}<p class="muted">Chưa có địa điểm nào đủ {{$.MinShown}} lượt.</p>{{end}}
+</section>
+{{else}}
+<p class="muted small">Khi lọc theo nơi xuất phát, trang không hiện nơi đến: hai đầu được đếm riêng để không lộ cặp đi–đến của một người.</p>
+{{end}}
+{{end}}
+
+<p class="muted small">Chưa có: số người dùng theo ngày, lượt xem và lưu địa điểm, lượt bấm "Bắt đầu" (cần bản app mới, ADR-038 bước 3).</p>
+{{end}}

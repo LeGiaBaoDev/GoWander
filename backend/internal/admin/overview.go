@@ -53,6 +53,7 @@ type Attention struct {
 	Text  string
 	Count int // 0 when the line is not a count
 	Bad   bool
+	Link  string // the list that fixes it, when there is one
 }
 
 // attention turns the counts into the to-do list. Only problems are listed; nothing to do gives an empty list.
@@ -65,17 +66,17 @@ func attention(o Overview, down []string, dataStatus string) []Attention {
 		out = append(out, Attention{Text: "Dữ liệu tuyến và giờ xe buýt là dữ liệu giả định, chưa phải nguồn chính thức (ADR-027)"})
 	}
 	for _, gap := range []struct {
-		missing int
-		text    string
+		missing    int
+		text, link string
 	}{
-		{o.Places - o.WithPhoto, "địa điểm chưa có ảnh"},
-		{o.Places - o.WithDescription, "địa điểm chưa có mô tả ngắn"},
-		{o.Places - o.WithAddress, "địa điểm chưa có địa chỉ"},
-		{o.Places - o.WithCategory, "địa điểm chưa có loại"},
-		{o.Draft, "địa điểm đang là bản nháp, chưa hiển thị"},
+		{o.Places - o.WithPhoto, "địa điểm chưa có ảnh", "/admin/places?missing=photo"},
+		{o.Places - o.WithDescription, "địa điểm chưa có mô tả ngắn", "/admin/places?missing=description"},
+		{o.Places - o.WithAddress, "địa điểm chưa có địa chỉ", "/admin/places?missing=address"},
+		{o.Places - o.WithCategory, "địa điểm chưa có loại", "/admin/places?missing=category"},
+		{o.Draft, "địa điểm đang là bản nháp, chưa hiển thị", "/admin/places?status=DRAFT"},
 	} {
 		if gap.missing > 0 {
-			out = append(out, Attention{Text: gap.text, Count: gap.missing})
+			out = append(out, Attention{Text: gap.text, Count: gap.missing, Link: gap.link})
 		}
 	}
 	if o.Foods == 0 && o.Stories == 0 {

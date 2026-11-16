@@ -21,7 +21,7 @@
   <section class="card">
     <h2>Cần chú ý</h2>
     <ul class="todo">
-    {{range .Attention}}<li class="{{if .Bad}}bad{{end}}">{{if .Count}}<strong>{{num .Count}}</strong> {{end}}{{.Text}}</li>
+    {{range .Attention}}<li class="{{if .Bad}}bad{{end}}">{{if .Count}}<strong>{{num .Count}}</strong> {{end}}{{.Text}}{{with .Link}} <a href="{{.}}">Xem danh sách →</a>{{end}}</li>
     {{else}}<li class="done">Không có việc gì cần làm.</li>{{end}}
     </ul>
   </section>

@@ -91,6 +91,12 @@ type Store interface {
 	Audit(ctx context.Context, e AuditEntry) error
 	AuditLog(ctx context.Context, limit int) ([]AuditEntry, error)
 	Overview(ctx context.Context) (Overview, error)
+	Usage(ctx context.Context, q UsageQuery) (Usage, error)
+	Places(ctx context.Context, q PlaceQuery) (list []PlaceRow, total int, err error)
+	Place(ctx context.Context, id string) (Place, error)
+	UpdatePlace(ctx context.Context, actorID string, p Place, requestID string) error
+	Categories(ctx context.Context) ([]Category, error)
+	UpdateCategory(ctx context.Context, actorID string, c Category, requestID string) error
 	Ready(ctx context.Context) error
 }
 

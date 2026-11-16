@@ -1,4 +1,4 @@
-built_at=2026-11-14T02:11:54Z
+built_at=2026-11-15T22:37:57Z
 osm_file=vietnam-261111.osm.pbf
 osm_md5=a870588bd665a4f92f3af92dc60d01f2
 radius_m=800

@@ -1,0 +1,37 @@
+{{define "title"}}{{.P.Name}} · GoWander Admin{{end}}
+{{define "main"}}
+<p><a href="/admin/places">← Danh sách địa điểm</a></p>
+<header class="head">
+  <h1>{{.P.Name}}</h1>
+  <p class="muted"><span class="state s-{{.P.Status}}">{{statusName .P.Status}}</span>{{with .P.EditedAt}} · đã sửa trong Admin lúc {{at .}}{{end}}</p>
+</header>
+{{if .Saved}}<p class="notice ok" role="status">Đã lưu. App thấy thay đổi ở lần tải tiếp theo.</p>{{end}}
+{{if .Problem}}<p class="notice bad" role="alert">Chưa lưu: {{.Problem}}.</p>{{end}}
+<div class="cols wide-first">
+  <form class="card form" method="post" action="/admin/places/{{.P.ID}}">
+    <input type="hidden" name="csrf" value="{{.Me.CSRF}}">
+    <label>Tên <input name="name" value="{{.P.Name}}" required maxlength="200"></label>
+    <label>Tên tiếng Anh <span class="muted small">(không bắt buộc)</span><input name="name_en" value="{{.P.NameEN}}" maxlength="200"></label>
+    <label>Mô tả ngắn <span class="muted small">(một hai câu người dùng thấy khi mở địa điểm, tối đa 500 ký tự)</span>
+      <textarea name="description" rows="4" maxlength="500">{{.P.Description}}</textarea></label>
+    <label>Địa chỉ <input name="address" value="{{.P.Address}}" maxlength="300"></label>
+    <div class="two">
+      <label>Loại chính <select name="category"><option value="0">Chưa có</option>{{range .Categories}}{{if or .Active (eq .ID $.P.CategoryID)}}<option value="{{.ID}}"{{if eq .ID $.P.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></label>
+      <label>Trạng thái <select name="status">{{range .Statuses}}<option value="{{.}}"{{if eq . $.P.Status}} selected{{end}}>{{statusName .}}</option>{{end}}</select></label>
+    </div>
+    <p class="muted small">"Đang ẩn" và "Bản nháp" đều không hiện trong app. Mọi lần lưu được ghi vào nhật ký.</p>
+    <div><button type="submit">Lưu thay đổi</button></div>
+  </form>
+  <aside class="card facts-card">
+    <h2>Nguồn dữ liệu</h2>
+    <dl>
+      <dt>Nguồn</dt><dd>{{.P.Source}} · <code>{{.P.SourceRef}}</code>{{with .P.SourceURL}} · <a href="{{.}}" rel="noopener noreferrer" target="_blank">mở nguồn</a>{{end}}</dd>
+      <dt>Giấy phép</dt><dd>{{.P.License}}</dd>
+      <dt>Toạ độ</dt><dd><code>{{printf "%.6f, %.6f" .P.Lat .P.Lon}}</code></dd>
+      <dt>Ảnh</dt><dd>{{if .P.Photos}}{{.P.Photos}} ảnh{{else}}Chưa có (thêm ảnh làm ở lát sau, cần nơi lưu ảnh R2){{end}}</dd>
+      <dt>Cập nhật</dt><dd>{{at .P.UpdatedAt}}</dd>
+    </dl>
+    <p class="muted small">Nguồn, giấy phép và toạ độ đến từ dữ liệu gốc nên không sửa ở đây.</p>
+  </aside>
+</div>
+{{end}}

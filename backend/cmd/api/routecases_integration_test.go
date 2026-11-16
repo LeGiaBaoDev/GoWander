@@ -60,7 +60,7 @@ func TestRouteCases(t *testing.T) {
 	if err := provider.Ready(ctx); err != nil {
 		t.Fatalf("OTP at %s is not ready (start it with infrastructure/otp/scripts/serve.sh start): %v", cfg.OTPURL, err)
 	}
-	srv := httptest.NewServer(newHandler(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), provider, stubStore{}, nil))
+	srv := httptest.NewServer(newHandler(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), provider, stubStore{}, nil, nil))
 	defer srv.Close()
 
 	f, err := os.Open(casesFile)

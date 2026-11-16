@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/admin"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/analytics"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/geocode"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
@@ -57,17 +58,20 @@ func run(log *slog.Logger) error {
 		adminStore = &admin.PG{Pool: adminPool}
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	usage := analytics.New(pool, log) // ADR-038: daily counters, written in the background
+	go usage.Run(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore),
+		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore, usage),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      max(cfg.OTPTimeout, streetImageTimeout) + 5*time.Second, // the slowest upstream wait + margin (review 15-11-2026)
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
@@ -94,7 +98,7 @@ func run(log *slog.Logger) error {
 }
 
 // newHandler wires every route; integration tests use it with a real OTP.
-func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store) http.Handler {
+func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage mobility.Recorder) http.Handler {
 	mux := httpx.NewRouter(log)
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -118,7 +122,7 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log}.Plan)
+	mux.Post("/api/v1/routes/plan", mobility.Handler{Provider: provider, DataStatus: cfg.DataStatus, Log: log, Usage: usage}.Plan)
 	discover.Handler{Store: places, Log: log}.Mount(mux)
 	adminHandler := admin.Handler{Store: adminStore, BootstrapEmail: cfg.AdminBootstrapEmail, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
