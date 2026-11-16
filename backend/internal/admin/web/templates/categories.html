@@ -1,0 +1,24 @@
+{{define "title"}}Loại địa điểm · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head">
+  <h1>Loại địa điểm</h1>
+  <p class="muted">Các loại đang bật là bộ lọc trên bản đồ của app, theo thứ tự bên dưới. Tắt một loại thì bộ lọc đó biến mất, địa điểm vẫn còn.</p>
+</header>
+{{if eq .Notice "saved"}}<p class="notice ok" role="status">Đã lưu.</p>{{end}}
+{{if eq .Notice "bad"}}<p class="notice bad" role="alert">Chưa lưu: tên phải có (tối đa 100 ký tự), thứ tự là số từ 0 đến 10000.</p>{{end}}
+<div class="table-wrap cards">
+<table>
+  <thead><tr><th>Tên</th><th>Tên tiếng Anh</th><th>Thứ tự</th><th>Bật</th><th>Địa điểm</th><th><span class="sr-only">Lưu</span></th></tr></thead>
+  <tbody>
+  {{range .Categories}}<tr>
+    <td class="c-field" data-label="Tên"><input form="c{{.ID}}" name="name" value="{{.Name}}" required maxlength="100" aria-label="Tên loại {{.Slug}}"></td>
+    <td class="c-field" data-label="Tên tiếng Anh"><input form="c{{.ID}}" name="name_en" value="{{.NameEN}}" maxlength="100" aria-label="Tên tiếng Anh loại {{.Slug}}"></td>
+    <td data-label="Thứ tự"><input form="c{{.ID}}" name="sort_order" value="{{.SortOrder}}" inputmode="numeric" class="narrow-input" aria-label="Thứ tự loại {{.Slug}}"></td>
+    <td data-label="Bật"><input form="c{{.ID}}" type="checkbox" name="active"{{if .Active}} checked{{end}} aria-label="Bật loại {{.Slug}}"></td>
+    <td data-label="Địa điểm"><a href="/admin/places?category={{.ID}}">{{num .Places}}</a></td>
+    <td class="c-wide"><form id="c{{.ID}}" method="post" action="/admin/categories/{{.ID}}"><input type="hidden" name="csrf" value="{{$.Me.CSRF}}"><button type="submit" class="small-button">Lưu</button></form></td>
+  </tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

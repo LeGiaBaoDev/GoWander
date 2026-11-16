@@ -16,13 +16,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
 
 // Handler serves the read-only Discover endpoints (openapi.yaml, ADR-028 §5).
 type Handler struct {
-	Store Store
-	Log   *slog.Logger
+	Store    Store
+	Log      *slog.Logger
+	MediaURL string // MEDIA_BASE_URL: photos are served from MediaURL + "/" + key + "-<size>.jpg" (ADR-035)
 }
 
 func (h Handler) Mount(r chi.Router) {
@@ -31,7 +33,9 @@ func (h Handler) Mount(r chi.Router) {
 	r.Get("/api/v1/places/nearby", h.nearby)
 	r.Get("/api/v1/places/map", h.inBounds)
 	r.Get("/api/v1/places/map/clusters", h.clusters)
+	r.Get("/api/v1/places/popular", h.popular)
 	r.Get("/api/v1/places/{id}", h.place)
+	r.Get("/api/v1/guide/hcm", h.guide)
 }
 
 type badRequest string
@@ -43,6 +47,23 @@ func (h Handler) categories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"categories": nonNil(cats)})
+}
+
+// popular is Khám phá › "Đang được tìm nhiều": ranks only, empty until enough real searches (the app then hides the row).
+func (h Handler) popular(w http.ResponseWriter, r *http.Request) {
+	places, err := h.Store.Popular(r.Context())
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	for i := range places {
+		places[i].Rank = i + 1
+		if places[i].photoKey != "" {
+			places[i].ThumbURL = media.URL(h.MediaURL, places[i].photoKey, 480)
+		}
+	}
+	w.Header().Set("Cache-Control", "public, max-age=600")
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"days": PopularDays, "places": nonNil(places)})
 }
 
 func (h Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +217,9 @@ func (h Handler) place(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Categories, d.Media, d.Foods = nonNil(d.Categories), nonNil(d.Media), nonNil(d.Foods)
+	for i := range d.Media {
+		d.Media[i].URL, d.Media[i].ThumbURL = media.URL(h.MediaURL, d.Media[i].StorageKey, 1600), media.URL(h.MediaURL, d.Media[i].StorageKey, 480)
+	}
 	httpx.WriteJSON(w, http.StatusOK, d)
 }
 

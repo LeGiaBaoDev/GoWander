@@ -1,0 +1,120 @@
+{{define "title"}}Báo cáo thống kê · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head">
+  <h1>Báo cáo thống kê</h1>
+  <p class="muted">Chi tiết phía sau trang Tổng quan. Số đếm thật lúc mở trang; không lưu vị trí hay lịch sử của từng người (ADR-038).</p>
+</header>
+<nav class="tabs" aria-label="Loại báo cáo">
+  <a href="/admin/reports"{{if eq .Tab "khach"}} aria-current="page"{{end}}>Khách dùng app</a>
+  <a href="/admin/reports?tab=noi-dung"{{if eq .Tab "noi-dung"}} aria-current="page"{{end}}>Nội dung &amp; hệ thống</a>
+</nav>
+{{if eq .Tab "khach"}}
+{{if .U.Sample}}<p class="notice sample-note" role="note"><span class="sample">Dữ liệu mẫu</span> Chưa đủ {{.MinShown}} lượt tìm đường thật trong khoảng này, nên báo cáo đang hiện số mẫu. Khi đủ, trang tự chuyển sang số thật.</p>{{end}}
+{{$u := .U}}
+<section aria-labelledby="usage-title">
+  <div class="row section-head">
+    <h2 id="usage-title" class="sr-only">Khách dùng app</h2>
+    <form class="filters inline" method="get" action="/admin/reports">
+      <input type="hidden" name="grain" value="{{$u.Grain.Key}}">
+      <label><span class="sr-only">Tuyến xe buýt</span>
+        <select name="line" data-submit><option value="">Mọi tuyến</option>{{range $u.LineOptions}}<option value="{{.ID}}"{{if eq .ID $u.Line}} selected{{end}}>{{.Title}}</option>{{end}}</select></label>
+      <noscript><button type="submit" class="button ghost">Xem</button></noscript>
+    </form>
+    <nav class="seg" aria-label="Xem theo">{{range .Grains}}<a href="{{$.GrainBase}}grain={{.Key}}"{{if eq .Key $.U.Grain.Key}} aria-current="true"{{end}}>{{.Name}}<small>{{.Span}}</small></a>{{end}}</nav>
+  </div>
+  {{if $u.Line}}
+  <section class="card">
+    <div class="row"><h3>{{$u.LineTitle}}: số lần có trong gợi ý theo {{$u.Grain.Lower}}</h3><a href="/admin/reports?grain={{$u.Grain.Key}}">Bỏ lọc tuyến ×</a></div>
+    <p class="big-number"><strong>{{count $u.Total}}</strong> lần trong {{$u.Grain.Span}} gần nhất{{with .SearchChange}}{{if .Show}} · <span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</p>
+    {{template "linechart" $.Searches}}
+    <p class="muted small">Số lần tuyến có trong kết quả tìm đường; chưa biết khách có thật sự đi hay không.</p>
+  </section>
+  {{else if lt $u.Total .MinShown}}
+  <p class="muted small">Chưa đủ lượt tìm đường để xếp hạng (mục dưới {{.MinShown}} lượt không hiện, để không lần ra một người).</p>
+  {{else}}
+  <section class="card">
+    <div class="row"><h3>Lượt tìm đường theo {{$u.Grain.Lower}}</h3><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
+    <p class="big-number"><strong>{{count $u.Total}}</strong> lượt · <strong>{{num $u.Opens}}</strong> lượt mở app{{with .SearchChange}}{{if .Show}} · <span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</p>
+    {{template "linechart" $.Searches}}
+  </section>
+  <div class="cols three">
+    <section class="card">
+      <h3>Tuyến được gợi ý nhiều nhất</h3>
+      <nav class="mini-tabs" aria-label="Loại phương tiện">{{range $.Vehicles}}<a href="/admin/reports?grain={{$u.Grain.Key}}{{with .Key}}&amp;kind={{.}}{{end}}"{{if eq .Key $u.Kind}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</nav>
+      {{with $u.Lines}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $l := .}}
+        <li><span class="no">{{add $i 1}}</span><a class="name" href="/admin/reports?grain={{$u.Grain.Key}}&amp;line={{$l.ID}}">{{$l.Title}}</a><span class="muted">{{count $l.Value}}</span>
+          <progress class="cat" max="{{$max}}" value="{{$l.Value}}" aria-label="{{$l.Title}}: {{$l.Value}}"></progress></li>{{end}}</ol>
+      {{else}}<p class="muted">Chưa có tuyến nào đủ {{$.MinShown}} lượt.</p>{{end}}
+      <p class="muted small">Bấm một tuyến để xem riêng. Đếm số lần có trong kết quả tìm đường, chưa biết khách có đi hay không.</p>
+    </section>
+    <section class="card">
+      <h3>Điểm đến được tìm nhiều nhất</h3>
+      <p class="muted small">Điểm đến cách địa điểm không quá 30 m.</p>
+      {{with $u.Places}}<ol class="rank">{{$max := (index . 0).Value}}{{range $i, $p := .}}
+        <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}}</span>
+          <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
+      {{else}}<p class="muted">Chưa có địa điểm nào đủ {{$.MinShown}} lượt.</p>{{end}}
+    </section>
+    <section class="card">
+      <h3>Phương tiện được chọn</h3>
+      <p class="muted small">Tỉ lệ trên mọi lượt tìm đường.</p>
+      {{range $u.Modes}}<div class="bar"><span>{{.Label}}</span><span class="muted">{{count .Value}} · {{pct .Value $u.Total}}%</span>
+        <progress max="{{$u.Total}}" value="{{.Value}}" aria-label="{{.Label}}: {{pct .Value $u.Total}}%"></progress></div>{{end}}
+    </section>
+  </div>
+  {{end}}
+  <p class="muted small">Đếm gộp theo ngày; không lưu vị trí hay lịch sử của từng người (ADR-038).</p>
+</section>
+
+{{else}}
+<section class="status" aria-label="Trạng thái hệ thống">
+  {{range .Health}}<span class="pill {{if .OK}}ok{{else}}bad{{end}}"><span class="led" aria-hidden="true"></span>{{.Name}}: {{if .OK}}hoạt động{{else}}không phản hồi{{end}}</span>{{end}}
+  <span class="pill {{if .Official}}ok{{else}}warn{{end}}"><span class="led" aria-hidden="true"></span>Dữ liệu xe buýt: {{if .Official}}chính thức{{else}}giả định{{end}}</span>
+</section>
+
+<section class="kpis" aria-label="Nội dung đang có">
+  <div class="card kpi"><span class="label">Địa điểm đang hiển thị</span><strong>{{num .O.Published}}</strong><span class="muted">trên {{num .O.Places}} địa điểm{{if .O.Hidden}} · {{num .O.Hidden}} đang ẩn{{end}}</span></div>
+  <div class="card kpi"><span class="label">Loại địa điểm</span><strong>{{num .O.Categories}}</strong><span class="muted">bộ lọc trên bản đồ</span></div>
+  <div class="card kpi"><span class="label">Món ăn</span><strong>{{num .O.Foods}}</strong><span class="muted">trên server</span></div>
+  <div class="card kpi"><span class="label">Câu chuyện</span><strong>{{num .O.Stories}}</strong><span class="muted">trên server</span></div>
+</section>
+
+<div class="cols">
+  <section class="card">
+    <h2>Cần chú ý</h2>
+    <ul class="todo">
+    {{range .Attention}}<li class="{{if .Bad}}bad{{end}}">{{if .Count}}<strong>{{num .Count}}</strong> {{end}}{{.Text}}{{with .Link}} <a href="{{.}}">Xem danh sách →</a>{{end}}</li>
+    {{else}}<li class="done">Không có việc gì cần làm.</li>{{end}}
+    </ul>
+  </section>
+  <section class="card">
+    <h2>Độ đầy đủ của địa điểm</h2>
+    <p class="muted small">Thông tin người dùng thấy khi mở một địa điểm.</p>
+    {{$n := .O.Places}}
+    {{range $row := list "Có loại" .O.WithCategory "Có địa chỉ" .O.WithAddress "Có mô tả ngắn" .O.WithDescription "Có ảnh" .O.WithPhoto}}
+    <div class="bar"><span>{{$row.Label}}</span><span class="muted">{{num $row.Value}}/{{num $n}} · {{pct $row.Value $n}}%</span>
+      <progress max="{{$n}}" value="{{$row.Value}}" aria-label="{{$row.Label}}: {{pct $row.Value $n}}%"></progress></div>
+    {{end}}
+    {{with .O.LastPlaceUpdate}}<p class="muted small">Dữ liệu địa điểm cập nhật lần cuối: {{at .}}</p>{{end}}
+  </section>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Địa điểm đang hiển thị theo loại</h2>
+    <p class="muted small">Loại ít địa điểm là chỗ bản đồ còn mỏng.</p>
+    {{with .O.ByCategory}}{{$max := (index . 0).Count}}
+    {{range .}}<div class="bar"><span>{{.Name}}</span><span class="muted">{{num .Count}}</span>
+      <progress class="cat" max="{{$max}}" value="{{.Count}}" aria-label="{{.Name}}: {{.Count}}"></progress></div>
+    {{end}}{{else}}<p class="muted">Chưa có loại địa điểm.</p>{{end}}
+  </section>
+  <section class="card">
+    <div class="row"><h2>Hoạt động gần đây</h2><a href="/admin/audit">Xem nhật ký</a></div>
+    <ul class="feed">
+    {{range .Recent}}<li><span class="dot" aria-hidden="true"></span><span><strong>{{action .Action}}</strong> · {{.ActorName}}</span><time>{{at .At}}</time></li>
+    {{else}}<li class="muted">Chưa có hoạt động.</li>{{end}}
+    </ul>
+  </section>
+</div>
+{{end}}
+{{end}}

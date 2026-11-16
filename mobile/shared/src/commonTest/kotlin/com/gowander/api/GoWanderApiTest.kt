@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import io.ktor.http.HttpMethod
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -45,6 +46,67 @@ class GoWanderApiTest {
             assertFailsWith<ApiError.Unexpected>(bad) { client.imageBytes(bad) }
         }
         assertEquals("jpeg-bytes", client.imageBytes("https://scontent-sin6-1.xx.fbcdn.net/m1/a.jpg").decodeToString())
+    }
+
+    @Test
+    fun ownPhotosLoadFromThisApiOnly() = runTest {
+        val client = api { req -> respond("jpeg:" + req.url.toString(), HttpStatusCode.OK) } as KtorGoWanderApi
+        assertEquals("http://api.test/media/img/ab-480.jpg", client.photoUrl("/media/img/ab-480.jpg"))
+        assertEquals("http://api.test/media/img/ab-480.jpg", client.photoUrl("http://api.test/media/img/ab-480.jpg"))
+        val r2 = "https://pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev/img/ab-480.jpg"
+        assertEquals(r2, client.photoUrl(r2))
+        assertNull(client.photoUrl("http://pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev/img/ab-480.jpg"), "R2 over plain http")
+        assertNull(client.photoUrl("https://pub-other.r2.dev/img/ab-480.jpg"), "another bucket")
+        for (bad in listOf("/media/../.env", "//evil.test/media/a.jpg", "http://evil.test/media/a.jpg", "https://api.test/media/a.jpg", "http://api.test/admin/", "/admin/x")) {
+            assertNull(client.photoUrl(bad), bad)
+        }
+        assertEquals("jpeg:http://api.test/media/img/ab-1600.jpg", client.imageBytes("/media/img/ab-1600.jpg").decodeToString())
+        assertFailsWith<ApiError.Unexpected> { client.imageBytes("http://evil.test/media/a.jpg") }
+    }
+
+    @Test
+    fun feedbackIsSentAsMultipart() = runTest {
+        val id = api { req ->
+            val body = (req.body as io.ktor.http.content.OutgoingContent).let { it.contentType.toString() }
+            assertEquals("/api/v1/feedbacks", req.url.encodedPath)
+            assertEquals(HttpMethod.Post, req.method)
+            assertTrue(body.startsWith("multipart/form-data"), body)
+            respondJson(HttpStatusCode.Created, """{"id":"fb-9"}""")
+        }.submitFeedback(com.gowander.feedback.FeedbackDraft(message = "Giờ mở cửa chưa đúng", context = "Địa điểm · Chợ Bến Thành", image = byteArrayOf(1, 2)))
+        assertEquals("fb-9", id)
+    }
+
+    @Test
+    fun popularParsesRanksFromTheServer() = runTest {
+        // Shape of GET /api/v1/places/popular (backend discover.PopularPlace).
+        val body = """{"days":7,"places":[{"id":"p1","name":"Chợ Bến Thành","slug":"cho","lat":10.77,"lon":106.69,
+            "category":{"slug":"market","name":"Chợ"},"source":{"kind":"OSM"},"rank":1,"thumbUrl":"https://cdn.example.vn/media/img/a-480.jpg"}]}"""
+        val p = api(HttpStatusCode.OK, body).popular()
+        assertEquals("/api/v1/places/popular", requests.single().url.encodedPath)
+        assertEquals(1, p.single().rank)
+        assertEquals("Chợ", p.single().category?.name)
+    }
+
+    @Test
+    fun guideParsesTheServerDishesAndStories() = runTest {
+        // Shape of GET /api/v1/guide/hcm (backend discover.Guide); unknown fields are ignored.
+        val body = """{"dishes":[{"id":"hcm-food-pho","name":"Phở","summary":"S","description":"D","shops":[{"name":"Quán A","address":"1 Lê Lợi"}],"sources":"Nguồn A","extra":1}],
+            "stories":[{"id":"hcm-story-x","title":"T","summary":"S","paragraphs":["Một.","Hai."],"tryThis":"Thử","sources":"Nguồn B"}]}"""
+        val g = api(HttpStatusCode.OK, body).guide()
+        assertEquals("/api/v1/guide/hcm", requests.single().url.encodedPath)
+        assertEquals("1 Lê Lợi", g.dishes.single().shops.single().address)
+        assertEquals("Nguồn A", g.dishes.single().sources)
+        assertEquals(listOf("Một.", "Hai."), g.stories.single().paragraphs)
+    }
+
+    @Test
+    fun recordOpenPostsNothingButTheRequest() = runTest {
+        api { respond("", HttpStatusCode.NoContent) }.recordOpen()
+        val req = requests.single()
+        assertEquals("/api/v1/usage/open", req.url.encodedPath)
+        assertEquals("POST", req.method.value)
+        assertEquals("", req.url.encodedQuery)
+        assertEquals(0L, req.body.contentLength ?: 0L)
     }
 
     @Test

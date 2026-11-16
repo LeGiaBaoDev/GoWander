@@ -1,0 +1,38 @@
+{{define "title"}}Nhật ký thao tác · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head">
+  <h1>Nhật ký thao tác</h1>
+  <p class="muted">Ai đã làm gì, lúc nào. Nhật ký chỉ ghi thêm, không sửa hay xoá được; giờ theo giờ Việt Nam.</p>
+</header>
+
+<form class="card filters audit-filters" method="get" action="/admin/audit">
+  <label>Từ ngày <input type="date" name="from" value="{{.From}}" max="{{.Today}}" required></label>
+  <label>Đến ngày <input type="date" name="to" value="{{.To}}" max="{{.Today}}" required></label>
+  <label class="grow">Hành động <select name="action"><option value="">Tất cả</option>{{range .Actions}}<option value="{{.}}"{{if eq . $.Action}} selected{{end}}>{{action .}}</option>{{end}}</select></label>
+  <button type="submit">Lọc</button>
+  <p class="quick muted small">Nhanh: {{range $i, $q := .Quick}}{{if $i}} · {{end}}<a href="{{$q.URL}}">{{$q.Label}}</a>{{end}}</p>
+</form>
+{{with .Notice}}<p class="notice sample-note" role="status">Đã chỉnh khoảng thời gian: {{.}}.</p>{{end}}
+
+<section class="card">
+  <div class="row"><h2>Thao tác theo {{if eq .From .To}}giờ{{else}}thời gian{{end}}</h2><span class="muted small">{{num .Total}} thao tác · rê chuột lên biểu đồ để xem từng mốc</span></div>
+  {{template "linechart" .Chart}}
+</section>
+
+<div class="table-wrap cards">
+<table class="audit">
+  <thead><tr><th>Lúc</th><th>Người làm</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th><th>Mã yêu cầu</th></tr></thead>
+  <tbody>
+  {{range .Entries}}<tr>
+    <td class="when" title="{{atFull .At}}">{{at .At}}</td>
+    <td class="c-state">{{if .ActorName}}<strong>{{.ActorName}}</strong>{{else}}<span class="muted">Hệ thống (lệnh trên server)</span>{{end}}</td>
+    <td class="c-wide"><span class="tag">{{action .Action}}</span></td>
+    <td class="c-wide"><span class="muted small">{{entityName .EntityType}}</span><br>{{if .EntityName}}{{.EntityName}}{{else}}<code title="{{.EntityID}}">{{short .EntityID}}</code>{{end}}</td>
+    <td class="c-wide">{{range detail .Metadata}}<div class="small">{{.}}</div>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td data-label="Mã yêu cầu">{{with .RequestID}}<code class="rid" title="{{.}}">{{short .}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">Không có thao tác nào trong khoảng này.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{template "pager" .Pager}}
+{{end}}

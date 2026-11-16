@@ -212,7 +212,8 @@ def seed_sql(places, header):
     out = [f"-- {line}" for line in header] + ["BEGIN;", ""]
     for slug, name, name_en, order in CATEGORIES:
         out.append(f"INSERT INTO place_categories (name, name_en, slug, sort_order) VALUES ({sql(name)}, {sql(name_en)}, {sql(slug)}, {order})"
-                   " ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, name_en = EXCLUDED.name_en, sort_order = EXCLUDED.sort_order;")
+                   " ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, name_en = EXCLUDED.name_en, sort_order = EXCLUDED.sort_order"
+                   " WHERE place_categories.edited_at IS NULL;")  # edited in the Admin: the editor's version wins
     out.append("")
     for p in places:
         cols = "name, name_en, slug, short_description, location, address, primary_category_id, status, source, source_ref, source_url, license, attribution"
@@ -226,12 +227,14 @@ def seed_sql(places, header):
         synced = [c for c in cols.split(", ") if c not in ("source", "source_ref", "status")]
         updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in synced)
         changed = " OR ".join(f"places.{c} IS DISTINCT FROM EXCLUDED.{c}" for c in synced)
-        out.append(f"INSERT INTO places ({cols}) VALUES ({vals}) ON CONFLICT (source, source_ref) DO UPDATE SET {updates}, updated_at = now() WHERE {changed};")
+        out.append(f"INSERT INTO places ({cols}) VALUES ({vals}) ON CONFLICT (source, source_ref) DO UPDATE SET {updates}, updated_at = now()"
+                   f" WHERE places.edited_at IS NULL AND ({changed});")
         this = f"(SELECT id FROM places WHERE source = {sql(p['source'])} AND source_ref = {sql(p['source_ref'])})"
         slugs = ", ".join(sql(s) for s in p["categories"])
-        # Categories follow the source: drop links to categories the place no longer has.
-        out.append(f"DELETE FROM place_category_links WHERE place_id = {this} AND category_id NOT IN (SELECT id FROM place_categories WHERE slug IN ({slugs}));")
-        out.append(f"INSERT INTO place_category_links (place_id, category_id) SELECT {this}, id FROM place_categories WHERE slug IN ({slugs}) ON CONFLICT DO NOTHING;")
+        # Categories follow the source (drop links the place no longer has), unless an editor changed the place in the Admin.
+        unedited = f"(SELECT edited_at FROM places WHERE source = {sql(p['source'])} AND source_ref = {sql(p['source_ref'])}) IS NULL"
+        out.append(f"DELETE FROM place_category_links WHERE place_id = {this} AND category_id NOT IN (SELECT id FROM place_categories WHERE slug IN ({slugs})) AND {unedited};")
+        out.append(f"INSERT INTO place_category_links (place_id, category_id) SELECT {this}, id FROM place_categories WHERE slug IN ({slugs}) AND {unedited} ON CONFLICT DO NOTHING;")
     # Places that disappeared from their source are hidden, not deleted (keeps ids stable for links and reviews).
     for source in ("OSM", "CURATED"):
         refs = ", ".join(sql(p["source_ref"]) for p in places if p["source"] == source) or "''"
@@ -259,6 +262,9 @@ def self_test():
     st = station_places()
     assert len(st) == 14 and st[0]["name"] == "Ga Bến Thành" and st[0]["source_ref"] == "node/11586280308"
     assert st[-1]["slug"] == "ga-ben-xe-suoi-tien" and st[0]["categories"] == ["station"]
+    one = seed_sql(st[:1], ["t"])
+    assert "WHERE places.edited_at IS NULL AND (" in one and "WHERE place_categories.edited_at IS NULL;" in one
+    assert one.count(") IS NULL") >= 2  # both link statements skip places edited in the Admin
     print("self-test ok")
 
 

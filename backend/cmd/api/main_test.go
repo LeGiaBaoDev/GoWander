@@ -37,7 +37,9 @@ func (s stubStore) Clusters(context.Context, discover.ClusterQuery) ([]discover.
 func (s stubStore) Place(context.Context, string) (discover.PlaceDetail, error) {
 	return discover.PlaceDetail{}, discover.ErrNotFound
 }
-func (s stubStore) Ready(context.Context) error { return s.readyErr }
+func (s stubStore) Ready(context.Context) error                              { return s.readyErr }
+func (s stubStore) Guide(context.Context) (discover.Guide, error)            { return discover.Guide{}, nil }
+func (s stubStore) Popular(context.Context) ([]discover.PopularPlace, error) { return nil, nil }
 
 func (s stubProvider) PlanRoute(context.Context, mobility.Query) ([]mobility.Route, error) {
 	panic("boom") // exercises the recoverer
@@ -50,7 +52,7 @@ func do(t *testing.T, p mobility.RoutingProvider, method, path string) (int, map
 
 func doWith(t *testing.T, p mobility.RoutingProvider, s discover.Store, method, path string) (int, map[string]any, http.Header) {
 	t.Helper()
-	h := newHandler(config.Config{DataStatus: "ASSUMED"}, slog.New(slog.NewTextHandler(io.Discard, nil)), p, s)
+	h := newHandler(config.Config{DataStatus: "ASSUMED"}, slog.New(slog.NewTextHandler(io.Discard, nil)), p, s, nil, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 	var body map[string]any
@@ -90,7 +92,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestPanicBecomesEnvelope(t *testing.T) {
-	h := newHandler(config.Config{DataStatus: "ASSUMED"}, slog.New(slog.NewTextHandler(io.Discard, nil)), stubProvider{}, stubStore{})
+	h := newHandler(config.Config{DataStatus: "ASSUMED"}, slog.New(slog.NewTextHandler(io.Discard, nil)), stubProvider{}, stubStore{}, nil, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/v1/routes/plan", http.NoBody)
 	req.Body = io.NopCloser(strings.NewReader(`{"origin":{"lat":10.77,"lon":106.69},"destination":{"lat":10.87,"lon":106.81}}`))

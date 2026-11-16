@@ -1,0 +1,59 @@
+{{define "title"}}Tổng quan · GoWander Admin{{end}}
+{{define "main"}}
+{{$u := .U}}
+<header class="head row hello">
+  <div>
+    <p class="hi">{{.Greeting}}{{with .Me.Name}}, {{.}}{{end}} 👋</p>
+    <h1>Tổng quan</h1>
+    <p class="muted">Khách dùng GoWander thế nào và app kiếm được gì: {{$u.Grain.Span}} gần nhất, theo từng {{$u.Grain.Lower}}, so với {{$u.Grain.Span}} trước đó.</p>
+  </div>
+  <nav class="seg" aria-label="Xem theo">{{range .Grains}}<a href="{{$.GrainBase}}grain={{.Key}}"{{if eq .Key $.U.Grain.Key}} aria-current="true"{{end}}>{{.Name}}<small>{{.Span}}</small></a>{{end}}</nav>
+</header>
+
+{{if or .Rev.Sample $u.Sample}}<p class="notice sample-note" role="note"><span class="sample">Dữ liệu mẫu</span> Các thẻ gắn nhãn này đang hiện số mẫu vì chưa có số thật{{if $u.Sample}} (khách dùng app: chưa đủ {{.MinShown}} lượt tìm đường){{end}}{{if .Rev.Sample}} (doanh thu, lợi nhuận: chưa bật kênh kiếm tiền){{end}}. Danh sách cần thay ghi trong PIPELINE.md, mục "Admin sample data".</p>{{end}}
+{{if .Welcome}}<p class="notice ok" role="status">Đã đặt mật khẩu của bạn. Lần sau đăng nhập bằng mật khẩu này; trang đổi mật khẩu sẽ không tự hiện nữa.</p>{{end}}
+{{with .Down}}<p class="notice bad" role="alert">Đang có dịch vụ không phản hồi: {{range $i, $n := .}}{{if $i}}, {{end}}{{$n}}{{end}}. <a href="/admin/reports?tab=noi-dung">Xem tình trạng hệ thống →</a></p>{{end}}
+
+<section class="kpis" aria-label="Chỉ số chính">
+  <div class="card kpi stat"><span class="icon t1" aria-hidden="true">{{template "icon" "phone"}}</span><div>
+    <span class="label">Lượt mở app{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong>{{num $u.Opens}}</strong>
+    <span class="muted">{{with .OpensChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với {{$u.Grain.Span}} trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat"><span class="icon t2" aria-hidden="true">{{template "icon" "route"}}</span><div>
+    <span class="label">Lượt tìm đường{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong>{{count $u.Total}}</strong>
+    <span class="muted">{{with .SearchChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với {{$u.Grain.Span}} trước{{else}}chưa có kỳ trước để so{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat{{if .Rev.Sample}} is-sample{{end}}"><span class="icon t3" aria-hidden="true">{{template "icon" "coins"}}</span><div>
+    <span class="label">Doanh thu{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong class="money">{{vnd .Rev.Total}}</strong>
+    <span class="muted">{{with .RevChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</span></div></div>
+  <div class="card kpi stat{{if .Rev.Sample}} is-sample{{end}}"><span class="icon t4" aria-hidden="true">{{template "icon" "trend"}}</span><div>
+    <span class="label">Lợi nhuận{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</span><strong class="money">{{vnd .Rev.Profit}}</strong>
+    <span class="muted">{{with .ProfitChange}}{{if .Show}}<span class="change {{if .Up}}up{{else}}down{{end}}">{{.Text}}</span> so với kỳ trước{{end}}{{end}}</span></div></div>
+</section>
+
+<div class="cols wide-first">
+  <section class="card{{if .Rev.Sample}} is-sample{{end}}">
+    <div class="row"><h2>Doanh thu theo {{$u.Grain.Lower}}{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="chart-legend"><span><i></i>Kỳ này</span><span><i class="prev"></i>Kỳ trước</span></span></div>
+    {{template "linechart" .RevChart}}
+  </section>
+  <section class="card{{if .Rev.Sample}} is-sample{{end}}">
+    <h2>Doanh thu đến từ đâu{{if .Rev.Sample}} <span class="sample">Mẫu</span>{{end}}</h2>
+    {{$total := 0}}{{range .Rev.ByChannel}}{{$total = add $total .Value}}{{end}}
+    {{range $i, $c := .Rev.ByChannel}}<div class="bar"><span>{{$c.Label}}</span><span class="muted">{{pct $c.Value $total}}%</span>
+      <progress class="{{if $i}}cat{{end}}" max="{{$total}}" value="{{$c.Value}}" aria-label="{{$c.Label}}: {{pct $c.Value $total}}%"></progress></div>{{end}}
+    <p class="muted small">Quảng bá quán trước, affiliate sau (kế hoạch kinh doanh). Lợi nhuận = doanh thu trừ chi phí máy chủ, dữ liệu, nhân sự.</p>
+  </section>
+</div>
+
+<section class="card">
+  <div class="row"><h2>Khách đi đâu nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><span class="muted small">TP.HCM theo phường, xã · màu đậm = nhiều lượt tìm đường kết thúc ở đó · rê chuột để xem tên</span></div>
+  {{template "hotmap" .}}
+</section>
+
+<section class="card">
+  <div class="row"><h2>Địa điểm được tìm đường tới nhiều nhất{{if $u.Sample}} <span class="sample">Mẫu</span>{{end}}</h2><a href="/admin/reports?grain={{$u.Grain.Key}}">Xem báo cáo →</a></div>
+  <p class="muted small">Đang đo: lượt tìm đường có điểm đến cách địa điểm dưới 30 m (ý định đi). Bấm "Bắt đầu" và "đã tới nơi" sẽ có khi phát hành bản app mới.</p>
+  {{with .TopPlaces}}<ol class="rank two-col">{{$max := (index . 0).Value}}{{range $i, $p := .}}
+    <li><span class="no">{{add $i 1}}</span><span class="name">{{$p.Label}}</span><span class="muted">{{count $p.Value}} lượt</span>
+      <progress class="cat" max="{{$max}}" value="{{$p.Value}}" aria-label="{{$p.Label}}: {{$p.Value}}"></progress></li>{{end}}</ol>
+  {{else}}<p class="muted">Chưa có địa điểm nào được tìm đường tới đủ {{.MinShown}} lần.</p>{{end}}
+</section>
+{{end}}

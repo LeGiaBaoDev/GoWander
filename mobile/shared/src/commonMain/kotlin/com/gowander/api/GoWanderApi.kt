@@ -6,6 +6,8 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
@@ -13,6 +15,8 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
@@ -23,6 +27,7 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
+import com.gowander.content.GuideContent
 import kotlinx.serialization.json.Json
 
 /** Base URL of the Go API for this platform during development (ADR-029 §3). */
@@ -57,12 +62,20 @@ interface GoWanderApi {
     /** How many places each cell of a grid over the viewport holds: for a map zoomed too far out to show single places. */
     suspend fun placeClusters(south: Double, west: Double, north: Double, east: Double, categories: Set<String>?): List<PlaceCluster>
     suspend fun place(id: String): PlaceDetail
+    /** Most searched-for places of the last 7 days; empty until there is enough real use. */
+    suspend fun popular(): List<PopularPlace>
+    /** Sends a feedback (guest allowed); returns its id. The image, if any, is a JPEG or PNG under 5 MB. */
+    suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
     /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
     suspend fun streetImage(at: LatLon): StreetImageResponse?
     /** Raw bytes of an image URL returned by the API (street photo). */
     suspend fun imageBytes(url: String): ByteArray
+    /** Published dishes and stories of the TP.HCM guide (M07 slice 3). */
+    suspend fun guide(): GuideContent
+    /** One app start, counted per day on the server (ADR-038). Sends nothing else: no id, no location. */
+    suspend fun recordOpen()
 }
 
 fun HttpClientConfig<*>.configureGoWander() {
@@ -127,6 +140,39 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
 
     override suspend fun place(id: String): PlaceDetail = call("/api/v1/places/${id.encodeURLPathPart()}") {}
 
+    override suspend fun guide(): GuideContent = call("/api/v1/guide/hcm") {}
+
+    override suspend fun popular(): List<PopularPlace> = call<PopularPage>("/api/v1/places/popular") {}.places
+
+    override suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String =
+        call<FeedbackCreated>("/api/v1/feedbacks") {
+            method = HttpMethod.Post
+            setBody(MultiPartFormDataContent(formData {
+                append("kind", draft.kind.api)
+                append("message", draft.message.trim())
+                if (draft.context.isNotBlank()) append("context", draft.context.take(200))
+                if (draft.name.isNotBlank()) append("senderName", draft.name.trim())
+                if (draft.email.isNotBlank()) append("senderEmail", draft.email.trim())
+                draft.image?.let {
+                    append("image", it, Headers.build {
+                        append(HttpHeaders.ContentType, "image/jpeg")
+                        append(HttpHeaders.ContentDisposition, "filename=\"feedback.jpg\"")
+                    })
+                }
+            }))
+        }.id
+
+    override suspend fun recordOpen() {
+        val status = try {
+            client.request("$base/api/v1/usage/open") { method = HttpMethod.Post }.status
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw ApiError.Network(e)
+        }
+        if (!status.isSuccess()) throw ApiError.Unexpected("HTTP ${status.value} for an app start")
+    }
+
     override suspend fun geocode(query: String, near: LatLon?): List<GeoResult> =
         call<GeocodeResponse>("/api/v1/geocode") {
             parameter("q", query)
@@ -151,13 +197,16 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     }
 
     override suspend fun imageBytes(url: String): ByteArray {
-        // Only fetch photos from Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
-        val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
-        if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
-            throw ApiError.Unexpected("image host not allowed")
+        val target = photoUrl(url) ?: run {
+            // Otherwise only Mapillary's CDN over HTTPS, whatever the API returns (security review 14-11-2026).
+            val parsed = try { Url(url) } catch (e: Exception) { throw ApiError.Unexpected("bad image url") }
+            if (parsed.protocol != URLProtocol.HTTPS || IMAGE_HOSTS.none { parsed.host == it || parsed.host.endsWith(".$it") }) {
+                throw ApiError.Unexpected("image host not allowed")
+            }
+            url
         }
         val response = try {
-            client.get(url)
+            client.get(target)
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
@@ -169,8 +218,24 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
         return response.bodyAsBytes().also { if (it.size > MAX_IMAGE_BYTES) throw ApiError.Unexpected("image too large") }
     }
 
+    /**
+     * GoWander's own photos (ADR-035): a path under /media/ on this API (development), or an https address on
+     * [PHOTO_HOSTS] (the R2 bucket's domain, once it exists). Null for anything else.
+     */
+    fun photoUrl(raw: String): String? {
+        if (raw.startsWith("/media/") && !raw.contains("..") && !raw.contains("//")) return base + raw
+        val parsed = try { Url(raw) } catch (e: Exception) { return null }
+        val api = try { Url(base) } catch (e: Exception) { return null }
+        val sameApi = parsed.protocol == api.protocol && parsed.host == api.host && parsed.port == api.port
+        val cdn = parsed.protocol == URLProtocol.HTTPS && PHOTO_HOSTS.any { parsed.host == it }
+        return if (sameApi && parsed.encodedPath.startsWith("/media/") || cdn) raw else null
+    }
+
     private companion object {
         val IMAGE_HOSTS = listOf("fbcdn.net", "mapillary.com")
+        // The R2 bucket's public address (docs/runbooks/cloudflare-r2.md). shortcut: r2.dev is rate-limited by
+        // Cloudflare; replace it with the bucket's custom domain before launch.
+        val PHOTO_HOSTS = listOf("pub-808b6bd1a8f74ab5b380ecebe7156d61.r2.dev")
         const val MAX_IMAGE_BYTES = 2_000_000L
     }
 

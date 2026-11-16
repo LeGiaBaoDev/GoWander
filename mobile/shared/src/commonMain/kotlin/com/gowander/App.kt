@@ -39,6 +39,7 @@ import com.gowander.api.ApiError
 import com.gowander.api.LatLon
 import com.gowander.api.PlaceSummary
 import com.gowander.api.createGoWanderApi
+import com.gowander.content.Guide
 import com.gowander.discover.DiscoverScreen
 import com.gowander.discover.DiscoverViewModel
 import com.gowander.discover.PlaceScreen
@@ -75,6 +76,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.gowander.feedback.FeedbackBubble
+import com.gowander.feedback.FeedbackDraft
+import com.gowander.feedback.FeedbackScreen
+import com.gowander.feedback.feedbackContext
+import com.gowander.feedback.rememberFeedbackImages
+import androidx.compose.runtime.withFrameNanos
+import com.gowander.discover.DetailState
 import com.gowander.nav.AppNav
 import com.gowander.nav.Screen
 import com.gowander.nav.Tab
@@ -138,7 +146,8 @@ fun App() = KitTheme {
         return@KitTheme
     }
     val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
-    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView) { AppContent() }
+    val photos = remember { com.gowander.ui.PhotoLoader(sharedApi) }
+    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView, com.gowander.ui.LocalPhotoLoader provides photos) { AppContent() }
 }
 
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
@@ -170,6 +179,15 @@ private fun AppContent() {
         userAskedGps = true
         if (location.permission !is LocationPermission.Granted) location.requestPermission()
     }
+
+    // Guide dishes and stories from the server (M07 slice 3), read again each time the guide comes into view (Discover
+    // tab, a region, a dish) so Admin edits show without restarting the app; offline the last copy stays.
+    val guideInView = nav.tab == Tab.Discover && (nav.top == null || nav.top is Screen.Region || nav.top is Screen.Dish)
+    LaunchedEffect(guideInView, nav.top) {
+        if (guideInView) try { Guide.use(sharedApi.guide()) } catch (e: ApiError) { /* keep what we have */ }
+    }
+    // One anonymous count of this app start (ADR-038): the request carries nothing; a failure is not the user's concern.
+    LaunchedEffect(Unit) { try { sharedApi.recordOpen() } catch (e: ApiError) { /* not counted */ } }
 
     // M1 "Gợi ý gần bạn": around the GPS fix, else the pilot centre. A failure only hides the sheet.
     var nearby by remember { mutableStateOf<List<PlaceSummary>>(emptyList()) }
@@ -429,7 +447,7 @@ private fun AppContent() {
                         onOpenPlace = { p -> nav = nav.openPlace(p.id) }, onSeeAll = { nav = nav.select(Tab.Discover) },
                     )
                     Tab.Discover -> DiscoverScreen(
-                        discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, nearby = nearby,
+                        discoverVm, placesListState, onOpen = { p -> nav = nav.openPlace(p.id) }, onOpenId = { id -> nav = nav.openPlace(id) }, nearby = nearby,
                         onRegion = { nav = nav.push(Screen.Region(it)) }, onTrip = { nav = nav.push(Screen.Trip(it)) }, onShowMap = { nav = nav.select(Tab.Map) },
                     )
                     Tab.Journey -> JourneyScreen(
@@ -450,6 +468,33 @@ private fun AppContent() {
                 BottomNav(nav.tab, onGo = { nav = nav.push(Screen.Search) }) { nav = nav.select(it) }
                 Box(Modifier.fillMaxWidth().background(Palette.Bg).windowInsetsBottomHeight(WindowInsets.navigationBars)) // solid under the gesture bar
             }
+        }
+    }
+    // Feedbacks (owner, 16-11-2026; preview v2): a bubble on every screen except live navigation. A tap hides it for a
+    // frame, captures the screen the user is looking at (kept on the phone until Send, removable) and opens the form.
+    val feedbackImages = rememberFeedbackImages()
+    var feedback by remember { mutableStateOf<FeedbackDraft?>(null) }
+    var feedbackShot by remember { mutableStateOf<ByteArray?>(null) }
+    var capturing by remember { mutableStateOf(false) }
+    if (capturing) LaunchedEffect(Unit) {
+        withFrameNanos {}
+        withFrameNanos {}
+        val placeName = (discoverVm.state.value.detail as? DetailState.Loaded)?.place?.takeIf { (nav.top as? Screen.Place)?.id == it.id }?.name
+        val context = feedbackContext(nav, placeName)
+        feedbackImages.capture { r ->
+            feedbackShot = r.getOrNull()
+            feedback = FeedbackDraft(context = context, image = feedbackShot)
+            capturing = false
+        }
+    }
+    if (feedback == null && !capturing && nav.top != Screen.Navigation) FeedbackBubble { capturing = true }
+    // Back closes the form first (registered after the screen handlers, so it wins), never the screen behind it.
+    BackHandler(enabled = feedback != null) { feedback = null; feedbackShot = null }
+    feedback?.let { d ->
+        FeedbackScreen(d, feedbackShot, feedbackImages, send = { sharedApi.submitFeedback(it) }) { sent ->
+            feedback = null
+            feedbackShot = null
+            if (sent) noticeText = Strings.FEEDBACK_SENT
         }
     }
     // Short message for actions that only explain themselves (share, video, satellite…); read out by screen readers.

@@ -20,7 +20,7 @@ import (
 
 // fixtures replaces every Discover row in the TEST database (URL forced through database.TestDatabaseURL).
 const fixtures = `
-DELETE FROM place_foods; DELETE FROM food_items; DELETE FROM place_media; DELETE FROM place_category_links;
+DELETE FROM usage_place_routes; DELETE FROM place_foods; DELETE FROM food_items; DELETE FROM place_media; DELETE FROM place_category_links;
 DELETE FROM historical_stories; DELETE FROM places; DELETE FROM place_categories;
 ALTER TABLE place_categories ALTER COLUMN id RESTART WITH 1;
 INSERT INTO place_categories (name, name_en, slug, sort_order) VALUES
@@ -39,9 +39,13 @@ INSERT INTO place_category_links VALUES ('0190f0c2-0000-7000-8000-000000000001',
 INSERT INTO place_media (place_id, storage_key, media_type, alt_text, source_credit, license_info, sort_order, is_cover) VALUES
   ('0190f0c2-0000-7000-8000-000000000001', 'fixture/b.jpg', 'IMAGE', NULL, 'FIXTURE', 'FIXTURE', 2, false),
   ('0190f0c2-0000-7000-8000-000000000001', 'fixture/a.jpg', 'IMAGE', 'Cổng chợ', 'FIXTURE', 'FIXTURE', 1, true);
-INSERT INTO food_items (id, name, name_en, slug, status) VALUES
-  ('0190f0c2-0000-7000-8000-0000000000f1', 'Phở bò', 'Beef pho', 'pho-bo', 'PUBLISHED'),
-  ('0190f0c2-0000-7000-8000-0000000000f2', 'Món nháp', NULL, 'mon-nhap', 'DRAFT');
+INSERT INTO food_items (id, name, name_en, slug, status, summary, shops, sources, sort_order) VALUES
+  ('0190f0c2-0000-7000-8000-0000000000f1', 'Phở bò', 'Beef pho', 'pho-bo', 'PUBLISHED', 'Tô phở', E'Quán A | 1 Lê Lợi\nQuán B', 'Nguồn A', 20),
+  ('0190f0c2-0000-7000-8000-0000000000f2', 'Món nháp', NULL, 'mon-nhap', 'DRAFT', NULL, NULL, NULL, 10);
+INSERT INTO historical_stories (slug, title, summary, content, try_this, sources, source_url, language_code, status, published_at, sort_order) VALUES
+  ('chuyen-1', 'Chuyện một', 'Tóm tắt', E'Đoạn một.\n\nĐoạn hai.', 'Thử đi', NULL, 'https://example.test/s', 'vi', 'PUBLISHED', now(), 1),
+  ('chuyen-nhap', 'Chuyện nháp', NULL, 'x', NULL, 'Nguồn', NULL, 'vi', 'DRAFT', NULL, 2),
+  ('story-en', 'English story', NULL, 'x', NULL, 'Source', NULL, 'en', 'PUBLISHED', now(), 3);
 INSERT INTO place_foods (place_id, food_id, price_min, price_max) VALUES
   ('0190f0c2-0000-7000-8000-000000000001', '0190f0c2-0000-7000-8000-0000000000f1', 45000, 70000),
   ('0190f0c2-0000-7000-8000-000000000001', '0190f0c2-0000-7000-8000-0000000000f2', 1, 2);
@@ -90,6 +94,26 @@ func names(ps []PlaceSummary) string {
 func TestStore(t *testing.T) {
 	ctx := context.Background()
 	s := setup(t)
+
+	t.Run("popular: ranked by searches over 7 days, 5 at least, published only", func(t *testing.T) {
+		owner, err := pgx.Connect(ctx, database.TestDatabaseURL(os.Getenv("MIGRATE_DATABASE_URL")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer owner.Close(ctx)
+		today := "(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date"
+		_, err = owner.Exec(ctx, `INSERT INTO usage_place_routes (day, place_id, plans) VALUES
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000001', 6), (`+today+` - 3, '0190f0c2-0000-7000-8000-000000000002', 9),
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000003', 4), (`+today+` - 8, '0190f0c2-0000-7000-8000-000000000003', 50),
+			(`+today+`, '0190f0c2-0000-7000-8000-000000000005', 99)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ps, err := s.Popular(ctx)
+		if err != nil || len(ps) != 2 || ps[0].ID != "0190f0c2-0000-7000-8000-000000000002" || ps[1].ID != "0190f0c2-0000-7000-8000-000000000001" {
+			t.Fatalf("popular %+v %v", ps, err)
+		}
+	})
 
 	t.Run("categories count only published places and skip inactive", func(t *testing.T) {
 		cats, err := s.Categories(ctx)
@@ -248,6 +272,19 @@ func TestStore(t *testing.T) {
 			if _, err := s.Place(ctx, id); !errors.Is(err, ErrNotFound) {
 				t.Errorf("%s: want ErrNotFound, got %v", id, err)
 			}
+		}
+	})
+
+	t.Run("guide has published dishes and Vietnamese stories only, parsed for the app", func(t *testing.T) {
+		g, err := s.Guide(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(g.Dishes) != 1 || g.Dishes[0].ID != "pho-bo" || len(g.Dishes[0].Shops) != 2 || g.Dishes[0].Shops[0].Address != "1 Lê Lợi" || g.Dishes[0].Sources != "Nguồn A" {
+			t.Fatalf("dishes %+v", g.Dishes)
+		}
+		if len(g.Stories) != 1 || g.Stories[0].ID != "chuyen-1" || len(g.Stories[0].Paragraphs) != 2 || g.Stories[0].Sources != "https://example.test/s" {
+			t.Fatalf("stories %+v", g.Stories)
 		}
 	})
 

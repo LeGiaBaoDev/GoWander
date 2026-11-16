@@ -25,6 +25,8 @@ Thumbs.db
 # Go backend
 backend/bin/
 backend/tmp/
+# Uploaded photos in development (MEDIA_DIR); production stores them in R2 (ADR-035)
+backend/var/
 *.test
 *.out
 coverage.*

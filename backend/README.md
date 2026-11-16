@@ -72,3 +72,17 @@ internal/mobility/          domain, interface RoutingProvider, kiểm tra input,
 internal/mobility/otp/      adapter OTP 2.10 (truy vấn plan.graphql nhúng sẵn) — nơi duy nhất biết schema OTP
 api/openapi/openapi.yaml    hợp đồng API
 ```
+
+## Admin (M07, ADR-037)
+
+Trang quản trị nằm trong cùng binary, đường dẫn `/admin/` (Go `html/template` + htmx nhúng sẵn, không cần Node).
+
+- **Bật:** `ADMIN_DATABASE_URL` (role `gowander_admin`, ghi được bảng admin; API công khai vẫn dùng `gowander_app` chỉ đọc). Volume Postgres cũ: `infrastructure/postgres/db.sh admin-role` một lần, rồi `go run ./cmd/migrate up`.
+- **Đăng nhập (ADR-039):** mã tài khoản + mật khẩu (argon2id), sai 5 lần khoá 15 phút. Tạo tài khoản trên server: `set -a && . ../.env && set +a && go run ./cmd/admin create-account -login <mã> -email <email>` (in mật khẩu tạm một lần, phải đổi khi đăng nhập lần đầu); quên mật khẩu mà chưa có email: `go run ./cmd/admin reset-password -login <mã>`.
+- **Quên mật khẩu qua email:** `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USERNAME`, `SMTP_PASSWORD` (mật khẩu ứng dụng Gmail, bí mật), `SMTP_FROM`. Thiếu `SMTP_HOST` thì trang báo chưa bật. Link dùng một lần, 5 phút (gửi lại sau 1 phút); database chỉ giữ SHA-256 của mã trong link. Test gửi thật bằng Mailpit: `MAILPIT_URL=http://127.0.0.1:8025 go test -tags integration -run TestSMTP ./internal/admin/`.
+- **An toàn:** form đăng nhập/quên mật khẩu từ chối request khác nguồn (`Origin`); phiên lưu ở server (cookie `HttpOnly`, `SameSite=Lax`, `Secure` khi https; database chỉ giữ SHA-256 của cookie), CSRF cho mọi thao tác ghi, kiểm vai trò ở server cho từng request, nhật ký `admin_audit_logs` chỉ thêm (role admin không sửa hay xoá được). Không ghi email, mã tài khoản hay mật khẩu vào log.
+- **Khách dùng app (ADR-038):** API đếm lượt mở app (`POST /api/v1/usage/open`, không kèm dữ liệu gì) và mỗi lần tìm đường thành công theo ngày × phương tiện × tỉnh/thành đi và đến, tuyến có trong gợi ý, địa điểm được tìm đường tới (`internal/analytics`, ghi nền, không lưu toạ độ). Hiện ở trang Tổng quan, lọc theo khoảng ngày và tỉnh/thành xuất phát; mục dưới 5 lượt không hiện. Cần nạp `data/areas/vn-provinces.sql`.
+- **Ảnh (ADR-035):** tải ở trang sửa địa điểm (nhiều ảnh, ảnh bìa), món ăn, câu chuyện (một ảnh); ghi công và giấy phép bắt buộc. Server mã hoá lại JPEG 480/1600 px, bỏ EXIF/GPS. Dev: `MEDIA_DIR` (mặc định `var/media`), phát ở `/media/`, `MEDIA_BASE_URL` (mặc định `/media`: đường dẫn trên chính API, app ghép với địa chỉ API nó đang dùng). Có `R2_BUCKET` (và các `R2_*`, xem [`docs/runbooks/cloudflare-r2.md`](../docs/runbooks/cloudflare-r2.md)) thì ảnh lưu vào Cloudflare R2 và `MEDIA_BASE_URL` là địa chỉ https công khai của bucket; không có thì lưu trên máy (chỉ cho dev, API từ chối chạy Admin https).
+- **Món ăn, câu chuyện (lát 3):** `/admin/foods`, `/admin/stories` (thêm, sửa, ẩn); app đọc `GET /api/v1/guide/hcm`. Nội dung ban đầu: `data/content/guide-hcm.sql`; mục đã sửa trong Admin không bị seed ghi đè.
+- **Test:** `go test ./internal/admin/` (handler, store giả); `go test -tags integration -p 1 ./internal/admin/` (database `gowander_test`, cần `ADMIN_DATABASE_URL`).
+

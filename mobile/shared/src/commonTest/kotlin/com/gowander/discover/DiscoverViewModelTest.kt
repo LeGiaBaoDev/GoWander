@@ -4,6 +4,7 @@ import com.gowander.api.ApiError
 import com.gowander.api.FakeApi
 import com.gowander.api.Fixtures
 import com.gowander.api.PlacePage
+import com.gowander.api.PopularPlace
 import com.gowander.api.apiJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -86,5 +87,22 @@ class DiscoverViewModelTest {
         assertTrue(assertIs<DetailState.Failed>(vm.state.value.detail).message.startsWith("Không tìm thấy"))
         vm.closePlace()
         assertIs<DetailState.None>(vm.state.value.detail)
+    }
+
+    @Test
+    fun popularPlacesLoadOnStartAndGiveTheRank() = runTest {
+        api.popularResult = { listOf(PopularPlace("p1", "Chợ Bến Thành", rank = 1), PopularPlace("p2", "Dinh Độc Lập", rank = 2)) }
+        val vm = DiscoverViewModel(api)
+        assertEquals(listOf("p1", "p2"), vm.state.value.popular.map { it.id })
+        assertEquals(2, vm.popularRank("p2"))
+        assertNull(vm.popularRank("other"))
+    }
+
+    @Test
+    fun popularFailureOnlyHidesTheRow() = runTest {
+        api.popularResult = { throw ApiError.Unexpected("down") }
+        val vm = DiscoverViewModel(api)
+        assertTrue(vm.state.value.popular.isEmpty())
+        assertIs<ListPhase.Ready>(vm.state.value.phase)
     }
 }

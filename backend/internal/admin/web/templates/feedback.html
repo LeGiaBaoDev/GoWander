@@ -1,0 +1,19 @@
+{{define "title"}}Chi tiết Feedback · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head"><a href="/admin/feedbacks">← Feedbacks</a><h1>Feedback #{{short .Report.ID}}</h1><p class="muted">Gửi lúc {{atFull .Report.CreatedAt}}</p></header>
+{{if .Saved}}<p class="notice" role="status">Đã lưu thay đổi.</p>{{end}}
+{{with .Notice}}<p class="error" role="alert">{{.}}</p>{{end}}
+<div class="feedback-detail-grid">
+ <section class="card"><div class="row"><span class="chip">{{feedbackKind .Report.Kind}}</span><span class="feedback-state feedback-{{.Report.Status}}">{{feedbackStatus .Report.Status}}</span></div>
+ <h2>Nội dung gửi</h2><p class="feedback-message">{{.Report.Message}}</p><h2>Màn hình liên quan</h2><p>{{if .Report.Context}}{{.Report.Context}}{{else}}Ứng dụng nói chung{{end}}</p>
+ {{if .Report.HasImage}}<h2>Ảnh đính kèm</h2><a href="/admin/feedbacks/{{.Report.ID}}/image" target="_blank" rel="noopener"><img class="feedback-screenshot" src="/admin/feedbacks/{{.Report.ID}}/image" alt="Ảnh màn hình người gửi đính kèm; bấm để xem đầy đủ"></a>{{end}}
+ </section>
+ <section class="card"><h2>Người đóng góp</h2><p class="feedback-sender">{{template "icon" "user"}} <strong>{{senderName .Report.SenderName}}</strong></p><p class="muted small">Khách · thông tin tự cung cấp, chưa xác minh.</p>
+ {{if .ContactShown}}<p>Email: {{if .Report.SenderEmail}}{{.Report.SenderEmail}}{{else}}Chưa cung cấp{{end}}</p>{{else if has .Me "SYSTEM_ADMIN"}}<form method="post" action="/admin/feedbacks/{{.Report.ID}}/contact"><input type="hidden" name="csrf" value="{{.Me.CSRF}}"><button class="ghost" type="submit">Xem thông tin liên hệ</button><p class="small muted">Thao tác xem được ghi vào nhật ký.</p></form>{{else}}<p class="small muted">Thông tin liên hệ chỉ dành cho quản trị hệ thống.</p>{{end}}
+ <hr><h2>Xử lý feedback</h2><form class="form" method="post" action="/admin/feedbacks/{{.Report.ID}}"><input type="hidden" name="csrf" value="{{.Me.CSRF}}"><input type="hidden" name="expectedStatus" value="{{.Report.Status}}">
+ <label>Trạng thái<select name="status">{{range .Statuses}}<option value="{{.}}"{{if eq . $.Report.Status}} selected{{end}}>{{feedbackStatus .}}</option>{{end}}</select></label>
+ <label>Ghi chú nội bộ<textarea name="note" rows="5" maxlength="2000" placeholder="Ghi lại kết quả kiểm tra…">{{.Report.Note}}</textarea></label><p class="small muted">Ghi chú chỉ hiển thị trong Admin. Đổi trạng thái không tự sửa nội dung trong app.</p><button type="submit">Lưu thay đổi</button></form>
+ </section>
+</div>
+<section class="card feedback-history"><h2>Lịch sử xử lý</h2>{{if .Report.History}}<ol>{{range .Report.History}}<li><strong>{{.ActorName}}</strong> · {{feedbackStatus .FromStatus}} → {{feedbackStatus .ToStatus}}<small class="muted"> · {{atFull .At}}</small>{{with .Note}}<p class="feedback-message">{{.}}</p>{{end}}</li>{{end}}</ol>{{else}}<p class="muted">Chưa có thao tác xử lý.</p>{{end}}</section>
+{{end}}

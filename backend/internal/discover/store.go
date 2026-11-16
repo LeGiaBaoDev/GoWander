@@ -298,3 +298,26 @@ func (n nullable) Scan(src any) error {
 func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
+
+// Popular ranks published places by the route searches ending near them (usage_place_routes) over the last
+// PopularDays Ho Chi Minh City days, each with its cover photo if any.
+func (s *PG) Popular(ctx context.Context) ([]PopularPlace, error) {
+	rows, err := s.Pool.Query(ctx, `
+WITH t AS (SELECT place_id, sum(plans) AS n FROM usage_place_routes
+            WHERE day > (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - $1::int GROUP BY place_id HAVING sum(plans) >= $2)
+SELECT `+summaryColumns+`, coalesce((SELECT m.storage_key FROM place_media m WHERE m.place_id = p.id AND m.media_type = 'IMAGE'
+         ORDER BY m.is_cover DESC, m.sort_order LIMIT 1), '')
+  FROM t JOIN places p ON p.id = t.place_id LEFT JOIN place_categories c ON c.id = p.primary_category_id
+ WHERE p.status = 'PUBLISHED'
+ ORDER BY t.n DESC, p.name, p.id
+ LIMIT $3`, PopularDays, PopularMin, PopularLimit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PopularPlace, error) {
+		var p PopularPlace
+		err := r.Scan(append(summaryDest(&p.PlaceSummary), &p.photoKey)...)
+		p.PlaceSummary, err = finishSummary(p.PlaceSummary, err)
+		return p, err
+	})
+}

@@ -1,0 +1,57 @@
+{{define "title"}}{{if .G.ID}}{{.G.Title}}{{else}}Thêm {{.K.Noun}}{{end}} · GoWander Admin{{end}}
+{{define "main"}}
+{{$food := eq .K.Path "foods"}}
+<p><a href="/admin/{{.K.Path}}">← Danh sách {{.K.Noun}}</a></p>
+<header class="head">
+  <h1>{{if .G.ID}}{{.G.Title}}{{else}}Thêm {{.K.Noun}}{{end}}</h1>
+  {{if .G.ID}}<p class="muted"><span class="state s-{{.G.Status}}">{{statusName .G.Status}}</span>{{with .G.EditedAt}} · sửa trong Admin lúc {{at .}}{{end}}</p>{{end}}
+</header>
+{{if .Saved}}<p class="notice ok" role="status">Đã lưu. App thấy thay đổi ở lần mở cẩm nang tiếp theo.</p>{{end}}
+{{if .Problem}}<p class="notice bad" role="alert">Chưa lưu: {{.Problem}}.</p>{{end}}
+<div class="cols wide-first">
+  <form class="card form" method="post" action="/admin/{{.K.Path}}/{{if .G.ID}}{{.G.ID}}{{else}}new{{end}}">
+    <input type="hidden" name="csrf" value="{{.Me.CSRF}}">
+    <label>{{if $food}}Tên món{{else}}Tiêu đề{{end}} <input name="title" value="{{.G.Title}}" required maxlength="{{.K.TitleMax}}"></label>
+    {{if $food}}<label>Tên tiếng Anh <span class="muted small">(không bắt buộc)</span><input name="name_en" value="{{.G.NameEN}}" maxlength="150"></label>{{end}}
+    <label>Tóm tắt <span class="muted small">(một câu hiện dưới tên, tối đa {{.K.SummaryMax}} ký tự)</span>
+      <textarea name="summary" rows="2" maxlength="{{.K.SummaryMax}}">{{.G.Summary}}</textarea></label>
+    <label>{{if $food}}Mô tả{{else}}Nội dung <span class="muted small">(để một dòng trống giữa hai đoạn)</span>{{end}}
+      <textarea name="body" rows="{{if $food}}6{{else}}14{{end}}" maxlength="{{.K.BodyMax}}"{{if not $food}} required{{end}}>{{.G.Body}}</textarea></label>
+    <label>{{if $food}}Quán gợi ý <span class="muted small">(mỗi dòng một quán: Tên | Địa chỉ)</span>{{else}}Gợi ý "Thử làm" <span class="muted small">(một việc người đọc có thể làm tại chỗ)</span>{{end}}
+      <textarea name="extra" rows="{{if $food}}4{{else}}2{{end}}" maxlength="2000"{{if $food}} placeholder="Bánh mì Huỳnh Hoa | 26 Lê Thị Riêng"{{end}}>{{.G.Extra}}</textarea></label>
+    <label>Nguồn <span class="muted small">(tên nơi lấy thông tin; bắt buộc trước khi hiển thị)</span><input name="sources" value="{{.G.Sources}}" maxlength="500"></label>
+    {{if not $food}}<label>Link nguồn <span class="muted small">(không bắt buộc)</span><input name="source_url" type="url" value="{{.G.SourceURL}}" maxlength="500" placeholder="https://"></label>{{end}}
+    <div class="two">
+      <label>Trạng thái <select name="status">{{range .Statuses}}<option value="{{.}}"{{if eq . $.G.Status}} selected{{end}}>{{statusName .}}</option>{{end}}</select></label>
+      <label>Thứ tự <input name="sort_order" value="{{.G.SortOrder}}" inputmode="numeric"></label>
+    </div>
+    <p class="muted small">Chỉ "Đang hiển thị" mới hiện trong app; số thứ tự nhỏ đứng trước. Mọi lần lưu được ghi vào nhật ký.</p>
+    <div><button type="submit">{{if .G.ID}}Lưu thay đổi{{else}}Thêm {{.K.Noun}}{{end}}</button></div>
+  </form>
+  <aside class="card facts-card">
+    <h2>Trong app</h2>
+    <dl>
+      <dt>Mã</dt><dd>{{if .G.Slug}}<code>{{.G.Slug}}</code>{{else}}<span class="muted">tạo từ tên khi lưu lần đầu, không đổi sau đó</span>{{end}}</dd>
+      <dt>Ảnh</dt><dd>{{if .G.ImageKey}}có · <a href="#photo">xem</a>{{else}}chưa có{{end}}</dd>
+      {{if .G.ID}}<dt>Cập nhật</dt><dd>{{at .G.UpdatedAt}}</dd>{{end}}
+    </dl>
+    <p class="muted small">{{if $food}}Quán gợi ý chưa được kiểm tra tại chỗ; app luôn hiện lời nhắc hỏi giá và giờ mở cửa.{{else}}Không thêm chi tiết lịch sử không có nguồn.{{end}}</p>
+  </aside>
+</div>
+
+<section class="card" id="photo">
+  <div class="row"><h2>Ảnh</h2><span class="muted small">Một ảnh cho {{.K.Noun}}, hiện trong cẩm nang của app kèm ghi công.</span></div>
+  {{with .PhotoNotice}}<p class="notice ok" role="status">{{.}}</p>{{end}}
+  {{with .PhotoProblem}}<p class="notice bad" role="alert">Chưa lưu ảnh: {{.}}.</p>{{end}}
+  {{if not .G.ID}}<p class="muted">Lưu {{.K.Noun}} trước, rồi thêm ảnh.</p>
+  {{else}}
+    {{if .G.ImageKey}}<div class="single-photo">
+      <img src="{{.MediaURL}}/{{.G.ImageKey}}-480.jpg" alt="" width="320" height="213">
+      <div class="photo-meta"><span>© {{.G.ImageCredit}}</span><span class="muted small">{{.G.ImageLicense}}</span>
+        <form method="post" action="/admin/{{.K.Path}}/{{.G.ID}}/image/delete"><input type="hidden" name="csrf" value="{{.Me.CSRF}}"><button class="small-button danger" type="submit">Gỡ ảnh</button></form></div>
+    </div>{{end}}
+    {{if .MediaReady}}{{template "photoform" (photoForm (print "/admin/" .K.Path "/" .G.ID "/image") .Me.CSRF .Licenses (or (and .G.ImageKey "Thay ảnh") "Tải ảnh lên"))}}
+    {{else}}<p class="notice bad">Chưa cấu hình nơi lưu ảnh.</p>{{end}}
+  {{end}}
+</section>
+{{end}}

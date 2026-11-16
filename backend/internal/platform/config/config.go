@@ -4,7 +4,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,7 +27,39 @@ type Config struct {
 	// feature off (STREET_IMAGERY_UNAVAILABLE) and the app shows a 3D map instead. A secret: never log it.
 	MapillaryToken string
 	MapillaryURL   string // MAPILLARY_URL, default https://graph.mapillary.com
+
+	// Admin pages (M07, ADR-037, ADR-039). Optional: without ADMIN_DATABASE_URL the /admin pages answer 503 and the
+	// public API works as before. ADMIN_DATABASE_URL uses the role gowander_admin and holds a password: never log it.
+	AdminDatabaseURL string
+	AdminBaseURL     string // ADMIN_BASE_URL, default http://localhost:8090: the link in "quên mật khẩu" emails
+
+	// Photos (ADR-035). MEDIA_DIR: development storage on this machine, default var/media; refused when the Admin runs
+	// on https (production keeps photos in R2, not on the API server). MEDIA_BASE_URL: where photos are loaded from;
+	// default /media, a path on the API itself, so every client resolves it against the address it already uses
+	// (emulator 10.0.2.2, simulator localhost, Tailscale). With R2: the public https address of the bucket.
+	MediaDir, MediaBaseURL string
+
+	// R2 (ADR-035, docs/runbooks/cloudflare-r2.md): with R2_BUCKET set, photos go to that bucket instead of MEDIA_DIR,
+	// and MEDIA_BASE_URL must be the bucket's public https address. R2_SECRET_ACCESS_KEY is a secret: never log it.
+	R2AccountID, R2Bucket, R2AccessKeyID, R2SecretAccessKey string
+
+	// SMTP for "quên mật khẩu" (ADR-039: Gmail, smtp.gmail.com:587 with an app password). Optional: without SMTP_HOST
+	// the page says email is not set up. SMTP_PASSWORD is a secret, SMTP_USERNAME/SMTP_FROM are private: never log them.
+	SMTPHost, SMTPUsername, SMTPPassword, SMTPFrom string
+	SMTPPort                                       int // SMTP_PORT, default 587
 }
+
+var (
+	hexID      = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	bucketName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+)
+
+// R2Enabled: photos are stored in the R2 bucket.
+func (c Config) R2Enabled() bool { return c.R2Bucket != "" }
+
+// AdminEnabled: the Admin pages can open the database. MailEnabled: they can send "quên mật khẩu" emails.
+func (c Config) AdminEnabled() bool { return c.AdminDatabaseURL != "" }
+func (c Config) MailEnabled() bool  { return c.SMTPHost != "" }
 
 // Load reads the configuration through getenv (os.Getenv in production) and returns every problem found.
 func Load(getenv func(string) string) (Config, error) {
@@ -42,6 +77,19 @@ func Load(getenv func(string) string) (Config, error) {
 		PhotonURL:      or("PHOTON_URL", "http://127.0.0.1:2322"),
 		MapillaryToken: getenv("MAPILLARY_TOKEN"),
 		MapillaryURL:   or("MAPILLARY_URL", "https://graph.mapillary.com"),
+
+		AdminDatabaseURL:  getenv("ADMIN_DATABASE_URL"),
+		AdminBaseURL:      strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
+		MediaDir:          or("MEDIA_DIR", "var/media"),
+		MediaBaseURL:      strings.TrimRight(or("MEDIA_BASE_URL", "/media"), "/"),
+		R2AccountID:       strings.TrimSpace(getenv("R2_ACCOUNT_ID")),
+		R2Bucket:          strings.TrimSpace(getenv("R2_BUCKET")),
+		R2AccessKeyID:     strings.TrimSpace(getenv("R2_ACCESS_KEY_ID")),
+		R2SecretAccessKey: strings.TrimSpace(getenv("R2_SECRET_ACCESS_KEY")),
+		SMTPHost:          getenv("SMTP_HOST"),
+		SMTPUsername:      getenv("SMTP_USERNAME"),
+		SMTPPassword:      getenv("SMTP_PASSWORD"),
+		SMTPFrom:          strings.TrimSpace(getenv("SMTP_FROM")),
 	}
 	var errs []error
 	if u, err := url.Parse(c.OTPURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -65,6 +113,43 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if !strings.HasPrefix(c.DatabaseURL, "postgres://") && !strings.HasPrefix(c.DatabaseURL, "postgresql://") {
 		errs = append(errs, errors.New("DATABASE_URL is required and must be a postgres:// URL"))
+	}
+	if c.AdminDatabaseURL != "" && !strings.HasPrefix(c.AdminDatabaseURL, "postgres://") && !strings.HasPrefix(c.AdminDatabaseURL, "postgresql://") {
+		errs = append(errs, errors.New("ADMIN_DATABASE_URL must be a postgres:// URL"))
+	}
+	// Session cookies are Secure: the browser only sends them over https, or to localhost during development.
+	if u, err := url.Parse(c.AdminBaseURL); err != nil || u.Host == "" || u.User != nil || u.Path != "" ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) {
+		errs = append(errs, errors.New("ADMIN_BASE_URL must be https://host (http only for localhost), without a path"))
+	}
+	if c.R2Bucket == "" && strings.HasPrefix(c.AdminBaseURL, "https://") {
+		errs = append(errs, errors.New("photos are stored on this machine (MEDIA_DIR), which ADR-035 allows only in development: set R2_BUCKET and the other R2_* settings"))
+	}
+	if c.R2Bucket != "" {
+		if !hexID.MatchString(c.R2AccountID) || c.R2AccessKeyID == "" || c.R2SecretAccessKey == "" || !bucketName.MatchString(c.R2Bucket) {
+			errs = append(errs, errors.New("R2_BUCKET needs R2_ACCOUNT_ID (32 hex characters), R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY, and a valid bucket name"))
+		}
+		if !strings.HasPrefix(c.MediaBaseURL, "https://") {
+			errs = append(errs, errors.New("with R2, MEDIA_BASE_URL must be the bucket's public https address"))
+		}
+	}
+	if u, err := url.Parse(c.MediaBaseURL); err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		!((u.Scheme == "https" || u.Scheme == "http") && u.Host != "" || u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(c.MediaBaseURL, "//")) {
+		errs = append(errs, errors.New("MEDIA_BASE_URL must be a path on this API (/media) or an http(s) URL, without credentials"))
+	}
+	port, err := strconv.Atoi(or("SMTP_PORT", "587"))
+	if err != nil || port < 1 || port > 65535 {
+		errs = append(errs, errors.New("SMTP_PORT must be a port number"))
+	}
+	c.SMTPPort = port
+	if c.SMTPHost != "" {
+		if a, err := mail.ParseAddress(c.SMTPFrom); err != nil || a.Address != c.SMTPFrom {
+			errs = append(errs, errors.New("SMTP_FROM must be a plain email address when SMTP_HOST is set"))
+		}
+		// net/smtp only sends a password over TLS (STARTTLS), except to localhost (Mailpit).
+		if (c.SMTPUsername == "") != (c.SMTPPassword == "") {
+			errs = append(errs, errors.New("SMTP_USERNAME and SMTP_PASSWORD must be set together"))
+		}
 	}
 	return c, errors.Join(errs...)
 }

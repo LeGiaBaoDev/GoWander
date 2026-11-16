@@ -12,6 +12,8 @@ infrastructure/postgres/db.sh up                      # khởi động, chờ he
 infrastructure/postgres/db.sh status
 infrastructure/postgres/db.sh psql app                # psql bằng role app (owner | app | postgres)
 infrastructure/postgres/db.sh seed data/discover/seed.sql
+infrastructure/postgres/db.sh seed data/areas/vn-provinces.sql  # ranh giới tỉnh, thành cho bộ đếm sử dụng (ADR-038)
+infrastructure/postgres/db.sh seed data/content/guide-hcm.sql   # món ăn và câu chuyện của cẩm nang TP.HCM (M07 lát 3)
 infrastructure/postgres/db.sh down                    # dừng, giữ dữ liệu
 infrastructure/postgres/db.sh reset --yes-delete-data # XOÁ toàn bộ dữ liệu local
 ```
@@ -22,6 +24,8 @@ Dựng từ đầu:
 infrastructure/postgres/db.sh up
 cd backend && set -a && . ../.env && set +a && go run ./cmd/migrate up && cd ..
 python3 scripts/build_discover_seed.py              # tuỳ chọn: sinh lại seed từ OSM + data/curated/places.csv
+python3 scripts/build_area_seed.py                  # tuỳ chọn: sinh lại ranh giới tỉnh, thành từ OSM
+python3 scripts/build_guide_seed.py                 # tuỳ chọn: sinh lại seed cẩm nang từ content/GuideHcm.kt của app
 infrastructure/postgres/db.sh seed data/discover/seed.sql
 ```
 
@@ -32,6 +36,7 @@ infrastructure/postgres/db.sh seed data/discover/seed.sql
 | `postgres` | Chỉ `init/01-roles.sh`, chạy **một lần** khi volume trống | superuser của image |
 | `gowander_owner` | `cmd/migrate`, nạp seed | sở hữu schema `gowander` |
 | `gowander_app` | API (`DATABASE_URL`) | `SELECT` trên đúng các bảng được `GRANT` trong migration; `statement_timeout` 5 s |
+| `gowander_admin` | Trang Admin (`ADMIN_DATABASE_URL`, ADR-037) | ghi bảng nội dung và bảng admin theo `GRANT` trong migration; `statement_timeout` 10 s. Volume cũ: `./db.sh admin-role` một lần |
 
 - Không có `ALTER DEFAULT PRIVILEGES`: bảng mới **phải** có `GRANT SELECT … TO gowander_app` trong migration nếu API công khai cần đọc. Test `TestMigrationsUpDownUp` kiểm tra danh sách quyền.
 - Thời gian truy vấn của API được giới hạn bởi `statement_timeout` của role `gowander_app`; đổi role thì phải đặt lại giới hạn này.

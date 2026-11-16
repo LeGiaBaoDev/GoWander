@@ -7,6 +7,7 @@ import com.gowander.api.Category
 import com.gowander.api.GoWanderApi
 import com.gowander.api.PlaceDetail
 import com.gowander.api.PlaceSummary
+import com.gowander.api.PopularPlace
 import com.gowander.ui.Strings
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,7 @@ data class DiscoverUiState(
     val loadingMore: Boolean = false,
     val moreError: String? = null,
     val detail: DetailState = DetailState.None,
+    val popular: List<PopularPlace> = emptyList(), // "Đang được tìm nhiều"; empty (row hidden) until enough real use or on error
 )
 
 /** Flow B state: categories, search, paged list and place detail. */
@@ -49,7 +51,18 @@ class DiscoverViewModel(private val api: GoWanderApi) : ViewModel() {
 
     init {
         reload()
+        // Optional row: a failure only leaves it hidden.
+        viewModelScope.launch {
+            try {
+                val popular = api.popular()
+                _state.update { it.copy(popular = popular) }
+            } catch (_: ApiError) {
+            }
+        }
     }
+
+    /** The rank of [id] among this week's most searched-for places, or null. */
+    fun popularRank(id: String): Int? = _state.value.popular.firstOrNull { it.id == id }?.rank
 
     fun selectCategory(slug: String?) {
         if (slug == _state.value.selectedCategory) return

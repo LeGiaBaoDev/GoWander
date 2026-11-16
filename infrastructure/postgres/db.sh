@@ -2,7 +2,8 @@
 # Local PostgreSQL/PostGIS for GoWander (ADR-028).
 #   ./db.sh up        start (creates the volume and runs init/ on first start), wait until healthy
 #   ./db.sh status    container state
-#   ./db.sh psql [owner|app|postgres]   open psql inside the container (default: app)
+#   ./db.sh psql [owner|app|admin|postgres]   open psql inside the container (default: app)
+#   ./db.sh admin-role  create the Admin role on an existing volume (once; new volumes get it from init/)
 #   ./db.sh seed FILE load a seed SQL file as the owner role (run migrations first)
 #   ./db.sh down      stop, keep data
 #   ./db.sh reset --yes-delete-data     stop and DELETE the volume (all local data)
@@ -26,8 +27,8 @@ case "${1:-}" in
   status) dc ps ;;
   psql)
     case "${2:-app}" in
-      owner) user=gowander_owner ;; app) user=gowander_app ;; postgres) user=postgres ;;
-      *) echo "role: owner | app | postgres" >&2; exit 2 ;;
+      owner) user=gowander_owner ;; app) user=gowander_app ;; admin) user=gowander_admin ;; postgres) user=postgres ;;
+      *) echo "role: owner | app | admin | postgres" >&2; exit 2 ;;
     esac
     shift $(( $# >= 2 ? 2 : 1 ))
     exec docker exec -it gowander-postgres psql -U "$user" -d "$(db_name)" "$@" ;;
@@ -35,9 +36,14 @@ case "${1:-}" in
     [[ -f "${2:-}" ]] || { echo "dùng: ./db.sh seed data/discover/seed.sql" >&2; exit 2; }
     docker exec -i gowander-postgres psql -q -v ON_ERROR_STOP=1 -U gowander_owner -d "$(db_name)" < "$2"
     echo "Đã nạp $2" ;;
+  admin-role)
+    pw="$(grep -E '^GOWANDER_ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
+    [[ -n "$pw" ]] || { echo "Đặt GOWANDER_ADMIN_PASSWORD trong $ENV_FILE trước" >&2; exit 2; }
+    docker exec -i -e POSTGRES_DB="$(db_name)" -e GOWANDER_ADMIN_PASSWORD="$pw" gowander-postgres bash < "$HERE/init/02-admin-role.sh"
+    echo "Đã tạo role gowander_admin" ;;
   down) dc down ;;
   reset)
     [[ "${2:-}" == --yes-delete-data ]] || { echo "Xoá toàn bộ dữ liệu local: chạy ./db.sh reset --yes-delete-data" >&2; exit 2; }
     dc down -v ;;
-  *) sed -n '2,9p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,10p' "$0" >&2; exit 2 ;;
 esac
