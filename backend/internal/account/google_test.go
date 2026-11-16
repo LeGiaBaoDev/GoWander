@@ -113,6 +113,22 @@ func TestGoogleVerifyRefuses(t *testing.T) {
 	}
 }
 
+// AUTH-2 part 4b, found on the iOS simulator: the iOS SDK mints the token for the iOS client ID, the Android one for
+// the Web client. Both are ours, so both are accepted.
+func TestGoogleVerifyAcceptsAnotherClientOfOurs(t *testing.T) {
+	key := newSigningKey(t)
+	web, ios := "1234-abc.apps.googleusercontent.com", "1234-xyz.apps.googleusercontent.com"
+	g := verifierFor(t, web, key)
+	g.Audiences = append(g.Audiences, ios)
+	if _, err := g.Verify(context.Background(), key.token(t, with(claims(time.Now()), "aud", ios))); err != nil {
+		t.Fatalf("a token minted for the iOS client was refused: %v", err)
+	}
+	// A client of another project is still refused.
+	if _, err := g.Verify(context.Background(), key.token(t, with(claims(time.Now()), "aud", "999-other.apps.googleusercontent.com"))); !errors.Is(err, ErrGoogleToken) {
+		t.Fatalf("a foreign audience was accepted: %v", err)
+	}
+}
+
 func TestGoogleVerifyAcceptsAnAudienceList(t *testing.T) {
 	key := newSigningKey(t)
 	g := verifierFor(t, "1234-abc.apps.googleusercontent.com", key)

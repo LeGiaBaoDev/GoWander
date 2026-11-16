@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"slices"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -43,9 +44,11 @@ type Config struct {
 	// and MEDIA_BASE_URL must be the bucket's public https address. R2_SECRET_ACCESS_KEY is a secret: never log it.
 	R2AccountID, R2Bucket, R2AccessKeyID, R2SecretAccessKey string
 
-	// Google sign-in of the app (ADR-040 §3.5): the Web client ID is the token audience. Optional: without it
-	// POST /auth/google answers 503 and the app hides the button. Not a secret, but it stays out of logs.
-	GoogleClientID string
+	// Google sign-in of the app (ADR-040 §3.5). Google mints the ID token for the client that asked: the Web client
+	// from Android's Credential Manager and from the iOS SDK when a server client is configured, the iOS client from
+	// the iOS SDK otherwise. All of them belong to this project, so all are accepted (never a secret).
+	GoogleClientID  string
+	GoogleAudiences []string // the Web, Android and iOS client IDs that exist in .env, deduplicated
 
 	// SMTP for "quên mật khẩu" (ADR-039: Gmail, smtp.gmail.com:587 with an app password). Optional: without SMTP_HOST
 	// the page says email is not set up. SMTP_PASSWORD is a secret, SMTP_USERNAME/SMTP_FROM are private: never log them.
@@ -143,8 +146,21 @@ func Load(getenv func(string) string) (Config, error) {
 		!((u.Scheme == "https" || u.Scheme == "http") && u.Host != "" || u.Scheme == "" && u.Host == "" && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(c.MediaBaseURL, "//")) {
 		errs = append(errs, errors.New("MEDIA_BASE_URL must be a path on this API (/media) or an http(s) URL, without credentials"))
 	}
-	if c.GoogleClientID != "" && !googleClientID.MatchString(c.GoogleClientID) {
-		errs = append(errs, errors.New("GOOGLE_CLIENT_ID must look like 1234-abc.apps.googleusercontent.com"))
+	for _, v := range []struct{ name, value string }{
+		{"GOOGLE_CLIENT_ID", c.GoogleClientID},
+		{"GOOGLE_ANDROID_CLIENT_ID", strings.TrimSpace(getenv("GOOGLE_ANDROID_CLIENT_ID"))},
+		{"GOOGLE_IOS_CLIENT_ID", strings.TrimSpace(getenv("GOOGLE_IOS_CLIENT_ID"))},
+	} {
+		if v.value == "" {
+			continue
+		}
+		if !googleClientID.MatchString(v.value) {
+			errs = append(errs, fmt.Errorf("%s must look like 1234-abc.apps.googleusercontent.com", v.name))
+			continue
+		}
+		if !slices.Contains(c.GoogleAudiences, v.value) {
+			c.GoogleAudiences = append(c.GoogleAudiences, v.value)
+		}
 	}
 	port, err := strconv.Atoi(or("SMTP_PORT", "587"))
 	if err != nil || port < 1 || port > 65535 {

@@ -12,6 +12,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,9 @@ const googleCertsURL = "https://www.googleapis.com/oauth2/v3/certs"
 // GoogleVerifier checks the Google ID token the app gets on the device. The signature is checked against Google's
 // published keys, so no client secret is needed or stored.
 type GoogleVerifier struct {
-	ClientID string // the Web client ID, which is the token's audience
+	// Audiences are the app's own OAuth clients (Web, Android, iOS). Google mints the token for the client that asked,
+	// so all of them are ours to accept; a token for a client of another project is refused.
+	Audiences []string
 	URL      string
 	HTTP     *http.Client
 	Now      func() time.Time
@@ -37,12 +40,18 @@ type GoogleVerifier struct {
 	retryAt time.Time
 }
 
-// NewGoogleVerifier returns a verifier for the given Web client ID; an empty ID turns Google sign-in off.
-func NewGoogleVerifier(clientID string) *GoogleVerifier {
-	return &GoogleVerifier{ClientID: clientID, URL: googleCertsURL, HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now}
+// NewGoogleVerifier returns a verifier for the app's client IDs; no IDs turns Google sign-in off.
+func NewGoogleVerifier(clientID string, more ...string) *GoogleVerifier {
+	audiences := make([]string, 0, 1+len(more))
+	for _, id := range append([]string{clientID}, more...) {
+		if id != "" && !slices.Contains(audiences, id) {
+			audiences = append(audiences, id)
+		}
+	}
+	return &GoogleVerifier{Audiences: audiences, URL: googleCertsURL, HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now}
 }
 
-func (g *GoogleVerifier) Enabled() bool { return g != nil && g.ClientID != "" }
+func (g *GoogleVerifier) Enabled() bool { return g != nil && len(g.Audiences) > 0 }
 
 // Verify checks the token and returns the identity the accounts need.
 func (g *GoogleVerifier) Verify(ctx context.Context, idToken string) (GoogleIdentity, error) {
@@ -98,8 +107,9 @@ func (g *GoogleVerifier) Verify(ctx context.Context, idToken string) (GoogleIden
 	if claims.Iss != "accounts.google.com" && claims.Iss != "https://accounts.google.com" {
 		return GoogleIdentity{}, fmt.Errorf("%w: issuer", ErrGoogleToken)
 	}
-	if !audienceMatches(claims.Aud, g.ClientID) {
-		return GoogleIdentity{}, fmt.Errorf("%w: audience", ErrGoogleToken)
+	if !audienceMatches(claims.Aud, g.Audiences) {
+		// The received audience is a public client ID, and naming it is what makes this refusal fixable.
+		return GoogleIdentity{}, fmt.Errorf("%w: audience %s, expected one of %v", ErrGoogleToken, string(claims.Aud), g.Audiences)
 	}
 	if claims.Exp == nil || now.After(time.Unix(int64(*claims.Exp), 0).Add(time.Minute)) {
 		return GoogleIdentity{}, fmt.Errorf("%w: expired", ErrGoogleToken)
@@ -190,21 +200,22 @@ func (g *GoogleVerifier) fetch(ctx context.Context) (map[string]*rsa.PublicKey, 
 	return out, nil
 }
 
-// audienceMatches accepts both shapes Google uses for aud (a string or a list of strings).
-func audienceMatches(raw json.RawMessage, clientID string) bool {
-	if clientID == "" || len(raw) == 0 {
+// audienceMatches accepts both shapes Google uses for aud (a string or a list of strings) and any of our clients.
+func audienceMatches(raw json.RawMessage, audiences []string) bool {
+	if len(audiences) == 0 || len(raw) == 0 {
 		return false
 	}
+	ok := func(v string) bool { return slices.Contains(audiences, v) }
 	var one string
 	if err := json.Unmarshal(raw, &one); err == nil {
-		return one == clientID
+		return ok(one)
 	}
 	var many []string
 	if err := json.Unmarshal(raw, &many); err != nil {
 		return false
 	}
 	for _, a := range many {
-		if a == clientID {
+		if ok(a) {
 			return true
 		}
 	}

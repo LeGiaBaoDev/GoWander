@@ -161,7 +161,7 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	}
 	adminHandler.Mount(mux)
 	if accounts != nil {
-		signIn := account.Handler{Store: accounts, Auth: account.NewGoogleVerifier(cfg.GoogleClientID), Log: log}
+		signIn := account.Handler{Store: accounts, Auth: account.NewGoogleVerifier(cfg.GoogleClientID, cfg.GoogleAudiences...), Log: log}
 		if cfg.MailEnabled() {
 			signIn.Mailer = mail.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}
 		}

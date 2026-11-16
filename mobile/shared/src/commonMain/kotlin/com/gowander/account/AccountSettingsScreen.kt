@@ -65,6 +65,7 @@ fun AccountSettingsScreen(
     val me = account.user ?: return
     var editing by remember { mutableStateOf<Edit?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun close() { editing = null; error = null; account.clearError() }
@@ -112,7 +113,29 @@ fun AccountSettingsScreen(
 
         Text("Đăng nhập", Modifier.semantics { heading() }, size = 13.sp, weight = FontWeight.Bold, color = Palette.Muted)
         Column(Modifier.clip(RoundedCornerShape(18.dp)).border(1.dp, Palette.Line, RoundedCornerShape(18.dp))) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                    .then(if (googleEnabled) Modifier.clickable(role = Role.Button) {
+                        if (busy) return@clickable
+                        scope.launch {
+                            busy = true
+                            error = if (me.google) {
+                                account.unlinkGoogle()
+                            } else {
+                                when (val result = GoogleSignIn.signIn()) {
+                                    is GoogleResult.Token -> account.linkGoogle(result.idToken)
+                                    GoogleResult.Cancelled -> null
+                                    is GoogleResult.Failed -> "Chưa mở được Google trên máy này. Kiểm tra tài khoản Google rồi thử lại nhé."
+                                }
+                            }
+                            busy = false
+                        }
+                        // Any message is shown under the block, next to the row the person just used.
+                        if (error != null) editing = null
+                    } else Modifier)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Icon(KitIcons.globe, 18.dp, Palette.Primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text("Google", size = 15.sp, weight = FontWeight.SemiBold)
@@ -120,7 +143,7 @@ fun AccountSettingsScreen(
                         when {
                             me.google -> "Đã liên kết"
                             googleEnabled -> "Chưa liên kết — bấm để liên kết"
-                            else -> "Sẽ có ở bước đăng nhập Google"
+                            else -> "Chưa bật trên bản này"
                         },
                         size = 12.5.sp,
                         color = Palette.Muted,
@@ -130,6 +153,7 @@ fun AccountSettingsScreen(
                     Text(if (me.google) "Huỷ liên kết" else "Liên kết", size = 13.sp, color = Palette.Primary, weight = FontWeight.Bold)
                 }
             }
+            error?.let { AccountError(it) }
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(ExtraIcons.device, 18.dp, Palette.Primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {

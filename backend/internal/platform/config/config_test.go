@@ -1,12 +1,18 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
 const dbURL = "postgres://gowander_app:secret@127.0.0.1:5432/gowander?sslmode=disable"
+
+// sameConfig compares field by field: Config holds a slice (GoogleAudiences) and is no longer comparable with !=.
+func sameConfig(a, b Config) bool {
+	return reflect.DeepEqual(a, b)
+}
 
 // only returns an env with DATABASE_URL (the one required variable) plus the given overrides.
 func only(kv ...string) func(string) string {
@@ -24,7 +30,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587,
 		MediaDir: "var/media", MediaBaseURL: "/media"}
-	if c != want {
+	if !sameConfig(c, want) {
 		t.Fatalf("got %+v, want %+v", c, want)
 	}
 	if c.AdminEnabled() || c.MailEnabled() {
