@@ -31,4 +31,7 @@ class FakeApi : GoWanderApi {
     override suspend fun recordOpen() {}
     var popularResult: suspend () -> List<PopularPlace> = { emptyList() }
     override suspend fun popular(): List<PopularPlace> = popularResult()
+    val feedbacks = mutableListOf<com.gowander.feedback.FeedbackDraft>()
+    var feedbackResult: suspend (com.gowander.feedback.FeedbackDraft) -> String = { "fb-1" }
+    override suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String { feedbacks += draft; return feedbackResult(draft) }
 }

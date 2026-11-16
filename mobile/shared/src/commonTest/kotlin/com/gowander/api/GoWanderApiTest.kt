@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import io.ktor.http.HttpMethod
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -61,6 +62,18 @@ class GoWanderApiTest {
         }
         assertEquals("jpeg:http://api.test/media/img/ab-1600.jpg", client.imageBytes("/media/img/ab-1600.jpg").decodeToString())
         assertFailsWith<ApiError.Unexpected> { client.imageBytes("http://evil.test/media/a.jpg") }
+    }
+
+    @Test
+    fun feedbackIsSentAsMultipart() = runTest {
+        val id = api { req ->
+            val body = (req.body as io.ktor.http.content.OutgoingContent).let { it.contentType.toString() }
+            assertEquals("/api/v1/feedbacks", req.url.encodedPath)
+            assertEquals(HttpMethod.Post, req.method)
+            assertTrue(body.startsWith("multipart/form-data"), body)
+            respondJson(HttpStatusCode.Created, """{"id":"fb-9"}""")
+        }.submitFeedback(com.gowander.feedback.FeedbackDraft(message = "Giờ mở cửa chưa đúng", context = "Địa điểm · Chợ Bến Thành", image = byteArrayOf(1, 2)))
+        assertEquals("fb-9", id)
     }
 
     @Test

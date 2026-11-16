@@ -76,6 +76,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.gowander.feedback.FeedbackBubble
+import com.gowander.feedback.FeedbackDraft
+import com.gowander.feedback.FeedbackScreen
+import com.gowander.feedback.feedbackContext
+import com.gowander.feedback.rememberFeedbackImages
+import androidx.compose.runtime.withFrameNanos
+import com.gowander.discover.DetailState
 import com.gowander.nav.AppNav
 import com.gowander.nav.Screen
 import com.gowander.nav.Tab
@@ -461,6 +468,33 @@ private fun AppContent() {
                 BottomNav(nav.tab, onGo = { nav = nav.push(Screen.Search) }) { nav = nav.select(it) }
                 Box(Modifier.fillMaxWidth().background(Palette.Bg).windowInsetsBottomHeight(WindowInsets.navigationBars)) // solid under the gesture bar
             }
+        }
+    }
+    // Feedbacks (owner, 16-11-2026; preview v2): a bubble on every screen except live navigation. A tap hides it for a
+    // frame, captures the screen the user is looking at (kept on the phone until Send, removable) and opens the form.
+    val feedbackImages = rememberFeedbackImages()
+    var feedback by remember { mutableStateOf<FeedbackDraft?>(null) }
+    var feedbackShot by remember { mutableStateOf<ByteArray?>(null) }
+    var capturing by remember { mutableStateOf(false) }
+    if (capturing) LaunchedEffect(Unit) {
+        withFrameNanos {}
+        withFrameNanos {}
+        val placeName = (discoverVm.state.value.detail as? DetailState.Loaded)?.place?.takeIf { (nav.top as? Screen.Place)?.id == it.id }?.name
+        val context = feedbackContext(nav, placeName)
+        feedbackImages.capture { r ->
+            feedbackShot = r.getOrNull()
+            feedback = FeedbackDraft(context = context, image = feedbackShot)
+            capturing = false
+        }
+    }
+    if (feedback == null && !capturing && nav.top != Screen.Navigation) FeedbackBubble { capturing = true }
+    // Back closes the form first (registered after the screen handlers, so it wins), never the screen behind it.
+    BackHandler(enabled = feedback != null) { feedback = null; feedbackShot = null }
+    feedback?.let { d ->
+        FeedbackScreen(d, feedbackShot, feedbackImages, send = { sharedApi.submitFeedback(it) }) { sent ->
+            feedback = null
+            feedbackShot = null
+            if (sent) noticeText = Strings.FEEDBACK_SENT
         }
     }
     // Short message for actions that only explain themselves (share, video, satellite…); read out by screen readers.

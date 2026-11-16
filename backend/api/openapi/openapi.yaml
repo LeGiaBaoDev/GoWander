@@ -98,6 +98,36 @@ paths:
                     items: { $ref: '#/components/schemas/PlaceSummary' }
         '400': { $ref: '#/components/responses/Error' }
         '503': { $ref: '#/components/responses/Error' }
+  /api/v1/feedbacks:
+    post:
+      operationId: submitFeedback
+      summary: Gửi feedback từ app (khách được gửi; tên, email, ảnh không bắt buộc)
+      description: >-
+        Chỉ ghi, không có API công khai để đọc lại. Ảnh JPEG/PNG ≤ 5 MB được mã hoá lại (bỏ EXIF/GPS) và lưu riêng tư,
+        chỉ Admin (quản trị hệ thống, kiểm duyệt) xem được. Mỗi địa chỉ IP tối đa 5 feedback mỗi giờ.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [kind, message]
+              properties:
+                kind: { type: string, enum: [INFORMATION, BUG, SUGGESTION, OTHER] }
+                message: { type: string, minLength: 1, maxLength: 1000 }
+                context: { type: string, maxLength: 200, description: Màn hình liên quan, ví dụ "Địa điểm · Chợ Bến Thành"; không có vị trí }
+                senderName: { type: string, maxLength: 100 }
+                senderEmail: { type: string, format: email, maxLength: 254 }
+                image: { type: string, format: binary }
+      responses:
+        '201':
+          description: Đã nhận
+          content:
+            application/json:
+              schema: { type: object, required: [id], properties: { id: { type: string, format: uuid } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /api/v1/places/popular:
     get:
       operationId: popularPlaces

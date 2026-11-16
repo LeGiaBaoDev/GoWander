@@ -6,6 +6,8 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
@@ -13,6 +15,8 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
@@ -60,6 +64,8 @@ interface GoWanderApi {
     suspend fun place(id: String): PlaceDetail
     /** Most searched-for places of the last 7 days; empty until there is enough real use. */
     suspend fun popular(): List<PopularPlace>
+    /** Sends a feedback (guest allowed); returns its id. The image, if any, is a JPEG or PNG under 5 MB. */
+    suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
     /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
@@ -137,6 +143,24 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
     override suspend fun guide(): GuideContent = call("/api/v1/guide/hcm") {}
 
     override suspend fun popular(): List<PopularPlace> = call<PopularPage>("/api/v1/places/popular") {}.places
+
+    override suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String =
+        call<FeedbackCreated>("/api/v1/feedbacks") {
+            method = HttpMethod.Post
+            setBody(MultiPartFormDataContent(formData {
+                append("kind", draft.kind.api)
+                append("message", draft.message.trim())
+                if (draft.context.isNotBlank()) append("context", draft.context.take(200))
+                if (draft.name.isNotBlank()) append("senderName", draft.name.trim())
+                if (draft.email.isNotBlank()) append("senderEmail", draft.email.trim())
+                draft.image?.let {
+                    append("image", it, Headers.build {
+                        append(HttpHeaders.ContentType, "image/jpeg")
+                        append(HttpHeaders.ContentDisposition, "filename=\"feedback.jpg\"")
+                    })
+                }
+            }))
+        }.id
 
     override suspend fun recordOpen() {
         val status = try {

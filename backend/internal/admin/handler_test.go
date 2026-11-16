@@ -933,6 +933,10 @@ func TestNoticesGroupRepeats(t *testing.T) {
 	if b.Notices[1].Count != 1 || b.Notices[1].Title != "Yêu cầu link đặt lại mật khẩu" {
 		t.Fatalf("other notices stay apart: %+v", b.Notices)
 	}
+	if fb := group([]Notice{{Action: "feedback.new", Object: "Chợ Bến Thành", At: now}, {Action: "feedback.new", Object: "Chợ Bến Thành", At: now}}, 6); fb.Notices[0].Title != "Feedback mới" ||
+		fb.Notices[0].Sub != "Về: Chợ Bến Thành · 2 lần" || fb.Notices[0].Icon != "flag" {
+		t.Fatalf("feedback notice: %+v", fb.Notices)
+	}
 	yesterday := fail
 	yesterday.At = now.Add(-30 * time.Hour)
 	if two := group([]Notice{rows[0], yesterday}, 6); len(two.Notices) != 2 {
@@ -991,5 +995,12 @@ func TestWardMapFramesTheWards(t *testing.T) {
 	}
 	if wards := sampleWards(1000, shapes); len(wards) != 2 || wards[0].Name != "Phường Bến Thành" {
 		t.Fatalf("sample wards come from the loaded shapes only: %+v", wards)
+	}
+}
+
+func TestAuditDetailFeedbackStatus(t *testing.T) {
+	got := auditDetail(map[string]any{"from": "NEW", "to": "RESOLVED"})
+	if len(got) != 1 || got[0] != "Trạng thái: Mới → Đã xử lý" {
+		t.Fatalf("%v", got)
 	}
 }

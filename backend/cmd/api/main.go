@@ -15,6 +15,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/admin"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/analytics"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/discover"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/feedback"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/geocode"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/mobility"
@@ -50,6 +51,7 @@ func run(log *slog.Logger) error {
 
 	// Admin pages (M07, ADR-037): their own pool with the role gowander_admin; the public API keeps the read-only pool.
 	var adminStore admin.Store
+	var adminFeedback feedback.Store
 	if cfg.AdminEnabled() {
 		adminPool, err := database.NewPool(context.Background(), cfg.AdminDatabaseURL)
 		if err != nil {
@@ -57,6 +59,7 @@ func run(log *slog.Logger) error {
 		}
 		defer adminPool.Close()
 		adminStore = &admin.PG{Pool: adminPool}
+		adminFeedback = &feedback.PG{Pool: adminPool} // reads and handles feedbacks; the public pool can only add them
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,7 +69,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore, usage),
+		Handler:           newHandler(cfg, log, otp.New(cfg.OTPURL, cfg.OTPTimeout), &discover.PG{Pool: pool}, adminStore, usage, &feedback.PG{Pool: pool}, adminFeedback),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      max(cfg.OTPTimeout, streetImageTimeout) + 5*time.Second, // the slowest upstream wait + margin (review 15-11-2026)
@@ -99,7 +102,8 @@ func run(log *slog.Logger) error {
 }
 
 // newHandler wires every route; integration tests use it with a real OTP.
-func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage *analytics.Counter) http.Handler {
+func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingProvider, places discover.Store, adminStore admin.Store, usage *analytics.Counter,
+	feedbacks feedback.Creator, adminFeedback feedback.Store) http.Handler {
 	mux := httpx.NewRouter(log)
 	mux.Get("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -139,7 +143,9 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 	} else {
 		mux.Handle("/media/*", media.Local{Dir: cfg.MediaDir})
 	}
-	adminHandler := admin.Handler{Store: adminStore, BaseURL: cfg.AdminBaseURL, Media: photos, MediaURL: cfg.MediaBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
+	// Feedbacks from the app (owner, 16-11-2026): guests may send, only the Admin reads (migration 0013).
+	feedback.Handler{Store: feedbacks, Log: log}.Mount(mux)
+	adminHandler := admin.Handler{Store: adminStore, Feedback: adminFeedback, BaseURL: cfg.AdminBaseURL, Media: photos, MediaURL: cfg.MediaBaseURL, SecureCookies: strings.HasPrefix(cfg.AdminBaseURL, "https://"), Log: log,
 		DataStatus: cfg.DataStatus, Health: []admin.Health{{Name: "Tìm đường", Ready: provider.Ready}, {Name: "Cơ sở dữ liệu", Ready: places.Ready}}}
 	if cfg.MailEnabled() {
 		adminHandler.Mailer = admin.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}

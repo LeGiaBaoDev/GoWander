@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/feedback"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/media"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 )
@@ -34,6 +35,7 @@ const (
 // say what is missing instead of failing.
 type Handler struct {
 	Store         Store
+	Feedback      feedback.Store
 	Mailer        Mailer        // "quên mật khẩu" emails (ADR-039)
 	BaseURL       string        // ADMIN_BASE_URL, for the link in that email
 	SecureCookies bool          // https deployments; false only for http://localhost development
@@ -79,6 +81,8 @@ var actionNames = map[string]string{
 	"story.create":                   "Thêm câu chuyện",
 	"story.update":                   "Sửa câu chuyện",
 	"category.update":                "Sửa loại địa điểm",
+	"feedback.update":                "Xử lý feedback",
+	"feedback.contact_view":          "Xem liên hệ người gửi feedback",
 }
 
 // scaleBar is a bar's height: values 1-4 all get the height of 5 (capped at the top), so the bar does not show them.
@@ -109,6 +113,15 @@ func current(r *http.Request) Session { s, _ := r.Context().Value(ctxKey{}).(Ses
 
 var pages = func() map[string]*template.Template {
 	funcs := template.FuncMap{
+		"feedbackStatus": func(s string) string { return feedbackStatusNames[s] },
+		"feedbackKind":   func(s string) string { return feedbackKindNames[s] },
+		"senderName":     func(s string) string { return cmpOr(s, "Khách") },
+		"senderInitial": func(s string) string {
+			for _, c := range strings.TrimSpace(s) {
+				return strings.ToUpper(string(c))
+			}
+			return "K"
+		},
 		"has": func(s Session, role string) bool { return s.Has(role) },
 		"initial": func(s Session) string {
 			for _, c := range strings.TrimSpace(s.Name + s.Login) {
@@ -175,7 +188,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "notifications", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset"} {
+	for _, name := range []string{"login", "home", "places", "place", "categories", "reports", "notifications", "guide_list", "guide_item", "audit", "message", "password", "forgot", "reset", "feedbacks", "feedback"} {
 		out[name] = template.Must(template.New("layout.html").Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/"+name+".html"))
 	}
 	return out
@@ -212,6 +225,14 @@ func (h Handler) Mount(r chi.Router) {
 			r.Get("/account", h.passwordPage)
 			r.Post("/account/name", h.setName)
 			r.Post("/account/email", h.setEmail)
+			r.Group(func(r chi.Router) {
+				r.Use(requireRole(RoleSystemAdmin, RoleModerator))
+				r.Get("/feedbacks", h.feedbacks)
+				r.Get("/feedbacks/{id}", h.feedbackDetail)
+				r.Get("/feedbacks/{id}/image", h.feedbackImage)
+				r.Post("/feedbacks/{id}", h.feedbackUpdate)
+				r.With(requireRole(RoleSystemAdmin)).Post("/feedbacks/{id}/contact", h.feedbackContact)
+			})
 			r.Group(func(r chi.Router) {
 				r.Use(requireRole(RoleSystemAdmin, RoleContentEditor))
 				r.Get("/places", h.places)
@@ -984,7 +1005,7 @@ func auditRange(v url.Values, now time.Time) (from, to time.Time, notice string)
 	return from, to, strings.Join(notes, "; ")
 }
 
-var entityNames = map[string]string{"user": "Tài khoản", "place": "Địa điểm", "food": "Món ăn", "story": "Câu chuyện", "place_category": "Loại địa điểm"}
+var entityNames = map[string]string{"user": "Tài khoản", "place": "Địa điểm", "food": "Món ăn", "story": "Câu chuyện", "place_category": "Loại địa điểm", "feedback": "Feedback"}
 
 var fieldNames = map[string]string{"name": "tên", "name_en": "tên tiếng Anh", "short_description": "mô tả", "address": "địa chỉ",
 	"status": "trạng thái", "primary_category_id": "loại"}
@@ -997,6 +1018,13 @@ func auditDetail(meta map[string]any) []string {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
+	// A feedback status change is stored as {"from": "NEW", "to": "RESOLVED"}: one line, in words.
+	if from, ok := meta["from"].(string); ok {
+		if to, ok := meta["to"].(string); ok && feedbackStatusNames[from] != "" && feedbackStatusNames[to] != "" {
+			out = append(out, "Trạng thái: "+feedbackStatusNames[from]+" → "+feedbackStatusNames[to])
+			keys = slices.DeleteFunc(keys, func(k string) bool { return k == "from" || k == "to" })
+		}
+	}
 	for _, k := range keys {
 		v := meta[k]
 		switch k {

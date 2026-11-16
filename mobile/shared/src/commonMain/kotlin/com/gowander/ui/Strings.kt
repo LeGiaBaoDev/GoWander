@@ -197,6 +197,7 @@ object Strings {
     const val REVIEW_LATER = "Viết đánh giá sẽ có khi có tài khoản."
     const val NEAR_YOU_TAB = "Gần bạn"
     const val POPULAR = "Đang được tìm nhiều"
+    const val FEEDBACK_SENT = "Cảm ơn bạn! GoWander đã nhận feedback."
     const val POPULAR_SPAN = "7 ngày qua"
     fun popularBadge(rank: Int) = "Top $rank được tìm nhiều tuần này"
     fun popularCard(rank: Int, name: String, category: String?) = "Hạng $rank: $name${category?.let { ", $it" } ?: ""}"

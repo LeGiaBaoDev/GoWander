@@ -106,6 +106,9 @@ data class PopularPlace(
 )
 
 @Serializable
+data class FeedbackCreated(val id: String)
+
+@Serializable
 data class PopularPage(val days: Int = 7, val places: List<PopularPlace> = emptyList())
 
 @Serializable

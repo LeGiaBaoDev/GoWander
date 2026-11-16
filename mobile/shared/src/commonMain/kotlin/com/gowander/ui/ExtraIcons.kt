@@ -40,6 +40,7 @@ object ExtraIcons {
     val cube: ImageVector by lazy {
         strokeIcon("box", "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z", "m3.3 7 8.7 5 8.7-5", "M12 22V12")
     }
+    val chat: ImageVector by lazy { strokeIcon("message-circle", "M7.9 20A9 9 0 1 0 4 16.1L2 22z", "M8 12h.01M12 12h.01M16 12h.01") }
     val close: ImageVector by lazy { strokeIcon("x", "M18 6 6 18", "m6 6 12 12") }
     val fastForward: ImageVector by lazy { strokeIcon("fast-forward", "M13 19l9-7-9-7z", "M2 19l9-7-9-7z") }
     val pause: ImageVector by lazy { strokeIcon("pause", "M6 4h4v16H6z", "M14 4h4v16h-4z") }

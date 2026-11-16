@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -98,6 +99,24 @@ func (s *PG) Notifications(ctx context.Context, userID string, limit int) (Bell,
 	if err != nil {
 		return Bell{}, fmt.Errorf("notifications: %w", err)
 	}
+	// New feedbacks from the app (owner: "báo sai" belongs in the bell): only the screen they are about, never the
+	// message or the sender. Repeats about one screen on one day group like other notices.
+	rows, err = s.Pool.Query(ctx, `
+		SELECT 'feedback.new', '', coalesce(nullif(f.context, ''), 'Ứng dụng'), f.created_at,
+		       f.created_at > coalesce((SELECT notifications_seen_at FROM admin_credentials WHERE user_id = $1), '-infinity')
+		  FROM feedback_reports f WHERE f.status = 'NEW' AND f.created_at > now() - $2::interval ORDER BY f.created_at DESC LIMIT 100`,
+		userID, noticeWindow.String())
+	if err != nil {
+		return Bell{}, fmt.Errorf("feedback notifications: %w", err)
+	}
+	_, err = pgx.ForEachRow(rows, []any{&n.Action, &n.Actor, &n.Object, &n.At, &n.Unread}, func() error {
+		list = append(list, n)
+		return nil
+	})
+	if err != nil {
+		return Bell{}, fmt.Errorf("feedback notifications: %w", err)
+	}
+	slices.SortStableFunc(list, func(a, b Notice) int { return b.At.Compare(a.At) })
 	return group(list, limit), nil
 }
 
@@ -131,6 +150,8 @@ func describe(n *Notice) {
 		n.Title, n.Icon = "Tài khoản mới", "user"
 	case "account.email_change":
 		n.Title, n.Icon = "Đổi email khôi phục", "user"
+	case "feedback.new":
+		n.Title, n.Icon, n.Sub = "Feedback mới", "flag", "Về: "+what+times
 	default:
 		n.Title, n.Icon = actionNames[n.Action], "edit"
 		if n.Title == "" {

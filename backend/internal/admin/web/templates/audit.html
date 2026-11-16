@@ -19,17 +19,17 @@
   {{template "linechart" .Chart}}
 </section>
 
-<div class="table-wrap">
+<div class="table-wrap cards">
 <table class="audit">
   <thead><tr><th>Lúc</th><th>Người làm</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th><th>Mã yêu cầu</th></tr></thead>
   <tbody>
   {{range .Entries}}<tr>
     <td class="when" title="{{atFull .At}}">{{at .At}}</td>
-    <td>{{if .ActorName}}<strong>{{.ActorName}}</strong>{{else}}<span class="muted">Hệ thống (lệnh trên server)</span>{{end}}</td>
-    <td><span class="tag">{{action .Action}}</span></td>
-    <td><span class="muted small">{{entityName .EntityType}}</span><br>{{if .EntityName}}{{.EntityName}}{{else}}<code title="{{.EntityID}}">{{short .EntityID}}</code>{{end}}</td>
-    <td>{{range detail .Metadata}}<div class="small">{{.}}</div>{{else}}<span class="muted">—</span>{{end}}</td>
-    <td>{{with .RequestID}}<code class="rid" title="{{.}}">{{short .}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td class="c-state">{{if .ActorName}}<strong>{{.ActorName}}</strong>{{else}}<span class="muted">Hệ thống (lệnh trên server)</span>{{end}}</td>
+    <td class="c-wide"><span class="tag">{{action .Action}}</span></td>
+    <td class="c-wide"><span class="muted small">{{entityName .EntityType}}</span><br>{{if .EntityName}}{{.EntityName}}{{else}}<code title="{{.EntityID}}">{{short .EntityID}}</code>{{end}}</td>
+    <td class="c-wide">{{range detail .Metadata}}<div class="small">{{.}}</div>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td data-label="Mã yêu cầu">{{with .RequestID}}<code class="rid" title="{{.}}">{{short .}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
   </tr>{{else}}<tr><td colspan="6" class="muted">Không có thao tác nào trong khoảng này.</td></tr>{{end}}
   </tbody>
 </table>

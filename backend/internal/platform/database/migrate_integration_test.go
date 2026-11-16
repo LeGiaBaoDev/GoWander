@@ -28,7 +28,7 @@ var adminTables = []string{"admin_audit_logs", "admin_credentials", "admin_passw
 var usageTables = []string{"usage_app_opens", "usage_bus_lines", "usage_dest_cells", "usage_place_routes", "usage_route_plans"}
 
 func allTables() []string {
-	all := append(append(append([]string{"admin_areas", "city_wards"}, discoverTables...), adminTables...), usageTables...) // city_wards: 0012, the Admin map only
+	all := append(append(append([]string{"admin_areas", "city_wards", "feedback_events", "feedback_reports"}, discoverTables...), adminTables...), usageTables...) // city_wards: 0012, the Admin map only
 	sort.Strings(all)
 	return all
 }

@@ -1,0 +1,32 @@
+{{define "title"}}Feedbacks · GoWander Admin{{end}}
+{{define "main"}}
+<header class="head"><h1>Feedbacks</h1><p class="muted">Tiếp nhận, phân loại và xử lý góp ý từ người dùng.</p></header>
+<nav class="feedback-views" aria-label="Chế độ hiển thị"><a class="button {{if ne .View "list"}}ghost{{end}}" href="{{.ListURL}}"{{if eq .View "list"}} aria-current="page"{{end}}>{{template "icon" "list"}}Danh sách</a><a class="button {{if ne .View "progress"}}ghost{{end}}" href="{{.ProgressURL}}"{{if eq .View "progress"}} aria-current="page"{{end}}>{{template "icon" "board"}}Bảng kéo thả</a></nav>
+<form class="card feedback-filters" method="get" action="/admin/feedbacks" role="search">
+ <input type="hidden" name="view" value="{{.View}}">
+ <label class="feedback-search">Tìm feedback hoặc người gửi<input type="search" name="q" maxlength="100" value="{{.Q.Search}}" placeholder="Nội dung, tên người gửi…"></label>
+ <label>Từ ngày<input type="date" name="from" value="{{.Q.From}}" lang="vi"></label><label>Đến ngày<input type="date" name="to" value="{{.Q.To}}" lang="vi"></label>
+ <label>Loại<select name="kind"><option value="">Tất cả loại</option>{{range .Kinds}}<option value="{{.}}"{{if eq . $.Q.Kind}} selected{{end}}>{{feedbackKind .}}</option>{{end}}</select></label>
+ <label>Trạng thái<select name="status"><option value="">Tất cả trạng thái</option>{{range .Statuses}}<option value="{{.}}"{{if eq . $.Q.Status}} selected{{end}}>{{feedbackStatus .}}</option>{{end}}</select></label>
+ <div class="feedback-filter-actions"><button type="submit">Lọc</button><a class="button ghost" href="/admin/feedbacks?view={{.View}}">Bỏ lọc</a></div>
+</form>
+<p class="muted small">{{.Total}} feedbacks · Mới nhất trước · Ngày gửi theo giờ Việt Nam{{if eq .View "progress"}} · Các cột hiển thị feedback trong trang {{.PageNumber}}{{end}}</p>
+<p id="feedback-move-status" class="feedback-move-status" role="status" aria-live="polite"></p>
+{{if eq .View "progress"}}
+<p class="muted small">Kéo thẻ sang cột khác để đổi trạng thái, hoặc mở feedback và chọn trạng thái khi dùng bàn phím/điện thoại.</p>
+<div class="feedback-board" data-feedback-board data-csrf="{{.Me.CSRF}}">
+{{range .Columns}}<section class="feedback-column" data-feedback-status="{{.Status}}" aria-label="{{feedbackStatus .Status}}"><h2>{{feedbackStatus .Status}} <span class="chip">{{len .Reports}}</span></h2>
+{{range .Reports}}<article class="feedback-card" draggable="true" data-feedback-id="{{.ID}}" data-current-status="{{.Status}}">
+ <a class="strong" href="/admin/feedbacks/{{.ID}}"><span class="muted small">#{{short .ID}}</span><span class="feedback-excerpt">{{.Message}}</span></a>
+ {{with .Context}}<p class="small muted">{{.}}</p>{{end}}<span class="chip">{{feedbackKind .Kind}}</span>
+ <div class="feedback-card-footer"><span class="fb-who"><span class="fb-avatar" aria-hidden="true">{{senderInitial .SenderName}}</span>{{senderName .SenderName}}</span><time title="{{atFull .CreatedAt}}">{{at .CreatedAt}}</time></div>{{if .HasImage}}<span class="small muted fb-attach">{{template "icon" "camera"}}1 ảnh đính kèm</span>{{end}}
+</article>{{else}}<p class="muted small feedback-empty">Không có feedback trong trang này.</p>{{end}}
+</section>{{end}}
+</div>
+{{else}}
+{{if .List}}<div class="table-wrap cards"><table><thead><tr><th>Feedback</th><th>Người gửi</th><th>Ngày gửi</th><th>Trạng thái</th></tr></thead><tbody>
+{{range .List}}<tr><td><a class="strong" href="/admin/feedbacks/{{.ID}}">#{{short .ID}}</a><p class="feedback-excerpt">{{.Message}}</p><p class="small muted">{{.Context}}</p><span class="chip">{{feedbackKind .Kind}}</span>{{if .HasImage}} <span class="small muted fb-attach">{{template "icon" "camera"}}1 ảnh</span>{{end}}</td><td data-label="Người gửi"><span class="fb-who"><span class="fb-avatar" aria-hidden="true">{{senderInitial .SenderName}}</span><span>{{if .SenderName}}{{.SenderName}}<small class="muted feedback-guest">Khách · tự cung cấp</small>{{else}}Khách<small class="muted feedback-guest">Chưa cung cấp tên</small>{{end}}</span></span></td><td data-label="Ngày gửi"><time title="{{atFull .CreatedAt}}">{{at .CreatedAt}}</time></td><td data-label="Trạng thái"><span class="feedback-state feedback-{{.Status}}">{{feedbackStatus .Status}}</span></td></tr>{{end}}
+</tbody></table></div>{{else}}<div class="card"><h2>Chưa có feedback</h2><p class="muted">Feedback mới từ app sẽ xuất hiện ở đây. Thử bỏ bộ lọc nếu bạn đang tìm phản hồi cũ.</p></div>{{end}}
+{{end}}
+{{template "pager" .Pager}}
+{{end}}

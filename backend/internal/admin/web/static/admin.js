@@ -72,3 +72,63 @@ document.addEventListener("keydown", (e) => {
   const run = () => document.querySelectorAll('input[type="password"]').forEach(setup);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run); else run();
 })();
+
+// Feedbacks board: drag a card to another column to change its status (server checks role, CSRF and that nobody
+// changed it meanwhile). Keyboard and phone users open the feedback and pick the status there.
+(() => {
+  const board = document.querySelector("[data-feedback-board]");
+  if (!board) return;
+  const say = document.getElementById("feedback-move-status");
+  const names = { NEW: "Mới", IN_REVIEW: "Đang xử lý", RESOLVED: "Đã xử lý", REJECTED: "Không tiếp nhận" };
+  const count = () => board.querySelectorAll(".feedback-column").forEach((c) => {
+    const chip = c.querySelector("h2 .chip");
+    if (chip) chip.textContent = c.querySelectorAll(".feedback-card").length;
+  });
+  let dragged = null;
+  board.addEventListener("dragstart", (e) => {
+    dragged = e.target.closest(".feedback-card");
+    if (!dragged) return;
+    dragged.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragged.dataset.feedbackId);
+  });
+  board.addEventListener("dragend", () => {
+    dragged?.classList.remove("dragging");
+    board.querySelectorAll(".drop").forEach((c) => c.classList.remove("drop"));
+  });
+  board.addEventListener("dragover", (e) => {
+    const col = e.target.closest(".feedback-column");
+    if (!col || !dragged) return;
+    e.preventDefault();
+    board.querySelectorAll(".drop").forEach((c) => c !== col && c.classList.remove("drop"));
+    col.classList.add("drop");
+  });
+  board.addEventListener("drop", async (e) => {
+    const col = e.target.closest(".feedback-column");
+    const card = dragged;
+    if (!col || !card) return;
+    e.preventDefault();
+    col.classList.remove("drop");
+    const to = col.dataset.feedbackStatus, from = card.dataset.currentStatus;
+    if (to === from) return;
+    const home = card.parentElement, next = card.nextSibling;
+    col.querySelector(".feedback-empty")?.remove();
+    col.appendChild(card);
+    count();
+    const body = new URLSearchParams({ status: to, expectedStatus: from, move: "1", csrf: board.dataset.csrf });
+    try {
+      const res = await fetch(`/admin/feedbacks/${encodeURIComponent(card.dataset.feedbackId)}`, {
+        method: "POST", body, credentials: "same-origin",
+        headers: { "X-Feedback-Request": "move", "X-CSRF-Token": board.dataset.csrf },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Chưa lưu được trạng thái.");
+      card.dataset.currentStatus = to;
+      if (say) say.textContent = `Đã chuyển sang "${names[to]}".`;
+    } catch (err) {
+      home.insertBefore(card, next);
+      count();
+      if (say) say.textContent = err.message;
+    }
+  });
+})();
