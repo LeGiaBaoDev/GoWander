@@ -243,6 +243,7 @@ func (h Handler) Mount(r chi.Router) {
 				r.Post("/places/{id}/photos", h.addPlacePhoto)
 				r.Post("/places/{id}/photos/{photo}/cover", h.placePhotoAction("cover"))
 				r.Post("/places/{id}/photos/{photo}/delete", h.placePhotoAction("delete"))
+				r.Post("/blocks/image", h.blockImage)
 				r.Get("/categories", h.categories)
 				r.Post("/categories/{id}", h.saveCategory)
 				for kind := range GuideKinds {
@@ -962,6 +963,28 @@ func (h Handler) renderGuide(w http.ResponseWriter, r *http.Request, status int,
 		"PhotoProblem": strings.Join(photoProblem, "")})
 }
 
+// blockImage receives one photo for a story body and answers the Editor.js tool with the key, URL, credit and licence.
+// The same rules as every other photo apply (JPEG/PNG/WebP, re-encoded, credit and licence required, ADR-035).
+func (h Handler) blockImage(w http.ResponseWriter, r *http.Request) {
+	key, in, problem, err := h.receivePhoto(r)
+	switch {
+	case err != nil:
+		h.Log.Error("story image upload failed", "requestId", httpx.RequestID(r), "err", err)
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Chưa lưu được ảnh. Thử lại sau."})
+		return
+	case problem != "":
+		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": problem})
+		return
+	}
+	if err := h.Store.SaveContentImage(r.Context(), current(r).UserID, key, in, httpx.RequestID(r)); err != nil {
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Chưa lưu được ảnh. Thử lại sau."})
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"key": key, "url": media.URL(h.MediaURL, key, 1600), "credit": in.Credit, "license": in.License, "alt": in.Alt,
+	})
+}
+
 func (h Handler) saveGuide(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		k := GuideKinds[kind]
@@ -986,6 +1009,20 @@ func (h Handler) saveGuide(kind string) http.HandlerFunc {
 				return
 			}
 			if len(doc.Blocks) > 0 {
+				for _, b := range doc.Blocks {
+					if b.Type != content.TypeImage {
+						continue
+					}
+					ok, kerr := h.Store.ContentImageExists(r.Context(), b.Data.Key)
+					if kerr != nil {
+						h.fail(w, r, kerr)
+						return
+					}
+					if !ok {
+						h.renderGuide(w, r, http.StatusUnprocessableEntity, k, g, "ảnh trong bài không còn trong kho, hãy tải lại", false)
+						return
+					}
+				}
 				g.Blocks = doc.JSON()
 				g.Body = doc.Text()
 			} else {

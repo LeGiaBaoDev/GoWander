@@ -530,3 +530,7 @@ input[type="file"] { padding: 10px; background: var(--subtle); border-style: das
 .story-editor .ce-toolbar__content { max-width: none; }
 .story-editor .ce-paragraph { font-size: 15px; line-height: 1.65; }
 .story-editor .ce-header { margin: 0.4em 0 0.2em; }
+
+/* Image block inside the story editor (ADR-041 §4). */
+.story-image-form { display: grid; gap: 8px; padding: 10px; border: 1px dashed #C9DEDD; border-radius: 12px; }
+.story-image-form input[type="text"], .story-image-form select { max-width: 460px; }

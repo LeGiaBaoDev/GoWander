@@ -97,6 +97,8 @@ type Store interface {
 	UpdatePlace(ctx context.Context, actorID string, p Place, requestID string) error
 	Categories(ctx context.Context) ([]Category, error)
 	AppUsers(ctx context.Context, q AppUserQuery) (list []AppUserRow, total int, err error)
+	SaveContentImage(ctx context.Context, actorID, key string, in PhotoInput, requestID string) error
+	ContentImageExists(ctx context.Context, key string) (bool, error)
 	SetAppUserStatus(ctx context.Context, id, status, actorID, requestID string) error
 	UpdateCategory(ctx context.Context, actorID string, c Category, requestID string) error
 	Ready(ctx context.Context) error

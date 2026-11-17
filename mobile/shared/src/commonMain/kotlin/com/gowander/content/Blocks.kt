@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gowander.ui.Palette
+import com.gowander.ui.RemotePhoto
 import com.gowander.ui.Text
 import kotlinx.serialization.Serializable
 
@@ -39,6 +40,11 @@ data class BlockData(
     val style: String = "unordered",
     val items: List<String> = emptyList(),
     val caption: String = "",
+    val key: String = "",
+    val alt: String = "",
+    val credit: String = "",
+    val license: String = "",
+    val url: String = "",
 )
 
 /** The body of a story: blocks when the server sends them, the plain paragraphs otherwise. */
@@ -74,6 +80,19 @@ fun StoryBody(blocks: List<ContentBlock>, paragraphs: List<String>, modifier: Mo
                         if (block.data.caption.isNotBlank()) {
                             Text("— ${block.data.caption}", size = 12.5.sp, color = Palette.Muted)
                         }
+                    }
+                }
+                "image" -> if (block.data.url.isNotBlank()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RemotePhoto(
+                            block.data.url, block.data.key, Modifier.fillMaxWidth().height(190.dp),
+                            icon = com.gowander.ui.KitIcons.camera, description = block.data.alt.ifBlank { null },
+                        )
+                        Text(
+                            listOf(block.data.credit, block.data.license).filter { it.isNotBlank() }.joinToString(" · "),
+                            size = 11.5.sp,
+                            color = Palette.Muted,
+                        )
                     }
                 }
                 "delimiter" -> Box(

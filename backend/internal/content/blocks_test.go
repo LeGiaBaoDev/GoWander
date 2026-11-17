@@ -84,3 +84,24 @@ func TestHeaderLevelAndDefaults(t *testing.T) {
 		t.Fatalf("style = %q", doc.Blocks[1].Data.Style)
 	}
 }
+
+func TestImageBlocksNeedCreditAndLicence(t *testing.T) {
+	ok := `{"blocks":[{"type":"image","data":{"key":"abc-1700","alt":"Chợ Bình Tây","credit":"Ảnh: Lan Anh","license":"CC BY 4.0"}}]}`
+	doc, err := Parse(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := doc.Blocks[0]
+	if b.Data.Key != "abc-1700" || b.Data.Credit != "Ảnh: Lan Anh" || b.Data.License != "CC BY 4.0" || b.Data.Alt != "Chợ Bình Tây" {
+		t.Fatalf("image block = %+v", b.Data)
+	}
+	if _, err := Parse(`{"blocks":[{"type":"image","data":{"key":"k","alt":"x","license":"CC0"}}]}`); err == nil {
+		t.Error("an image without credit was accepted")
+	}
+	if _, err := Parse(`{"blocks":[{"type":"image","data":{"key":"k","credit":"me"}}]}`); err == nil {
+		t.Error("an image without a licence was accepted")
+	}
+	if _, err := Parse(`{"blocks":[{"type":"image","data":{"key":"../etc/passwd","credit":"me","license":"CC0"}}]}`); err == nil {
+		t.Error("a key with a path was accepted")
+	}
+}

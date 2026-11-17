@@ -28,6 +28,7 @@ const (
 	TypeList      = "list"
 	TypeQuote     = "quote"
 	TypeDelimiter = "delimiter"
+	TypeImage     = "image"
 )
 
 // Document is the Editor.js output the Admin saves; the editor's own metadata (time, version, ids) is dropped.
@@ -48,9 +49,19 @@ type BlockData struct {
 	Style   string   `json:"style,omitempty"`   // list: ordered | unordered
 	Items   []string `json:"items,omitempty"`   // list
 	Caption string   `json:"caption,omitempty"` // quote: who said it
+	// image: the key of a row in content_images, with the credit and licence copied from the upload so a block stays
+	// readable even if the row is removed later. URL is filled in when the API answers, never stored.
+	Key     string `json:"key,omitempty"`
+	Alt     string `json:"alt,omitempty"`
+	Credit  string `json:"credit,omitempty"`
+	License string `json:"license,omitempty"`
+	URL     string `json:"url,omitempty"`
 }
 
-var tag = regexp.MustCompile(`<[^>]*>`)
+var (
+	tag      = regexp.MustCompile(`<[^>]*>`)
+	validKey = regexp.MustCompile(`^[a-z0-9][a-z0-9/_-]*$`)
+)
 
 // plainText removes the inline HTML Editor.js writes inside a paragraph (bold, links) and any stray tag, because the app
 // renders text, not HTML (ADR-041 §6). Formatting inside a paragraph is therefore lost on purpose; headings, lists and
@@ -178,6 +189,24 @@ func normaliseBlock(kind string, d BlockData) (Block, error) {
 		return Block{Type: kind, Data: BlockData{Style: style, Items: items}}, nil
 	case TypeDelimiter:
 		return Block{Type: kind, Data: BlockData{}}, nil
+	case TypeImage:
+		key := strings.TrimSpace(d.Key)
+		credit, license := plainText(d.Credit), strings.TrimSpace(d.License)
+		switch {
+		// Media keys look like "img/<hex>": letters, digits, "-", "_" and the folder slash, never a way out of the folder.
+		case key == "" || len(key) > 200 || strings.HasPrefix(key, "/") || strings.Contains(key, "..") ||
+			strings.ContainsAny(key, " \\") || !validKey.MatchString(key):
+			return Block{}, fmt.Errorf("ảnh thiếu khoá lưu trữ hợp lệ")
+		case credit == "" || utf8.RuneCountInString(credit) > 200:
+			return Block{}, fmt.Errorf("ảnh phải có ghi công (tối đa 200 ký tự)")
+		case license == "" || utf8.RuneCountInString(license) > 40:
+			return Block{}, fmt.Errorf("ảnh phải có giấy phép")
+		}
+		alt := plainText(d.Alt)
+		if utf8.RuneCountInString(alt) > 300 {
+			alt = string([]rune(alt)[:300])
+		}
+		return Block{Type: kind, Data: BlockData{Key: key, Alt: alt, Credit: credit, License: license}}, nil
 	default:
 		return Block{}, fmt.Errorf("loại khối %q không được hỗ trợ", kind)
 	}
@@ -203,6 +232,10 @@ func (d Document) Text() string {
 				q += " — " + b.Data.Caption
 			}
 			parts = append(parts, q)
+		case TypeImage:
+			if b.Data.Alt != "" {
+				parts = append(parts, b.Data.Alt)
+			}
 		}
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))

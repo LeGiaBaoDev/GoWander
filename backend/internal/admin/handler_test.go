@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -24,26 +25,28 @@ import (
 )
 
 type fakeStore struct {
-	places    map[string]Place
-	saved     []Place
-	catSaved  []Category
-	sessions  map[string]Session
-	loginErr  error
-	changed   []string          // new passwords
-	resets    map[string]string // login -> email, for StartPasswordReset
-	reset     []string          // tokens used
-	audits    []AuditEntry
-	usage     Usage
-	usageQ    []UsageQuery
-	auditQ    []AuditQuery
-	photos    []Photo
-	bell      Bell
-	seen      int
-	orphan    string
-	guide     map[string]GuideItem
-	guideSave []GuideItem
-	appUsers  []AppUserRow
-	appStatus []string // "id:STATUS" for every status change the handler asked for
+	places         map[string]Place
+	saved          []Place
+	catSaved       []Category
+	sessions       map[string]Session
+	loginErr       error
+	changed        []string          // new passwords
+	resets         map[string]string // login -> email, for StartPasswordReset
+	reset          []string          // tokens used
+	audits         []AuditEntry
+	usage          Usage
+	usageQ         []UsageQuery
+	auditQ         []AuditQuery
+	photos         []Photo
+	bell           Bell
+	seen           int
+	orphan         string
+	guide          map[string]GuideItem
+	guideSave      []GuideItem
+	appUsers       []AppUserRow
+	contentImages  []string
+	contentImageOK bool
+	appStatus      []string // "id:STATUS" for every status change the handler asked for
 }
 
 func (f *fakeStore) PasswordLogin(_ context.Context, login, password, _ string) (string, error) {
@@ -59,6 +62,17 @@ func (f *fakeStore) ChangePassword(_ context.Context, _, current, next, _, _ str
 	f.changed = append(f.changed, next)
 	return nil
 }
+
+var _ = 0 // keep the import list stable
+
+func (f *fakeStore) SaveContentImage(_ context.Context, _, key string, in PhotoInput, _ string) error {
+	f.contentImages = append(f.contentImages, key+"|"+in.Credit+"|"+in.License)
+	return nil
+}
+func (f *fakeStore) ContentImageExists(_ context.Context, key string) (bool, error) {
+	return f.contentImageOK || key != "", nil
+}
+
 func (f *fakeStore) AppUsers(context.Context, AppUserQuery) ([]AppUserRow, int, error) {
 	return f.appUsers, len(f.appUsers), nil
 }
@@ -1069,5 +1083,47 @@ func TestAppUsersPage(t *testing.T) {
 	w = do(h, "POST", "/admin/app-users/not-a-uuid/status", "sys", url.Values{"csrf": {"csrf-s"}, "status": {"SUSPENDED"}}, nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("bad id: %d", w.Code)
+	}
+}
+
+// Story images go through the same upload as every photo and answer the Editor.js tool with what it needs.
+func TestBlockImageUpload(t *testing.T) {
+	store := newFake()
+	h := server(store, nil)
+
+	var img bytes.Buffer
+	_ = png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 8, 8)))
+
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	_ = form.WriteField("credit", "Ảnh: Lan Anh")
+	_ = form.WriteField("license", "CC BY 4.0")
+	_ = form.WriteField("alt", "Một góc chợ")
+	part, _ := form.CreateFormFile("photo", "a.png")
+	_, _ = part.Write(img.Bytes())
+	_ = form.Close()
+
+	req := httptest.NewRequest("POST", "/admin/blocks/image", body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "editor"})
+	req.Header.Set("X-CSRF-Token", "csrf-e")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	}
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["key"] == "" || !strings.Contains(out["url"], out["key"]) || out["credit"] != "Ảnh: Lan Anh" || out["license"] != "CC BY 4.0" {
+		t.Fatalf("answer = %v", out)
+	}
+	if len(store.contentImages) != 1 {
+		t.Fatalf("not stored: %v", store.contentImages)
+	}
+	if len(testMedia) == 0 {
+		t.Fatal("the file did not reach the media storage")
 	}
 }

@@ -23,14 +23,22 @@
       header: { class: window.Header, levels: [2, 3], defaultLevel: 2, inlineToolbar: true },
       list: { class: window.List, inlineToolbar: true, config: { defaultStyle: 'unordered' } },
       quote: { class: window.Quote, inlineToolbar: true },
-      delimiter: window.Delimiter
+      delimiter: window.Delimiter,
+      image: window.StoryImage ? { class: window.StoryImage } : undefined
     },
     onChange: save
   });
 
+  // An image block with no uploaded photo yet carries no data; the server would refuse it, so it is left out.
+  function blocks(out) {
+    return (out.blocks || []).filter(function (b) {
+      return !(b.type === 'image' && !(b.data && b.data.key));
+    });
+  }
+
   function save() {
     editor.save().then(function (out) {
-      hidden.value = JSON.stringify({ blocks: out.blocks || [] });
+      hidden.value = JSON.stringify({ blocks: blocks(out) });
     });
   }
 
@@ -42,7 +50,7 @@
       if (form.dataset.editorSaved === '1') return; // second pass, let it through
       event.preventDefault();
       editor.save().then(function (out) {
-        hidden.value = JSON.stringify({ blocks: out.blocks || [] });
+        hidden.value = JSON.stringify({ blocks: blocks(out) });
         form.dataset.editorSaved = '1';
         // Bypass this listener without losing the browser's own submit handling.
         HTMLFormElement.prototype.submit.call(form);

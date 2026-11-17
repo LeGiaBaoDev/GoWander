@@ -144,6 +144,15 @@ func (h Handler) guide(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// Story images live in the media pipeline: the block keeps the key, the app is given a URL it can load.
+	for si := range g.Stories {
+		for bi := range g.Stories[si].Blocks {
+			b := &g.Stories[si].Blocks[bi]
+			if b.Type == content.TypeImage && b.Data.Key != "" {
+				b.Data.URL = media.URL(h.MediaURL, b.Data.Key, 1600)
+			}
+		}
+	}
 	for _, p := range photosOf(g) {
 		p.URL, p.ThumbURL = media.URL(h.MediaURL, p.key, 1600), media.URL(h.MediaURL, p.key, 480)
 	}

@@ -20,12 +20,14 @@
     {{if not $food}}
     <input type="hidden" name="blocks" id="story-blocks" value="{{.G.Blocks}}">
     <div id="story-editor" class="story-editor" aria-label="Nội dung câu chuyện"></div>
+    <select id="story-image-licenses" hidden>{{range .Licenses}}<option value="{{.}}">{{.}}</option>{{end}}</select>
     <p class="muted small">Trình soạn thảo lưu có cấu trúc, nên app hiển thị tiêu đề mục, danh sách và trích dẫn đúng kiểu. Đoạn văn chỉ nhận chữ; in đậm/link trong đoạn được đổi thành chữ thường.</p>
     <script src="/admin/static/editorjs/editorjs.js" defer></script>
     <script src="/admin/static/editorjs/header.js" defer></script>
     <script src="/admin/static/editorjs/list.js" defer></script>
     <script src="/admin/static/editorjs/quote.js" defer></script>
     <script src="/admin/static/editorjs/delimiter.js" defer></script>
+    <script src="/admin/static/editorjs/story-image-tool.js" defer></script>
     <script src="/admin/static/editor-story.js" defer></script>
     {{end}}
     <label>{{if $food}}Quán gợi ý <span class="muted small">(mỗi dòng một quán: Tên | Địa chỉ)</span>{{else}}Gợi ý "Thử làm" <span class="muted small">(một việc người đọc có thể làm tại chỗ)</span>{{end}}
