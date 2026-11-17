@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
 import com.gowander.mock.straightTotalM
 import com.gowander.route.RouteMap
+import com.gowander.route.rememberMapViewState
 import com.gowander.route.decodePolyline
 import com.gowander.route.linesGeoJson
 import com.gowander.ui.kitShadow
@@ -272,9 +273,10 @@ private fun PlanMap(items: List<PlanItem>, proposal: List<PlanItem>?, context: S
         linesGeoJson(solid) to linesGeoJson(dashed)
     }
     val fit = remember(shown) { shown.mapNotNull { s -> s.lat?.let { it to s.lon!! } } }
+    val mapView = rememberMapViewState()
     RouteMap(
         null, null, null, null, modifier.semantics { contentDescription = Strings.PLAN_MAP },
-        lines = solid, sketch = dashed, fit = fit, viewSwitch = full, insets = insets,
+        lines = solid, sketch = dashed, fit = fit, viewSwitch = full, insets = insets, mapView = mapView,
         framePadding = if (full) DpPadding(left = 60.dp, top = 80.dp, right = 60.dp, bottom = 40.dp) else DpPadding(left = 36.dp, top = 36.dp, right = 36.dp, bottom = 36.dp),
     ) {
         shown.forEachIndexed { i, s ->

@@ -1,6 +1,7 @@
 package com.gowander.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import com.gowander.mock.PlanItem
 import com.gowander.mock.shiftClock
 import com.gowander.route.nowMillis
 import com.gowander.route.pilotDay
+import com.gowander.route.pilotIso
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import com.gowander.ui.ExtraIcons
@@ -125,6 +127,32 @@ internal fun rememberPlanWeather(plan: Plan, query: WeatherQuery): WeatherReadin
     return reading
 }
 
+/** The current hour in the pilot zone: one reading per hour, not a request on every recomposition. */
+private fun weatherHourIso(now: Long = nowMillis()): String = pilotIso(now).take(13) + ":00:00+07:00"
+
+/** Weather at a point on the map (tagged by the user), for the map tab's badge. */
+@Composable
+internal fun rememberWeatherAt(lat: Double?, lon: Double?, query: WeatherQuery): WeatherReading? {
+    val at = remember { weatherHourIso() }
+    // Two decimals (~1 km) so GPS jitter does not ask for a new forecast on every fix.
+    val keyLat = lat?.let { (it * 100).roundToInt() / 100.0 }
+    val keyLon = lon?.let { (it * 100).roundToInt() / 100.0 }
+    val key = if (keyLat != null && keyLon != null) "$keyLat,$keyLon,$at" else null
+    var reading by remember(key) { mutableStateOf(key?.let { weatherCache[it] }) }
+    LaunchedEffect(key) {
+        if (key == null || reading != null) return@LaunchedEffect
+        reading = try {
+            query(lat!!, lon!!, at)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        reading?.let { weatherCache[key] = it }
+    }
+    return reading
+}
+
 private enum class Tone { Rain, Heat, Clear }
 
 private fun WeatherReading.tone(): Tone = when {
@@ -166,6 +194,28 @@ private fun weatherTip(tone: Tone, indoor: Int, outdoor: Int): String? = when {
     tone == Tone.Heat && indoor > 0 -> Strings.WEATHER_HEAT_INDOOR
     tone == Tone.Clear && outdoor > 0 -> Strings.WEATHER_CLEAR_TIP
     else -> null
+}
+
+/** A compact weather pill: temperature now, plus the rain chance when it matters. */
+@Composable
+internal fun WeatherPill(reading: WeatherReading, label: String? = null, modifier: Modifier = Modifier) {
+    val tone = reading.tone()
+    Row(
+        modifier.clip(RoundedCornerShape(999.dp)).background(Palette.Bg.copy(alpha = 0.95f))
+            .border(1.dp, Palette.Line, RoundedCornerShape(999.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(tone.icon(), 15.dp, tone.color())
+        Spacer(Modifier.width(6.dp))
+        if (label != null) {
+            Text(label, size = 10.5.sp, color = Palette.Muted, weight = FontWeight.Bold)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text("${reading.temperatureC.roundToInt()}°", size = 12.sp, color = Palette.Ink, weight = FontWeight.Bold)
+        if (reading.isRain || reading.precipitationProbability >= 50) {
+            Text(" · ${reading.precipitationProbability}%", size = 11.sp, color = tone.color(), weight = FontWeight.SemiBold)
+        }
+    }
 }
 
 /** One line inside a saved-plan card: the hour's sky plus how many stops it affects. */

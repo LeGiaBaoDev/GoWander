@@ -20,6 +20,9 @@ import com.gowander.ui.MockPhoto
 import com.gowander.ui.Pill
 import com.gowander.ui.Stars
 import com.gowander.home.MAP_FILTERS
+import com.gowander.home.WeatherPill
+import com.gowander.home.WeatherQuery
+import com.gowander.home.rememberWeatherAt
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import com.gowander.ui.PinCard
 import com.gowander.home.spreadOut
@@ -138,12 +141,20 @@ fun MapHome(
     // Zoomed far out: how many places each part of the screen holds, instead of single places.
     loadClusters: suspend (Double, Double, Double, Double, Set<String>?) -> List<PlaceCluster>?,
     loadPhoto: suspend (Double, Double) -> StreetPhoto?, // card photo: the nearest street photo, until places have their own (ADR-035)
+    weather: WeatherQuery, // the map tab's current/tapped-point weather; Open-Meteo through the API
     onSearch: () -> Unit,
     onLocate: () -> Unit,
     onOpenPlace: (PlaceSummary) -> Unit,
     onSeeAll: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(0) }
+    val mapView = rememberMapViewState()
+    // Weather for this screen: the place the user tapped, else the GPS fix, else the route origin.
+    var tapped by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val tappedPoint = tapped
+    val locationPoint = location.lastLocation?.position?.let { it.latitude to it.longitude }
+    val weatherPoint = tappedPoint ?: locationPoint ?: state.origin?.let { it.lat to it.lon }
+    val weatherReading = rememberWeatherAt(weatherPoint?.first, weatherPoint?.second, weather)
     // A card sits above its place (about 100 dp with the stem): skip places whose card would land under the search bar,
     // the filters or the map-type button. The camera is not observable state, so poll it (as on the pick screen).
     val mapRef = remember { mutableStateOf<MapState?>(null) }
@@ -218,6 +229,7 @@ fun MapHome(
             null, state.origin, null, location, Modifier.fillMaxSize(), viewSwitch = true,
             insets = PaddingValues(top = 124.dp, bottom = 72.dp), stateOut = mapRef,
             credit = if (photosShown) Strings.MAP_CREDIT + "\n" + Strings.STREET_PHOTO_CREDIT else Strings.MAP_CREDIT,
+            mapView = mapView, onMapTap = { lat, lon -> tapped = lat to lon },
         ) {
             clusters.forEach { c ->
                 val spot = Position(latitude = c.lat, longitude = c.lon)
@@ -251,12 +263,29 @@ fun MapHome(
                 ) { dot() } else Box(Modifier.placedAt(spot).clearAndSetSemantics { }) { dot() }
             }
             cards.forEach { p -> PlaceCard(p, Modifier.placedAt(Position(latitude = p.lat, longitude = p.lon), Alignment.BottomCenter), loadPhoto, { photosShown = true }) { onOpenPlace(p) } }
+            // The weather at the point the user touched, pinned to that point (the chip below says which point).
+            if (tappedPoint != null && weatherReading != null) {
+                Column(
+                    Modifier.placedAt(Position(latitude = tappedPoint.first, longitude = tappedPoint.second), Alignment.BottomCenter),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    WeatherPill(weatherReading)
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(Palette.Primary))
+                }
+            }
         }
         Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SearchBar(Strings.FIND_PLACE, Modifier.fillMaxWidth(), floating = true, onClick = onSearch)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MAP_FILTERS.forEachIndexed { i, (label, _) -> Pill(label, selected = i == filter) { filter = i } }
             }
+        }
+        if (weatherReading != null) {
+            WeatherPill(
+                weatherReading,
+                label = if (tappedPoint != null) Strings.WEATHER_TAPPED else Strings.WEATHER_HERE,
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 76.dp),
+            )
         }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(
@@ -272,7 +301,7 @@ fun MapHome(
             Box(
                 Modifier.size(48.dp).kitShadow(CircleShape).clip(CircleShape).background(Palette.Bg)
                     .semantics { contentDescription = Strings.USE_MY_LOCATION }
-                    .clickable(role = Role.Button, onClick = onLocate),
+                    .clickable(role = Role.Button) { tapped = null; onLocate() },
                 contentAlignment = Alignment.Center,
             ) { Icon(ExtraIcons.send, 22.dp, Palette.Primary) }
         }
@@ -765,7 +794,7 @@ fun ResultsScreen(
 private fun RouteOptionCard(r: Route, highlight: Boolean, later: List<Pair<Int, String>>, onOpenLater: (Int) -> Unit, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shadow = highlight, onClick = onClick) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(Strings.minutes(r.durationSec), Modifier.weight(1f), size = 26.sp, weight = FontWeight.Bold)
+            Text(Strings.minutes(r.durationSec), Modifier.weight(1f), size = 26.sp, weight = FontWeight.Bold, maxLines = 1)
             Text("${clock(r.startTime)} → ${clock(r.endTime)}", size = 13.sp, color = Palette.Muted)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -813,11 +842,13 @@ fun DetailScreen(
     val waits = remember(route) { waitsBeforeLegs(route.legs) }
     val undrawable = remember(route) { undrawableLegs(route) }
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val mapView = rememberMapViewState()
     // Full-screen map like the pick screen (owner, 14-11-2026: the 220 dp map was too small); details in a bottom sheet.
     Box(Modifier.fillMaxSize().background(Palette.Bg)) {
         RouteMap(
             route, state.origin, state.destination, location, Modifier.fillMaxSize(),
             viewSwitch = true, insets = PaddingValues(top = 80.dp, bottom = if (expanded) 600.dp else 390.dp),
+            mapView = mapView,
         )
         // Design screen 5: only a round back button over the map (the sheet says what this is).
         Box(Modifier.safeDrawingPadding().padding(16.dp)) { Header("", floating = true, onBack = onBack) }
@@ -846,8 +877,17 @@ fun DetailScreen(
                     Box(Modifier.width(40.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Palette.Line))
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(Strings.minutes(route.durationSec), Modifier.weight(1f), size = 26.sp, weight = FontWeight.Bold)
-                    Note("${clock(route.startTime)} → ${clock(route.endTime)} · ${Strings.TO_PLACE} ${state.destination?.label ?: Strings.DESTINATION.lowercase()}")
+                    // The duration must stay one line: a weighted text used to shrink to "2 / ph / út" when the
+                    // destination line was long (owner, 17-11-2026).
+                    Text(
+                        Strings.minutes(route.durationSec),
+                        Modifier.widthIn(min = 88.dp).padding(end = 10.dp),
+                        size = 26.sp, weight = FontWeight.Bold, maxLines = 1,
+                    )
+                    Note(
+                        "${clock(route.startTime)} → ${clock(route.endTime)} · ${Strings.TO_PLACE} ${state.destination?.label ?: Strings.DESTINATION.lowercase()}",
+                        Modifier.weight(1f),
+                    )
                 }
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {

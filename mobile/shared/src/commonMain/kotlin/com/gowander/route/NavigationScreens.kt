@@ -182,6 +182,7 @@ fun NavigationScreen(
     }
 
     val topView = remember { mutableStateOf(MapView.Satellite) }
+    val mapView = rememberMapViewState() // the lower map only; the top is always satellite
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.fillMaxWidth().weight(420f)) {
             // Top half is always satellite, first-person: the user sees the real streets, not a schematic.
@@ -226,11 +227,12 @@ fun NavigationScreen(
             }
         }
         Box(Modifier.fillMaxWidth().weight(432f)) {
-            val viewState = LocalMapView.current
+            val viewState = mapView
             LaunchedEffect(Unit) { if (viewState.value == MapView.Satellite) viewState.value = MapView.Tilted }
             RouteMap(
                 route, state.origin, state.destination, location, Modifier.fillMaxSize().padding(top = 3.dp), follow = true,
                 followZoom = OVERVIEW_ZOOM, insets = PaddingValues(bottom = 146.dp), // pitch from the 2D / 3D choice below
+                mapView = mapView,
             )
             // Design screen 7: speaker (Bật -> Chỉ cảnh báo -> Tắt, saved) above the 2D / 3D button.
             val voiceLabel = when (voice) { VoiceMode.On -> Strings.VOICE_ON; VoiceMode.AlertsOnly -> Strings.VOICE_ALERTS; VoiceMode.Off -> Strings.VOICE_OFF }
@@ -342,7 +344,7 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
     val here = Position(latitude = pos.first, longitude = pos.second)
     // Street level: close and tilted like the view from the road, looking where the route goes next.
     val streetCamera = remember(pos, heading) { CameraUpdate(center = here, zoom = STREET_ZOOM, pitch = STREET_PITCH, bearing = heading) }
-    val viewState = LocalMapView.current
+    val viewState = rememberMapViewState()
     // The lower map only offers 2D / 3D; if a previous screen stored Satellite, fall back to 3D.
     LaunchedEffect(Unit) { if (viewState.value == MapView.Satellite) viewState.value = MapView.Tilted }
     val overviewCamera = remember(pos, viewState.value) { CameraUpdate(center = here, zoom = OVERVIEW_ZOOM, pitch = if (viewState.value == MapView.Tilted) 55.0 else 0.0, bearing = 0.0) }
@@ -371,7 +373,7 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
             )
         }
         Box(Modifier.fillMaxWidth().weight(482f)) {
-            RouteMap(route, state.origin, state.destination, null, Modifier.fillMaxSize().padding(top = 3.dp), focus = overviewCamera, highlight = pos, insets = PaddingValues(bottom = 206.dp))
+            RouteMap(route, state.origin, state.destination, null, Modifier.fillMaxSize().padding(top = 3.dp), focus = overviewCamera, highlight = pos, insets = PaddingValues(bottom = 206.dp), mapView = viewState)
             ViewSegment(viewState.value, Modifier.align(Alignment.TopEnd).padding(top = 15.dp, end = 12.dp)) { viewState.value = it }
             BottomSheet(
                 Modifier.align(Alignment.BottomCenter)

@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -44,12 +45,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.gowander.ui.IconButton
 import com.gowander.ui.KitIcons
+import org.maplibre.compose.interaction.ClickResult
+import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.overlay.MapOverlayScope
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import com.gowander.ui.Note
 import com.gowander.ui.Strings
 import com.gowander.ui.kitShadow
+import kotlinx.serialization.json.JsonPrimitive
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.key
@@ -107,6 +111,10 @@ enum class MapView { Flat, Tilted, Satellite }
 /** One choice for every map in the app; App provides it so the choice survives screen changes. */
 val LocalMapView = compositionLocalOf<MutableState<MapView>> { mutableStateOf(MapView.Flat) }
 
+/** One screen's map view: choosing 3D on a route must not turn the map tab or the next route 3D. */
+@Composable
+fun rememberMapViewState(): MutableState<MapView> = rememberSaveable { mutableStateOf(MapView.Flat) }
+
 private fun pitchFor(view: MapView, follow: Boolean) = when {
     view == MapView.Tilted -> 55.0
     view == MapView.Flat -> 0.0
@@ -141,9 +149,24 @@ fun RouteMap(
     sketch: String? = null, // plan map: stops joined by straight lines where no route is known yet, or a proposed order (dashed)
     fit: List<Pair<Double, Double>> = emptyList(), // points to frame when there is no route or endpoint (plan stops)
     maskJson: String? = null, // GeoJSON polygon painted over the basemap in the sea colour: hides what is outside one country
+    onMapTap: ((Double, Double) -> Unit)? = null, // a tap on the empty map: the map tab shows weather there
+    mapView: MutableState<MapView>? = null, // the screen's own view state; null = the composition's LocalMapView
     markers: @Composable MapOverlayScope.() -> Unit = {}, // UX-2 screen 1: place cards pinned to coordinates
 ) {
-    val viewState = LocalMapView.current
+    val viewState = mapView ?: LocalMapView.current
+    val interactions = remember(onMapTap) {
+        val tap = onMapTap
+        if (tap == null) MapInteractions.Standard else MapInteractions {
+            callbacks {
+                click {
+                    onUnhandled { event ->
+                        event.position?.let { tap(it.latitude, it.longitude) }
+                        ClickResult.Pass
+                    }
+                }
+            }
+        }
+    }
     val view = viewState.value
     // Decode polylines only when the route changes, not on every recomposition (GPS fixes recompose often).
     val walkJson = remember(route) { legsGeoJson(route, transit = false) }
@@ -176,6 +199,12 @@ fun RouteMap(
         key(destinationJson) { CircleLayer(id = "destination", source = rememberGeoJsonSource(GeoJsonData.JsonString(destinationJson)), color = const(Palette.Accent), radius = const(8.dp), strokeColor = const(Color.White), strokeWidth = const(3.dp)) }
         key(highlightJson) { CircleLayer(id = "step", source = rememberGeoJsonSource(GeoJsonData.JsonString(highlightJson)), color = const(Palette.Primary), radius = const(10.dp), strokeColor = const(Color.White), strokeWidth = const(4.dp)) }
         if (location != null) LocationIndicatorLayer(id = "user", locationState = location)
+    }
+    // 2D is a flat map: the style's fat building footprints stay, but the extruded layer is visible only in 3D.
+    // The style toggles it back to none on a reload; keying on loadState reapplies the choice when the style returns.
+    LaunchedEffect(view, mapState.style.loadState) {
+        mapState.style.layers["building-3d"]?.asMutable
+            ?.setLayoutProperty("visibility", JsonPrimitive(if (view == MapView.Tilted) "visible" else "none"))
     }
     // Navigation: follow each GPS fix at the user's pace; a pan/zoom by hand pauses following until "Căn giữa lại".
     var following by remember { mutableStateOf(true) }
@@ -221,6 +250,7 @@ fun RouteMap(
         // opened across the middle of the map on iOS (14-11-2026). The licence credit is drawn below instead.
         MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, viewportInsets = insets, overlay = markers,
             cameraConstraints = if (streetLevel) STREET_LEVEL else CameraConstraints.Standard,
+            interactions = interactions,
         )
         // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
         Text(

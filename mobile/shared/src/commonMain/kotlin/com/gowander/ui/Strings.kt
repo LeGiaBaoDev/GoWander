@@ -346,6 +346,8 @@ object Strings {
     val WEATHER_EARLIER get() = t("WEATHER_EARLIER", "Sớm 1 giờ")
     val WEATHER_LATER get() = t("WEATHER_LATER", "Muộn 1 giờ")
     val WEATHER_SOURCE get() = t("WEATHER_SOURCE", "Nguồn: Open-Meteo · CC BY 4.0")
+    val WEATHER_HERE get() = t("WEATHER_HERE", "Khu vực này")
+    val WEATHER_TAPPED get() = t("WEATHER_TAPPED", "Điểm chạm")
     fun rainAt(percent: Int, time: String) = if (Language.current == Lang.EN) "Rain $percent% at $time" else "Mưa $percent% lúc $time"
     fun rainAtTime(time: String) = if (Language.current == Lang.EN) "Rain at $time" else "Có mưa lúc $time"
     fun hotAt(degrees: Int, time: String) = if (Language.current == Lang.EN) "Hot $degrees° at $time" else "Nắng nóng $degrees° lúc $time"
@@ -696,6 +698,8 @@ private val EN: Map<String, String> = mapOf(
     "WEATHER_EARLIER" to "1 hour earlier",
     "WEATHER_LATER" to "1 hour later",
     "WEATHER_SOURCE" to "Source: Open-Meteo · CC BY 4.0",
+    "WEATHER_HERE" to "This area",
+    "WEATHER_TAPPED" to "Tapped point",
     "DESIGN" to "Design",
     "SETTINGS" to "Settings",
     "PORTFOLIO" to "Portfolio",

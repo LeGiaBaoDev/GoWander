@@ -165,9 +165,8 @@ fun App() = KitTheme {
         WelcomeScreen { Prefs.setBool(ONBOARDED, true); onboarded = true }
         return@KitTheme
     }
-    val mapView = rememberSaveable { mutableStateOf(com.gowander.route.MapView.Flat) }
     val photos = remember { com.gowander.ui.PhotoLoader(sharedApi) }
-    CompositionLocalProvider(com.gowander.route.LocalMapView provides mapView, com.gowander.ui.LocalPhotoLoader provides photos) { AppContent() }
+    CompositionLocalProvider(com.gowander.ui.LocalPhotoLoader provides photos) { AppContent() }
 }
 
 @OptIn(ExperimentalComposeUiApi::class) // BackHandler is experimental in Compose Multiplatform 1.12 (ADR-029)
@@ -566,7 +565,7 @@ private fun AppContent() {
                 Screen.Language -> LanguageScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
-                        route, location, nearby, loadPhoto = loadPhoto,
+                        route, location, nearby, loadPhoto = loadPhoto, weather = weatherQuery,
                         loadClusters = { south, west, north, east, slugs -> try { sharedApi.placeClusters(south, west, north, east, slugs) } catch (e: ApiError) { null } },
                         loadPlaces = { south, west, north, east, slugs ->
                             try { sharedApi.placesInBounds(south, west, north, east, slugs, limit = MAP_PLACES_LIMIT).map { it.copy(distanceM = metersBetween(near.lat, near.lon, it.lat, it.lon)) } } catch (e: ApiError) { null }
