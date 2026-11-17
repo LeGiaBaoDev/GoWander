@@ -3,11 +3,17 @@ package com.gowander.route
 import com.gowander.api.Fixtures
 import com.gowander.api.PlanResponse
 import com.gowander.api.apiJson
+import com.gowander.ui.Lang
+import com.gowander.ui.Language
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class RouteMathTest {
+    @BeforeTest
+    fun vietnamese() = Language.set(Lang.VI)
+
     private val routes = apiJson.decodeFromString<PlanResponse>(Fixtures.ROUTE_OK).routes
 
     @Test
@@ -45,6 +51,9 @@ class RouteMathTest {
 }
 
 class DistanceLabelTest {
+    @BeforeTest
+    fun vietnamese() = Language.set(Lang.VI)
+
     @kotlin.test.Test
     fun kilometresUseTheVietnameseDecimalComma() {
         kotlin.test.assertEquals("1,2 km", distanceLabel(1_234.0))

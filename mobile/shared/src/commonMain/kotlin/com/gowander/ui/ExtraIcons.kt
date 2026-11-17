@@ -30,6 +30,16 @@ object ExtraIcons {
             "M14,5a1,1 0 1,0 2,0a1,1 0 1,0 -2,0", "M12 17.5V14l-3-3 4-3 2 3h2",
         )
     }
+    val sun: ImageVector by lazy {
+        strokeIcon(
+            "sun",
+            "M8,12a4,4 0 1,0 8,0a4,4 0 1,0 -8,0", "M12 2v2", "M12 20v2", "m4.9 4.9 1.4 1.4", "m17.7 17.7 1.4 1.4",
+            "M2 12h2", "M20 12h2", "m6.3 17.7-1.4 1.4", "m19.1 4.9-1.4 1.4",
+        )
+    }
+    val home: ImageVector by lazy {
+        strokeIcon("house", "m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", "M9 22V12h6v10")
+    }
     val layers: ImageVector by lazy {
         strokeIcon(
             "layers",

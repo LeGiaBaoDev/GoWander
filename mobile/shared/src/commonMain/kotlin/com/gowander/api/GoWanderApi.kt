@@ -70,6 +70,8 @@ interface GoWanderApi {
     suspend fun submitFeedback(draft: com.gowander.feedback.FeedbackDraft): String
     suspend fun geocode(query: String, near: LatLon?): List<GeoResult>
     suspend fun reverseGeocode(at: LatLon): List<GeoResult>
+    /** Hourly forecast at [at] (RFC 3339 with offset), or now when null; Open-Meteo through the API. */
+    suspend fun weather(lat: Double, lon: Double, at: String? = null): WeatherReading
     /** Nearest street photo, or null when there is none near [at] (STREET_IMAGE_NOT_FOUND). */
     suspend fun streetImage(at: LatLon): StreetImageResponse?
     /** Raw bytes of an image URL returned by the API (street photo). */
@@ -214,6 +216,13 @@ class KtorGoWanderApi(private val client: HttpClient, baseUrl: String) : GoWande
             parameter("lat", at.lat)
             parameter("lon", at.lon)
         }.results
+
+    override suspend fun weather(lat: Double, lon: Double, at: String?): WeatherReading =
+        call<WeatherResponse>("/api/v1/weather") {
+            parameter("lat", lat)
+            parameter("lon", lon)
+            parameter("at", at)
+        }.weather
 
     override suspend fun streetImage(at: LatLon): StreetImageResponse? = try {
         call<StreetImageResponse>("/api/v1/street-images/nearest") {

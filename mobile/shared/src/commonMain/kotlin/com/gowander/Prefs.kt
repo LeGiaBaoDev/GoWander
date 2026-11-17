@@ -7,3 +7,6 @@ expect object Prefs {
     fun getString(key: String): String?
     fun setString(key: String, value: String)
 }
+
+/** ISO 639-1 code of the device language ("vi", "en", ...); the app falls back to Vietnamese for anything else. */
+expect fun systemLanguageCode(): String

@@ -24,6 +24,18 @@ type Config struct {
 	// PHOTON_URL: self-hosted Photon geocoder (infrastructure/photon), default http://127.0.0.1:2322. Optional at runtime:
 	// if it is down only address search fails (GEOCODER_UNAVAILABLE); readiness does not depend on it.
 	PhotonURL string
+	// VIETMAP_SERVICES_KEY: Vietmap Maps API key for geocoding (paid upgrade path, pilot). Optional: empty or disabled
+	// keeps Photon. A secret: never log it. VIETMAP_API_URL defaults to https://maps.vietmap.vn/api;
+	// VIETMAP_TIMEOUT defaults to 5s. VIETMAP_GEOCODING_ENABLED=false keeps the old Photon-only behaviour.
+	VietmapServicesKey string
+	VietmapAPIURL      string
+	VietmapTimeout     time.Duration
+	VietmapGeocoding   bool
+
+	// Weather (Open-Meteo) for plan advice and rain-aware ETA. WEATHER_URL defaults to the public forecast endpoint;
+	// WEATHER_TIMEOUT defaults to 5s. The free tier is non-commercial: buy or self-host before a commercial launch.
+	WeatherURL     string
+	WeatherTimeout time.Duration
 	// MAPILLARY_TOKEN: client token for street photos in the route preview (NAV-1, ADR-033). Optional: empty turns the
 	// feature off (STREET_IMAGERY_UNAVAILABLE) and the app shows a 3D map instead. A secret: never log it.
 	MapillaryToken string
@@ -65,6 +77,9 @@ var (
 // R2Enabled: photos are stored in the R2 bucket.
 func (c Config) R2Enabled() bool { return c.R2Bucket != "" }
 
+// VietmapEnabled: geocoding goes to Vietmap first, with Photon as fallback. A key without the flag stays unused.
+func (c Config) VietmapEnabled() bool { return c.VietmapGeocoding && c.VietmapServicesKey != "" }
+
 // AdminEnabled: the Admin pages can open the database. MailEnabled: they can send "quên mật khẩu" emails.
 func (c Config) AdminEnabled() bool { return c.AdminDatabaseURL != "" }
 func (c Config) MailEnabled() bool  { return c.SMTPHost != "" }
@@ -78,13 +93,16 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		Addr:           or("HTTP_ADDR", "127.0.0.1:8090"),
-		OTPURL:         or("OTP_URL", "http://127.0.0.1:8088"),
-		DataStatus:     or("ROUTING_DATA_STATUS", "ASSUMED"),
-		DatabaseURL:    getenv("DATABASE_URL"),
-		PhotonURL:      or("PHOTON_URL", "http://127.0.0.1:2322"),
-		MapillaryToken: getenv("MAPILLARY_TOKEN"),
-		MapillaryURL:   or("MAPILLARY_URL", "https://graph.mapillary.com"),
+		Addr:               or("HTTP_ADDR", "127.0.0.1:8090"),
+		OTPURL:             or("OTP_URL", "http://127.0.0.1:8088"),
+		DataStatus:         or("ROUTING_DATA_STATUS", "ASSUMED"),
+		DatabaseURL:        getenv("DATABASE_URL"),
+		PhotonURL:          or("PHOTON_URL", "http://127.0.0.1:2322"),
+		VietmapServicesKey: strings.TrimSpace(getenv("VIETMAP_SERVICES_KEY")),
+		VietmapAPIURL:      or("VIETMAP_API_URL", "https://maps.vietmap.vn/api"),
+		WeatherURL:         or("WEATHER_URL", "https://api.open-meteo.com/v1/forecast"),
+		MapillaryToken:     getenv("MAPILLARY_TOKEN"),
+		MapillaryURL:       or("MAPILLARY_URL", "https://graph.mapillary.com"),
 
 		AdminDatabaseURL:  getenv("ADMIN_DATABASE_URL"),
 		AdminBaseURL:      strings.TrimRight(or("ADMIN_BASE_URL", "http://localhost:8090"), "/"),
@@ -115,6 +133,33 @@ func Load(getenv func(string) string) (Config, error) {
 	if u, err := url.Parse(c.PhotonURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		errs = append(errs, errors.New("PHOTON_URL must be an absolute http(s) URL without credentials"))
 	}
+	// The Vietmap key travels in the query string: plain http only for a local stub, never for the real API.
+	if u, err := url.Parse(c.VietmapAPIURL); err != nil || u.Host == "" || u.User != nil ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {
+		errs = append(errs, errors.New("VIETMAP_API_URL must be https (http only for 127.0.0.1/localhost) without credentials"))
+	}
+	vietmapTimeout, err := time.ParseDuration(or("VIETMAP_TIMEOUT", "5s"))
+	if err != nil || vietmapTimeout <= 0 || vietmapTimeout > 30*time.Second {
+		errs = append(errs, fmt.Errorf("VIETMAP_TIMEOUT must be a duration in (0, 30s], got %q", getenv("VIETMAP_TIMEOUT")))
+	}
+	c.VietmapTimeout = vietmapTimeout
+	vietmapGeocoding, err := strconv.ParseBool(or("VIETMAP_GEOCODING_ENABLED", "false"))
+	if err != nil {
+		errs = append(errs, fmt.Errorf("VIETMAP_GEOCODING_ENABLED must be true or false, got %q", getenv("VIETMAP_GEOCODING_ENABLED")))
+	}
+	c.VietmapGeocoding = vietmapGeocoding
+	if c.VietmapGeocoding && c.VietmapServicesKey == "" {
+		errs = append(errs, errors.New("VIETMAP_SERVICES_KEY is required when VIETMAP_GEOCODING_ENABLED=true"))
+	}
+	if u, err := url.Parse(c.WeatherURL); err != nil || u.Host == "" || u.User != nil ||
+		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {
+		errs = append(errs, errors.New("WEATHER_URL must be https (http only for 127.0.0.1/localhost) without credentials"))
+	}
+	weatherTimeout, err := time.ParseDuration(or("WEATHER_TIMEOUT", "5s"))
+	if err != nil || weatherTimeout <= 0 || weatherTimeout > 30*time.Second {
+		errs = append(errs, fmt.Errorf("WEATHER_TIMEOUT must be a duration in (0, 30s], got %q", getenv("WEATHER_TIMEOUT")))
+	}
+	c.WeatherTimeout = weatherTimeout
 	// The token is sent to this URL: plain http only for a local stub (security review 14-11-2026).
 	if u, err := url.Parse(c.MapillaryURL); err != nil || u.Host == "" || u.User != nil ||
 		!(u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"))) {

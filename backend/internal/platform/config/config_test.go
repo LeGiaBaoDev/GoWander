@@ -28,7 +28,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587,
+	want := Config{Addr: "127.0.0.1:8090", OTPURL: "http://127.0.0.1:8088", OTPTimeout: 8 * time.Second, DataStatus: "ASSUMED", DatabaseURL: dbURL, PhotonURL: "http://127.0.0.1:2322", VietmapAPIURL: "https://maps.vietmap.vn/api", VietmapTimeout: 5 * time.Second, WeatherURL: "https://api.open-meteo.com/v1/forecast", WeatherTimeout: 5 * time.Second, MapillaryURL: "https://graph.mapillary.com", AdminBaseURL: "http://localhost:8090", SMTPPort: 587,
 		MediaDir: "var/media", MediaBaseURL: "/media"}
 	if !sameConfig(c, want) {
 		t.Fatalf("got %+v, want %+v", c, want)
@@ -61,30 +61,37 @@ func TestLoadOverrides(t *testing.T) {
 
 func TestLoadInvalid(t *testing.T) {
 	for name, getenv := range map[string]func(string) string{
-		"OTP_URL without scheme":    only("OTP_URL", "localhost:8088"),
-		"OTP_URL with credentials":  only("OTP_URL", "http://user:secret@otp:8088"),
-		"OTP_TIMEOUT not duration":  only("OTP_TIMEOUT", "soon"),
-		"OTP_TIMEOUT zero":          only("OTP_TIMEOUT", "0s"),
-		"OTP_TIMEOUT negative":      only("OTP_TIMEOUT", "-1s"),
-		"OTP_TIMEOUT too long":      only("OTP_TIMEOUT", "31s"),
-		"ROUTING_DATA_STATUS":       only("ROUTING_DATA_STATUS", "MAYBE"),
-		"DATABASE_URL missing":      func(string) string { return "" },
-		"PHOTON_URL without scheme": only("PHOTON_URL", "127.0.0.1:2322"),
-		"MAPILLARY_URL plain http":  only("MAPILLARY_URL", "http://graph.mapillary.com"),
-		"DATABASE_URL not postgres": only("DATABASE_URL", "mysql://root:secret@db/gowander"),
-		"ADMIN_DATABASE_URL not pg": only("ADMIN_DATABASE_URL", "mysql://admin:secret@db/gowander"),
-		"ADMIN_BASE_URL plain http": only("ADMIN_BASE_URL", "http://admin.example.vn"),
-		"ADMIN_BASE_URL with path":  only("ADMIN_BASE_URL", "https://example.vn/admin"),
-		"https Admin before R2":     only("ADMIN_BASE_URL", "https://admin.example.vn"),
-		"MEDIA_BASE_URL no slash":   only("MEDIA_BASE_URL", "media"),
-		"R2 without keys":           only("R2_BUCKET", "gowander-media", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
-		"R2 bad account":            only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "not-hex", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
-		"R2 local MEDIA_BASE_URL":   only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "0b9c162bb69123ce74f23ff8cf3157b6", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s"),
-		"MEDIA_BASE_URL other host": only("MEDIA_BASE_URL", "//evil.example/media"),
-		"MEDIA_BASE_URL ftp":        only("MEDIA_BASE_URL", "ftp://cdn.example.vn"),
-		"SMTP without from":         only("SMTP_HOST", "smtp.gmail.com"),
-		"SMTP user without secret":  only("SMTP_HOST", "smtp.gmail.com", "SMTP_FROM", "a@example.vn", "SMTP_USERNAME", "a@example.vn"),
-		"SMTP_PORT not a number":    only("SMTP_PORT", "smtp"),
+		"OTP_URL without scheme":     only("OTP_URL", "localhost:8088"),
+		"OTP_URL with credentials":   only("OTP_URL", "http://user:secret@otp:8088"),
+		"OTP_TIMEOUT not duration":   only("OTP_TIMEOUT", "soon"),
+		"OTP_TIMEOUT zero":           only("OTP_TIMEOUT", "0s"),
+		"OTP_TIMEOUT negative":       only("OTP_TIMEOUT", "-1s"),
+		"OTP_TIMEOUT too long":       only("OTP_TIMEOUT", "31s"),
+		"ROUTING_DATA_STATUS":        only("ROUTING_DATA_STATUS", "MAYBE"),
+		"DATABASE_URL missing":       func(string) string { return "" },
+		"PHOTON_URL without scheme":  only("PHOTON_URL", "127.0.0.1:2322"),
+		"VIETMAP_API_URL plain http": only("VIETMAP_API_URL", "http://maps.vietmap.vn/api"),
+		"VIETMAP_TIMEOUT zero":       only("VIETMAP_TIMEOUT", "0s"),
+		"VIETMAP_TIMEOUT too long":   only("VIETMAP_TIMEOUT", "31s"),
+		"VIETMAP enabled no key":     only("VIETMAP_GEOCODING_ENABLED", "true"),
+		"VIETMAP flag not bool":      only("VIETMAP_GEOCODING_ENABLED", "yes"),
+		"WEATHER_URL plain http":     only("WEATHER_URL", "http://api.open-meteo.com/v1/forecast"),
+		"WEATHER_TIMEOUT zero":       only("WEATHER_TIMEOUT", "0s"),
+		"MAPILLARY_URL plain http":   only("MAPILLARY_URL", "http://graph.mapillary.com"),
+		"DATABASE_URL not postgres":  only("DATABASE_URL", "mysql://root:secret@db/gowander"),
+		"ADMIN_DATABASE_URL not pg":  only("ADMIN_DATABASE_URL", "mysql://admin:secret@db/gowander"),
+		"ADMIN_BASE_URL plain http":  only("ADMIN_BASE_URL", "http://admin.example.vn"),
+		"ADMIN_BASE_URL with path":   only("ADMIN_BASE_URL", "https://example.vn/admin"),
+		"https Admin before R2":      only("ADMIN_BASE_URL", "https://admin.example.vn"),
+		"MEDIA_BASE_URL no slash":    only("MEDIA_BASE_URL", "media"),
+		"R2 without keys":            only("R2_BUCKET", "gowander-media", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
+		"R2 bad account":             only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "not-hex", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s", "MEDIA_BASE_URL", "https://pub-x.r2.dev"),
+		"R2 local MEDIA_BASE_URL":    only("R2_BUCKET", "gowander-media", "R2_ACCOUNT_ID", "0b9c162bb69123ce74f23ff8cf3157b6", "R2_ACCESS_KEY_ID", "k", "R2_SECRET_ACCESS_KEY", "s"),
+		"MEDIA_BASE_URL other host":  only("MEDIA_BASE_URL", "//evil.example/media"),
+		"MEDIA_BASE_URL ftp":         only("MEDIA_BASE_URL", "ftp://cdn.example.vn"),
+		"SMTP without from":          only("SMTP_HOST", "smtp.gmail.com"),
+		"SMTP user without secret":   only("SMTP_HOST", "smtp.gmail.com", "SMTP_FROM", "a@example.vn", "SMTP_USERNAME", "a@example.vn"),
+		"SMTP_PORT not a number":     only("SMTP_PORT", "smtp"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(getenv)
@@ -103,5 +110,22 @@ func TestR2AllowsHTTPSAdmin(t *testing.T) {
 		"R2_SECRET_ACCESS_KEY", "s", "MEDIA_BASE_URL", "https://pub-x.r2.dev/", "ADMIN_BASE_URL", "https://admin.example.vn"))
 	if err != nil || !c.R2Enabled() || c.MediaBaseURL != "https://pub-x.r2.dev" {
 		t.Fatalf("%+v %v", c.MediaBaseURL, err)
+	}
+}
+
+func TestVietmapGeocoding(t *testing.T) {
+	c, err := Load(only("VIETMAP_GEOCODING_ENABLED", "true", "VIETMAP_SERVICES_KEY", "test-key", "VIETMAP_API_URL", "https://maps.vietmap.vn/api", "VIETMAP_TIMEOUT", "7s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.VietmapEnabled() || c.VietmapTimeout != 7*time.Second || c.VietmapServicesKey != "test-key" {
+		t.Fatalf("got %+v", c)
+	}
+	c, err = Load(only("VIETMAP_SERVICES_KEY", "test-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.VietmapEnabled() {
+		t.Fatal("a key without VIETMAP_GEOCODING_ENABLED must not enable Vietmap")
 	}
 }

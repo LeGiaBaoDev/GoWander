@@ -50,6 +50,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +74,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.gowander.ui.Button
 import com.gowander.ui.ButtonKind
 import com.gowander.ui.Card
@@ -103,7 +107,7 @@ private const val BACKTRACK_M = 50.0
 // ▶▶ Chạy: 1.5 m every 100 ms = 15 m/s (~54 km/h, about 10x walking). It was 12 m / 160 ms (~270 km/h): far too fast
 // to read the street (owner, 15-11-2026). A 2 km route plays in about 2 minutes; Trước / Sau still jump step by step.
 private const val DRIVE_SPACING_M = 1.5
-private const val STREET_ZOOM = 20.5 // ~eye level: buildings and the road at near 1:1 scale
+private const val STREET_ZOOM = 19.0 // matches the Esri satellite source's max zoom (z20+ is its grey "no data" tile)
 private const val STREET_PITCH = 65.0 // 78° ran out of memory (tiles to the horizon, 1.1 GB on the emulator, 14-11-2026)
 private const val DRIVE_TICK_MS = 100L
 private const val NUDGE_M = 20.0 // one tap on ︿ / ﹀ moves this far along the route (owner: small steps, like Street View)
@@ -156,6 +160,18 @@ fun NavigationScreen(
     var voice by rememberSaveable { mutableStateOf(VoiceMode.load()) }
     val cues = remember(route) { VoiceCues() }
     var spoken by remember(route) { mutableStateOf<String?>(null) }
+    // Off-route safety warning: full-screen, haptic when voice is off, voice when it is on; stops the moment the user
+    // is back on the route or taps the manual dismiss button.
+    var warningDismissed by rememberSaveable(route) { mutableStateOf(false) }
+    LaunchedEffect(offRoute) { if (!offRoute) warningDismissed = false }
+    val warningHaptics = rememberWarningHaptics()
+    LaunchedEffect(offRoute, warningDismissed, voice) {
+        val active = offRoute && !warningDismissed
+        if (!active) { warningHaptics.stop(); return@LaunchedEffect }
+        if (voice == VoiceMode.Off) { warningHaptics.start(); return@LaunchedEffect }
+        while (true) { speaker.speak(Strings.WRONG_WAY_SPOKEN); delay(6000) }
+    }
+    DisposableEffect(Unit) { onDispose { warningHaptics.stop() } }
     LaunchedEffect(progress, arrived, offRoute) {
         val cue = cues.next(progress, steps, arrived, offRoute, destination) ?: return@LaunchedEffect
         if (audible(cue, voice)) { spoken = cue.text; speaker.speak(cue.text) }
@@ -165,13 +181,16 @@ fun NavigationScreen(
         if (speaker.ready == false && !Prefs.getBool(NO_VOICE_TOLD)) { Prefs.setBool(NO_VOICE_TOLD, true); notice(Strings.NO_VI_VOICE) }
     }
 
+    val topView = remember { mutableStateOf(MapView.Satellite) }
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.fillMaxWidth().weight(420f)) {
-            // Street view following the user (zoom a little wider than the preview: it moves, so fewer tiles per second).
-            RouteMap(
-                route, state.origin, state.destination, location, Modifier.fillMaxSize(), follow = true, streetLevel = true,
-                followZoom = NAV_STREET_ZOOM, followPitch = STREET_PITCH, insets = PaddingValues(top = 130.dp),
-            )
+            // Top half is always satellite, first-person: the user sees the real streets, not a schematic.
+            CompositionLocalProvider(LocalMapView provides topView) {
+                RouteMap(
+                    route, state.origin, state.destination, location, Modifier.fillMaxSize(), follow = true, streetLevel = true,
+                    followZoom = NAV_STREET_ZOOM, followPitch = STREET_PITCH, insets = PaddingValues(top = 130.dp),
+                )
+            }
             Column(Modifier.fillMaxWidth().safeDrawingPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     Modifier.fillMaxWidth().kitShadow(RoundedCornerShape(18.dp)).clip(RoundedCornerShape(18.dp)).background(NavBanner).padding(horizontal = 14.dp, vertical = 12.dp),
@@ -208,6 +227,7 @@ fun NavigationScreen(
         }
         Box(Modifier.fillMaxWidth().weight(432f)) {
             val viewState = LocalMapView.current
+            LaunchedEffect(Unit) { if (viewState.value == MapView.Satellite) viewState.value = MapView.Tilted }
             RouteMap(
                 route, state.origin, state.destination, location, Modifier.fillMaxSize().padding(top = 3.dp), follow = true,
                 followZoom = OVERVIEW_ZOOM, insets = PaddingValues(bottom = 146.dp), // pitch from the 2D / 3D choice below
@@ -243,6 +263,24 @@ fun NavigationScreen(
                     Spacer(Modifier.width(12.dp))
                     Button(Strings.EXIT, kind = ButtonKind.Accent, pill = true, onClick = onExit)
                 }
+            }
+        }
+    }
+    if (offRoute && !warningDismissed) WrongWayDialog { warningDismissed = true }
+}
+
+@Composable
+private fun WrongWayDialog(onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier.fillMaxSize().background(Palette.Accent.copy(alpha = 0.97f)).safeDrawingPadding().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("⚠", size = 64.sp, color = Color.White, weight = FontWeight.Bold)
+                Text(Strings.WRONG_WAY_TITLE, size = 26.sp, color = Color.White, weight = FontWeight.Bold)
+                Text(Strings.WRONG_WAY_BODY, size = 15.sp, color = Color.White)
+                Button(Strings.WRONG_WAY_DISMISS, kind = ButtonKind.Secondary, onClick = onDismiss)
             }
         }
     }
@@ -301,31 +339,20 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
         playing = false
     }
 
-    var photo by remember(i) { mutableStateOf<StreetPhoto?>(null) }
-    LaunchedEffect(i) { photo = loadPhoto(step.lat, step.lon) } // null: no photo near here, no token or offline -> 3D view
     val here = Position(latitude = pos.first, longitude = pos.second)
     // Street level: close and tilted like the view from the road, looking where the route goes next.
     val streetCamera = remember(pos, heading) { CameraUpdate(center = here, zoom = STREET_ZOOM, pitch = STREET_PITCH, bearing = heading) }
     val viewState = LocalMapView.current
-    // Bottom map follows the user's 2D / 3D choice (satellite joins when a licensed provider is chosen, ADR-034).
+    // The lower map only offers 2D / 3D; if a previous screen stored Satellite, fall back to 3D.
+    LaunchedEffect(Unit) { if (viewState.value == MapView.Satellite) viewState.value = MapView.Tilted }
     val overviewCamera = remember(pos, viewState.value) { CameraUpdate(center = here, zoom = OVERVIEW_ZOOM, pitch = if (viewState.value == MapView.Tilted) 55.0 else 0.0, bearing = 0.0) }
-    val uriHandler = LocalUriHandler.current
     var drag by remember { mutableStateOf(0f) }
 
+    val topView = remember { mutableStateOf(MapView.Satellite) }
     Column(Modifier.fillMaxSize().background(Palette.Bg)) {
         Box(Modifier.fillMaxWidth().weight(370f)) {
-            val shot = photo
-            if (shot != null && !playing) {
-                Image(shot.image, contentDescription = "${Strings.STREET_PHOTO}: ${step.text}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                // CC BY-SA: credit the photographer and link to the photo page (tap opens Mapillary).
-                Text(
-                    shot.credit,
-                    Modifier.align(Alignment.BottomStart).padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Color.Black.copy(alpha = 0.55f))
-                        .then(if (shot.pageUrl != null) Modifier.clickable(role = Role.Button) { uriHandler.openUri(shot.pageUrl) } else Modifier)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    size = 12.sp, color = Color.White,
-                )
-            } else {
+            // Top half is always satellite, first-person; the photo was useful but the owner wants imagery here.
+            CompositionLocalProvider(LocalMapView provides topView) {
                 RouteMap(route, null, null, null, Modifier.fillMaxSize(), focus = streetCamera, highlight = pos, streetLevel = true)
             }
             if (along < track.totalM) RoadArrow(Modifier.align(Alignment.Center).padding(top = 60.dp))
@@ -337,7 +364,7 @@ fun PreviewScreen(state: RouteUiState, start: Int, loadPhoto: suspend (Double, D
             // Header fills the row width, so the label sits beside it on its own (it was pushed off-screen, E2E 14-11-2026).
             Box(Modifier.safeDrawingPadding().padding(12.dp)) { Header("", floating = true, onBack = onBack) }
             Text(
-                if (shot != null && !playing) Strings.STREET_PHOTO else Strings.STREET_VIEW_3D,
+                Strings.VIEW_SATELLITE,
                 Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 72.dp, top = 24.dp)
                     .clip(RoundedCornerShape(12.dp)).background(Palette.Deep.copy(alpha = 0.78f)).padding(horizontal = 10.dp, vertical = 4.dp),
                 size = 12.sp, color = Color.White, weight = FontWeight.SemiBold,
@@ -416,27 +443,18 @@ private fun NudgeButton(glyph: String, label: String, enabled: Boolean, onClick:
 /** "2D | 3D" switch on the lower map (design screen 6); each half is a 48 dp target, the chosen one filled. */
 @Composable
 internal fun ViewSegment(view: MapView, modifier: Modifier = Modifier, onChange: (MapView) -> Unit) {
-    var satelliteNote by remember { mutableStateOf(false) }
-    LaunchedEffect(satelliteNote) { if (satelliteNote) { delay(4000); satelliteNote = false } }
     Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Row(Modifier.kitShadow(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Palette.Bg).semantics { contentDescription = Strings.LOWER_MAP_VIEW }) {
-        // Satellite is shown (owner, 14-11-2026) but only explains itself until a licensed provider is chosen.
         listOf(MapView.Flat to Strings.VIEW_2D, MapView.Tilted to Strings.VIEW_3D, MapView.Satellite to Strings.VIEW_SATELLITE).forEach { (v, label) ->
             val on = view == v
             Box(
                 Modifier.sizeIn(minWidth = 52.dp, minHeight = 48.dp).semantics { selected = on }
-                    .clickable(role = Role.RadioButton) { if (v == MapView.Satellite) satelliteNote = true else onChange(v) }.padding(4.dp)
+                    .clickable(role = Role.RadioButton) { onChange(v) }.padding(4.dp)
                     .clip(RoundedCornerShape(20.dp)).background(if (on) Palette.Primary else Palette.Bg),
                 contentAlignment = Alignment.Center,
             ) { Text(label, Modifier.padding(horizontal = 8.dp), size = 12.sp, weight = FontWeight.Bold, color = if (on) Palette.OnPrimary else Palette.Ink) }
         }
     }
-    if (satelliteNote) Text(
-        Strings.SATELLITE_PENDING,
-        Modifier.width(240.dp).kitShadow(RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(Palette.Bg).padding(10.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
-        size = 12.sp, color = Palette.Ink,
-    )
     }
 }
 

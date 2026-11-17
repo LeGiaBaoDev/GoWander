@@ -58,6 +58,23 @@ data class StreetImage(val id: String, val url: String, val capturedAt: String, 
 @Serializable
 data class StreetImageSource(val provider: String, val license: String, val attribution: String)
 
+/** One hour of the Open-Meteo forecast; [at] is local time in the pilot zone ("yyyy-MM-ddTHH:mm"). */
+@Serializable
+data class WeatherReading(
+    val at: String,
+    val temperatureC: Double,
+    val apparentC: Double,
+    val precipitationMm: Double,
+    val precipitationProbability: Int,
+    val weatherCode: Int,
+    val windKph: Double,
+    val isRain: Boolean,
+    val intensity: String,
+)
+
+@Serializable
+data class WeatherResponse(val weather: WeatherReading, val source: Map<String, String> = emptyMap())
+
 @Serializable
 data class StreetImageResponse(val image: StreetImage, val source: StreetImageSource)
 

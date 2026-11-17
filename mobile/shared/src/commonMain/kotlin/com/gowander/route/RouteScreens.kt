@@ -13,6 +13,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import com.gowander.ui.Language
+import com.gowander.ui.Lang
 import com.gowander.ui.kitShadow
 import com.gowander.ui.MockPhoto
 import com.gowander.ui.Pill
@@ -560,31 +562,38 @@ private fun EndpointRow(label: String, role: String, dot: androidx.compose.ui.gr
 private val LANGUAGES = listOf("VI" to "Tiếng Việt", "EN" to "English", "ZH" to "中文", "KO" to "한국어", "JA" to "日本語")
 
 /**
- * The "VI" button of the kit: a dropdown that floats over the map (a Popup, so nothing next to it gets squeezed).
- * Only Vietnamese exists today (ADR-022); the others say "Sắp có" instead of doing nothing. Closes on a choice or
- * a tap outside.
+ * The "VI/EN" button of the kit: a dropdown that floats over the map (a Popup, so nothing next to it gets squeezed).
+ * Vietnamese and English work (ADR-022); Chinese and Korean say "Sắp có" instead of doing nothing. Closes on a choice
+ * or a tap outside.
  */
 @Composable
 fun LanguageButton(modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     val drop = with(LocalDensity.current) { IntOffset(0, 60.dp.roundToPx()) }
+    val currentCode = if (Language.current == Lang.EN) Strings.LANGUAGE_EN else Strings.LANGUAGE_VI
     Box(modifier) {
         Box(
             Modifier.size(52.dp).kitShadow(RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Palette.Bg)
                 .semantics { contentDescription = Strings.LANGUAGE_MENU }
                 .clickable(role = Role.Button) { open = !open; note = null },
             contentAlignment = Alignment.Center,
-        ) { Text(Strings.LANGUAGE_VI + " ▾", size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
+        ) { Text("$currentCode ▾", size = 13.sp, color = Palette.Primary, weight = FontWeight.SemiBold) }
         if (open) Popup(alignment = Alignment.TopEnd, offset = drop, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
             Card(Modifier.width(260.dp), shadow = true, gap = 2.dp) {
                 Text(Strings.CHOOSE_LANGUAGE, Modifier.padding(bottom = 4.dp), size = 15.sp, weight = FontWeight.SemiBold)
                 LANGUAGES.forEach { (code, name) ->
-                    val current = code == "VI"
+                    val current = code == currentCode
                     Row(
                         Modifier.fillMaxWidth().sizeIn(minHeight = 48.dp).clip(RoundedCornerShape(10.dp))
                             .semantics(mergeDescendants = true) { selected = current }
-                            .clickable(role = Role.RadioButton) { if (current) open = false else note = "$name: ${Strings.SOON.lowercase()}" }
+                            .clickable(role = Role.RadioButton) {
+                                when (code) {
+                                    Strings.LANGUAGE_VI -> { Language.set(Lang.VI); open = false }
+                                    Strings.LANGUAGE_EN -> { Language.set(Lang.EN); open = false }
+                                    else -> note = "$name: ${Strings.SOON.lowercase()}"
+                                }
+                            }
                             .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

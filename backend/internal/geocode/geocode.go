@@ -24,6 +24,11 @@ import (
 
 var ErrUnavailable = errors.New("geocoder unavailable")
 
+const (
+	SourcePhoton  = "photon"
+	SourceVietmap = "vietmap"
+)
+
 // Query: Lat/Lon (both non-zero) bias results towards the user; Limit 1..10.
 type Query struct {
 	Text     string
@@ -38,6 +43,8 @@ type Result struct {
 	Lat    float64 `json:"lat"`
 	Lon    float64 `json:"lon"`
 	Ref    string  `json:"ref,omitempty"`
+	// Source is internal provenance for attribution; clients do not need it.
+	Source string `json:"-"`
 	// Approximate: the user typed a house number but this result has none (OSM often lacks Vietnamese house numbers).
 	Approximate bool `json:"approximate,omitempty"`
 }
@@ -140,7 +147,7 @@ func (c *Client) get(ctx context.Context, path string, v url.Values, wantNumber 
 		}
 		out = append(out, Result{
 			Name: name, Detail: strings.Join(detailParts, ", "), Lat: f.Geometry.Coordinates[1], Lon: f.Geometry.Coordinates[0],
-			Ref: ref, Approximate: wantNumber && p.HouseNumber == "",
+			Ref: ref, Source: SourcePhoton, Approximate: wantNumber && p.HouseNumber == "",
 		})
 	}
 	return out, nil
@@ -154,6 +161,34 @@ func nonEmpty(s ...string) []string {
 		}
 	}
 	return out
+}
+
+// Fallback tries the primary geocoder first and the secondary one only when the primary fails.
+// Empty results are a valid answer and do not trigger the fallback.
+type Fallback struct {
+	Primary, Secondary Searcher
+}
+
+func (f Fallback) Search(ctx context.Context, q Query) ([]Result, error) {
+	res, err := f.Primary.Search(ctx, q)
+	if err == nil {
+		return res, nil
+	}
+	if ctx.Err() != nil {
+		return nil, err
+	}
+	return f.Secondary.Search(ctx, q)
+}
+
+func (f Fallback) Reverse(ctx context.Context, lat, lon float64, limit int) ([]Result, error) {
+	res, err := f.Primary.Reverse(ctx, lat, lon, limit)
+	if err == nil {
+		return res, nil
+	}
+	if ctx.Err() != nil {
+		return nil, err
+	}
+	return f.Secondary.Reverse(ctx, lat, lon, limit)
 }
 
 // Handler serves GET /api/v1/geocode?q=&lat=&lon=&limit=.
@@ -218,9 +253,16 @@ func (h Handler) respond(w http.ResponseWriter, r *http.Request, results []Resul
 		httpx.WriteError(w, r, http.StatusServiceUnavailable, "GEOCODER_UNAVAILABLE", "Tìm địa chỉ tạm thời không hoạt động, vui lòng thử lại sau.")
 		return
 	}
+	source := map[string]string{"provider": "Photon", "attribution": "© OpenStreetMap contributors", "license": "ODbL-1.0"}
+	for _, r := range results {
+		if r.Source == SourceVietmap {
+			source = map[string]string{"provider": "Vietmap", "attribution": "Dữ liệu bản đồ: Vietmap", "license": "Theo điều khoản Vietmap Maps API"}
+			break
+		}
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{
 		"results": results,
-		// OSM data shown to users carries its attribution (ADR-028 rule).
-		"source": map[string]string{"provider": "Photon", "attribution": "© OpenStreetMap contributors", "license": "ODbL-1.0"},
+		// The provider that answered carries its attribution (ADR-028 rule). Photon results are ODbL.
+		"source": source,
 	})
 }

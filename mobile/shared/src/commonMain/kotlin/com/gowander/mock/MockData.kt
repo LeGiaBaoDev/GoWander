@@ -107,7 +107,7 @@ val MOCK_PLANS = listOf(
             PlanItem("Bưu điện Trung tâm", "Kiến trúc", 45, null, 10.77984, 106.69995),
             PlanItem("Chợ Bến Thành", "Chợ", 40, null, 10.77254, 106.69797),
         ),
-        PlanStatus.Upcoming,
+        PlanStatus.Upcoming, day = "2026-11-21", // matches the sample label "Thứ Bảy 21-11"
     ),
     Plan("hoi-an", "Hội An 2 ngày", "Chưa chọn ngày", "08:00", "Đi bộ", List(5) { PlanItem("[Điểm mẫu ${it + 1}]", "Hội An", 60) }, PlanStatus.Draft, routing = false),
     Plan("chieu-kien-truc", "Một buổi chiều kiến trúc", "11-11-2026", "15:00", "Metro + đi bộ", listOf(PlanItem("Nhà hát Thành phố", "Kiến trúc", 30, null, 10.77667, 106.70305), PlanItem("Bưu điện Trung tâm", "Kiến trúc", 30, null, 10.77984, 106.69995)), PlanStatus.Done),

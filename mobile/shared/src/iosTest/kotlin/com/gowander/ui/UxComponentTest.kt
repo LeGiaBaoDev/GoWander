@@ -12,6 +12,8 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -21,6 +23,8 @@ import com.gowander.route.LanguageButton
 import com.gowander.route.RouteActions
 import com.gowander.route.TravelMode
 import com.gowander.route.TravelModeTabs
+import com.gowander.home.SettingsScreen
+import com.gowander.home.LanguageScreen
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.requiredSize
@@ -97,15 +101,46 @@ class UxComponentTest {
     }
 
     @Test
-    fun languageButtonOpensAMenuAndExplainsEnglish() = runComposeUiTest {
+    fun languageButtonSwitchesBetweenVietnameseAndEnglish() = runComposeUiTest {
+        Language.set(Lang.VI)
         setContent { LanguageButton() }
         onNodeWithContentDescription(Strings.LANGUAGE_MENU).assertHeightIsAtLeast(48.dp).performClick()
-        onNodeWithText(Strings.VIETNAMESE).assertIsSelected().assertHeightIsAtLeast(48.dp)
-        onNodeWithText(Strings.ENGLISH).assertIsNotSelected().performClick()
-        onNodeWithText("English: sắp có").assertExists() // explains instead of doing nothing
+        onNodeWithText("Tiếng Việt").assertIsSelected().assertHeightIsAtLeast(48.dp)
+        onNodeWithText("English").assertIsNotSelected().performClick()
+        onNodeWithText("EN ▾").assertExists() // menu closed, button follows the chosen language
+        assertEquals(Lang.EN, Language.current)
+        onNodeWithText("中文").assertDoesNotExist()
+        onNodeWithContentDescription(Strings.LANGUAGE_MENU).performClick()
         onNodeWithText("中文").assertExists() // more languages listed, most used first
-        onNodeWithText(Strings.VIETNAMESE).performClick() // choosing closes the menu
-        onNodeWithText(Strings.ENGLISH).assertDoesNotExist()
+        onNodeWithText("Tiếng Việt").performClick() // choosing closes the menu
+        assertEquals(Lang.VI, Language.current)
+        onNodeWithText("VI ▾").assertExists()
+    }
+
+    @Test
+    fun settingsRowOpensTheLanguagePage() = runComposeUiTest {
+        Language.set(Lang.VI)
+        var opened = 0
+        setContent { SettingsScreen(onBack = {}, onLanguage = { opened++ }) }
+        onNodeWithText("Cài đặt").assertExists()
+        onNodeWithText("Ngôn ngữ").assertExists()
+        onNodeWithText("Tiếng Việt").assertExists()
+        onNodeWithText("Ngôn ngữ").performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun languagePageSelectsEnglishAndListsTheOthers() = runComposeUiTest {
+        Language.set(Lang.VI)
+        setContent { LanguageScreen(onBack = {}) }
+        onNodeWithText("Ngôn ngữ").assertExists()
+        onNodeWithText("中文").assertExists()
+        onNodeWithText("Deutsch").assertExists()
+        onAllNodesWithText("English").onFirst().performClick()
+        assertEquals(Lang.EN, Language.current)
+        onNodeWithText("Language").assertExists()
+        onNodeWithText("Vietnamese").assertExists()
+        Language.set(Lang.VI) // do not leak the choice into other tests
     }
 
     /** Owner 14-11-2026: the welcome logo must be big (the first-run form is gone in UX-2, ADR-034). */
@@ -166,12 +201,11 @@ class UxComponentTest {
         onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()
 
         onNodeWithContentDescription(Strings.MAP_VIEW).performClick()
-        // Owner, 14-11-2026: satellite is shown now but only explains itself; the map view does not change.
+        // Satellite now selects the raster layer; the 3D choice above already covers "closes after a choice".
         onNodeWithText(Strings.VIEW_SATELLITE).assertHeightIsAtLeast(48.dp).performClick()
-        onNodeWithText(Strings.SATELLITE_PENDING).assertExists()
-        assertEquals(MapView.Tilted, view)
+        assertEquals(MapView.Satellite, view)
 
-        onNodeWithContentDescription(Strings.MAP_VIEW).performClick() // the same button closes it again
-        onNodeWithText(Strings.VIEW_2D).assertDoesNotExist()
+        onNodeWithContentDescription(Strings.MAP_VIEW).performClick() // the same button opens it again after the choice
+        onNodeWithText(Strings.VIEW_2D).assertExists()
     }
 }

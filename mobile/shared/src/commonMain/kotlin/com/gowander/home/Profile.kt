@@ -1,5 +1,7 @@
 package com.gowander.home
 
+import com.gowander.ui.Language
+import com.gowander.ui.Lang
 import com.gowander.ui.Theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -310,18 +312,28 @@ fun PortfolioEditScreen(onBack: () -> Unit) {
 
 /** Gear of the Profile tab: guest mode and the data sources with their licences (OSM ODbL attribution must stay). */
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onLanguage: () -> Unit, signedIn: Boolean = false) {
     Column(
         Modifier.fillMaxSize().background(Palette.Bg).safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Header(Strings.SETTINGS, onBack = onBack)
-        Card(gap = 6.dp) {
+        // Signed in: the Profile tab already shows the account row, so Settings needs no "guest" card at all.
+        if (!signedIn) Card(gap = 6.dp) {
             Text(Strings.GUEST, bold = true)
             Text(Strings.GUEST_NOTE, color = Palette.Muted)
         }
         SectionTitle(Strings.APPEARANCE)
         Segmented(listOf(Strings.LIGHT, Strings.DARK), if (Theme.dark) 1 else 0) { Theme.set(it == 1) }
+        SectionTitle(Strings.PREFERENCES)
+        Card(gap = 0.dp) {
+            ListRow(
+                Strings.LANGUAGE,
+                subtitle = if (Language.current == Lang.EN) Strings.LANGUAGE_EN_LABEL else Strings.LANGUAGE_VI_LABEL,
+                lead = { Badge(KitIcons.globe, Palette.Subtle, Palette.Primary) },
+                onClick = onLanguage,
+            )
+        }
         SectionTitle(Strings.DATA_SOURCES)
         Strings.SOURCES.forEach { (what, source) -> ListRow(what, source, lead = { Badge(KitIcons.globe, Palette.Subtle, Palette.Primary) }) }
     }

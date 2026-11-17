@@ -204,6 +204,21 @@ class GoWanderApiTest {
     }
 
     @Test
+    fun weatherSendsThePlanHourAndParsesTheReading() = runTest {
+        val body = """{"weather":{"at":"2026-11-21T15:00","temperatureC":29.3,"apparentC":33.1,"precipitationMm":0.3,
+            "precipitationProbability":62,"weatherCode":61,"windKph":9.5,"isRain":true,"intensity":"light"},
+            "source":{"provider":"Open-Meteo","license":"CC BY 4.0"}}"""
+        val w = api(HttpStatusCode.OK, body).weather(10.7769, 106.7009, "2026-11-21T15:00:00+07:00")
+        val url = requests.last().url
+        assertEquals("/api/v1/weather", url.encodedPath)
+        assertEquals("10.7769", url.parameters["lat"])
+        assertEquals("106.7009", url.parameters["lon"])
+        assertEquals("2026-11-21T15:00:00+07:00", url.parameters["at"])
+        assertEquals(62, w.precipitationProbability)
+        assertTrue(w.isRain)
+    }
+
+    @Test
     fun discoverEndpoints() = runTest {
         val cats = api(HttpStatusCode.OK, Fixtures.CATEGORIES).categories()
         assertEquals("museum", cats.first().slug)

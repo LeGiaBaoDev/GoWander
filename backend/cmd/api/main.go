@@ -27,6 +27,7 @@ import (
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/httpx"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/platform/mail"
 	"github.com/LeGiaBaoDev/GoWander/backend/internal/streetview"
+	"github.com/LeGiaBaoDev/GoWander/backend/internal/weather"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -187,7 +188,16 @@ func newHandler(cfg config.Config, log *slog.Logger, provider mobility.RoutingPr
 		}
 		signIn.Mount(mux)
 	}
-	geocode.Handler{Geocoder: geocode.New(cfg.PhotonURL, 3*time.Second), Log: log}.Mount(mux)
+	geocoder := geocode.Searcher(geocode.New(cfg.PhotonURL, 3*time.Second))
+	if cfg.VietmapEnabled() {
+		geocoder = geocode.Fallback{
+			Primary:   geocode.NewVietmap(cfg.VietmapAPIURL, cfg.VietmapServicesKey, cfg.VietmapTimeout),
+			Secondary: geocoder,
+		}
+		log.Info("geocoding via Vietmap with Photon fallback")
+	}
+	geocode.Handler{Geocoder: geocoder, Log: log}.Mount(mux)
+	weather.Handler{Client: weather.New(cfg.WeatherURL, cfg.WeatherTimeout), Log: log}.Mount(mux)
 	streetview.Handler{
 		Finder: streetview.NewCached(streetview.New(cfg.MapillaryURL, cfg.MapillaryToken, streetImageTimeout), 24*time.Hour, 5000),
 		Log:    log,

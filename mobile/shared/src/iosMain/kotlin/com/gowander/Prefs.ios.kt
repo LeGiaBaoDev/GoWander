@@ -8,3 +8,7 @@ actual object Prefs {
     actual fun getString(key: String): String? = NSUserDefaults.standardUserDefaults.stringForKey(key)
     actual fun setString(key: String, value: String) = NSUserDefaults.standardUserDefaults.setObject(value, forKey = key)
 }
+
+actual fun systemLanguageCode(): String =
+    (NSUserDefaults.standardUserDefaults.stringArrayForKey("AppleLanguages")?.firstOrNull() as? String)
+        ?.substringBefore("-") ?: "vi"

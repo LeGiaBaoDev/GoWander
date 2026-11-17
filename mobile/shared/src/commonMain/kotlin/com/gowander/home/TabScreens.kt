@@ -125,7 +125,7 @@ internal fun moveColor(k: MoveKind) = when (k) { MoveKind.Walk -> Palette.Bus; M
 @Composable
 fun JourneyScreen(
     store: AppStore, recent: List<Endpoint>, onRoute: (Endpoint) -> Unit, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStartPlan: (Plan) -> Unit,
-    onTrip: (String) -> Unit,
+    weather: WeatherQuery, onTrip: (String) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var budget by rememberSaveable { mutableStateOf(90) }
@@ -137,7 +137,7 @@ fun JourneyScreen(
         Title(Strings.TAB_JOURNEY)
         Segmented(listOf(Strings.MINE, Strings.SUGGESTIONS), tab) { tab = it }
         if (tab == 0) {
-            MyPlans(store, onPlan, onNewPlan, onStartPlan)
+            MyPlans(store, weather, onPlan, onNewPlan, onStartPlan)
             Text(Strings.RECENT_ROUTES, Modifier.padding(top = 8.dp).semantics { heading() }, size = 15.sp, color = Palette.Muted, weight = FontWeight.Bold)
             if (recent.isEmpty()) Note(Strings.RECENT_TRIPS_EMPTY)
             recent.forEach { e -> ListRow(e.label, Strings.ROUTE_AGAIN, lead = { Badge(KitIcons.clock, Palette.Subtle, Palette.Primary) }, onClick = { onRoute(e) }) }
@@ -186,7 +186,7 @@ fun JourneyScreen(
  * next stop and a button to go on; then upcoming, drafts and done.
  */
 @Composable
-private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStart: (Plan) -> Unit) {
+private fun MyPlans(store: AppStore, weather: WeatherQuery, onPlan: (String) -> Unit, onNewPlan: () -> Unit, onStart: (Plan) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val under = store.plans.filter { it.status != PlanStatus.Done && (it.going || it.next > 0) && it.nextStop() != null }
         val groups = listOf(
@@ -214,6 +214,7 @@ private fun MyPlans(store: AppStore, onPlan: (String) -> Unit, onNewPlan: () -> 
                             Text(meta, size = 12.sp, color = Palette.Body)
                         }
                     }
+                    PlanWeatherSummary(p, weather)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(Strings.OPEN_PLAN, Modifier.weight(1f), kind = ButtonKind.Outline, compact = true, pill = true) { onPlan(p.id) }
                         Button(if (following) Strings.CONTINUE else Strings.START, Modifier.weight(1f), compact = true, pill = true) { onStart(p) }
@@ -524,6 +525,7 @@ fun TripScreen(id: String, onBack: () -> Unit, onAddStop: () -> Unit, onStart: (
 @Composable
 fun PlanBuilderScreen(
     plan: Plan, onChange: (Plan) -> Unit, onBack: () -> Unit, onAdd: () -> Unit, onSave: () -> Unit,
+    weather: WeatherQuery,
     measure: suspend (from: PlanItem, to: PlanItem, depart: String, plan: Plan) -> Move?, onGo: (Plan) -> Unit, onRoute: (Endpoint) -> Unit, onMap: () -> Unit,
 ) {
     val notice = LocalNotice.current
@@ -575,6 +577,7 @@ fun PlanBuilderScreen(
         Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.Line))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (plan.items.isEmpty()) Note(Strings.PLAN_EMPTY)
+            PlanWeatherCard(plan, weather, onChangeStart = { onChange(plan.copy(start = it)) }, modifier = Modifier.padding(bottom = 6.dp))
             if (plan.items.count { it.spot() != null } >= 2) {
                 PlanMap(plan.items, proposal, context, Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)))
                 Text(Strings.PLAN_MAP_NOTE, size = 11.sp, color = Palette.Muted)

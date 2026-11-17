@@ -23,6 +23,7 @@ sealed interface Screen {
     data class PlanMap(val id: String) : Screen
     data object PortfolioEdit : Screen
     data object Settings : Screen
+    data object Language : Screen
     data object SearchHistory : Screen
 
     // App accounts (AUTH-2, A2–A6, A9)
@@ -117,6 +118,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             is Screen.PlanMap -> "plan_map:${s.id}"
             Screen.PortfolioEdit -> "portfolio_edit"
             Screen.Settings -> "settings"
+            Screen.Language -> "language"
             Screen.SearchHistory -> "search_history"
             Screen.AccountWelcome -> "account_welcome"
             Screen.SignIn -> "sign_in"
@@ -146,6 +148,7 @@ data class AppNav(val tab: Tab = Tab.Map, val stacks: Map<Tab, List<Screen>> = e
             v.startsWith("plan_map:") -> Screen.PlanMap(v.removePrefix("plan_map:"))
             v == "portfolio_edit" -> Screen.PortfolioEdit
             v == "settings" -> Screen.Settings
+            v == "language" -> Screen.Language
             v == "search_history" -> Screen.SearchHistory
             v == "account_welcome" -> Screen.AccountWelcome
             v == "sign_in" -> Screen.SignIn

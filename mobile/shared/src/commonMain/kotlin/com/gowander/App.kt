@@ -64,9 +64,11 @@ import com.gowander.home.AppStore
 import com.gowander.home.metersBetween
 import com.gowander.home.LocalNotice
 import com.gowander.home.PlanBuilderScreen
+import com.gowander.home.WeatherQuery
 import com.gowander.home.PortfolioEditScreen
 import com.gowander.home.SavedPlace
 import com.gowander.home.SettingsScreen
+import com.gowander.home.LanguageScreen
 import com.gowander.home.TripScreen
 import com.gowander.discover.DishScreen
 import com.gowander.discover.RegionGuideScreen
@@ -136,6 +138,9 @@ import org.maplibre.compose.location.rememberLocationState
 
 // One HTTP client for the whole process: created on first use, shared by both ViewModels, never per Activity.
 private val sharedApi by lazy { createGoWanderApi() }
+
+// Plan weather goes through the API (Open-Meteo proxy, cached there), so the app keeps one client and one base URL.
+private val weatherQuery: WeatherQuery = { lat, lon, at -> sharedApi.weather(lat, lon, at) }
 
 // shortcut: centre of the pilot area (Ga Bến Thành) when there is no GPS fix yet; replace with the user's city when multi-city.
 private val PILOT_CENTRE = LatLon(10.770775, 106.697569)
@@ -486,6 +491,7 @@ private fun AppContent() {
                             noticeText = Strings.SAVED_TO_PROFILE
                             nav = nav.pop()
                         },
+                        weather = weatherQuery,
                         measure = { a, b, depart, p ->
                             val travel = TravelMode.entries.firstOrNull { it.name == p.travel } ?: TravelMode.Bus
                             try {
@@ -553,7 +559,11 @@ private fun AppContent() {
                     onDeleted = { closeAccountFlow(); noticeText = "Tài khoản đã được xoá. Cảm ơn bạn đã đi cùng GoWander." },
                 )
                 Screen.PortfolioEdit -> PortfolioEditScreen(onBack = ::back)
-                Screen.Settings -> SettingsScreen(onBack = ::back)
+                Screen.Settings -> SettingsScreen(
+                    onBack = ::back, onLanguage = { nav = nav.push(Screen.Language) },
+                    signedIn = accounts.isSignedIn,
+                )
+                Screen.Language -> LanguageScreen(onBack = ::back)
                 null -> when (nav.tab) {
                     Tab.Map -> MapHome(
                         route, location, nearby, loadPhoto = loadPhoto,
@@ -572,7 +582,7 @@ private fun AppContent() {
                         store, route.recentDestinations, onRoute = { e -> chooseDestination(e, null) },
                         onPlan = { nav = nav.push(Screen.PlanEdit(it)) },
                         onNewPlan = { val p = store.newPlan(); store.put(p); nav = nav.push(Screen.PlanEdit(p.id)) },
-                        onStartPlan = ::startPlan,
+                        onStartPlan = ::startPlan, weather = weatherQuery,
                     ) { nav = nav.push(Screen.Trip(it)) }
                     Tab.Profile -> ProfileScreen(
                         store, accounts,

@@ -68,6 +68,7 @@ import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.LocationIndicatorLayer
+import org.maplibre.compose.layers.RasterLayer
 import org.maplibre.compose.location.BearingUpdate
 import org.maplibre.compose.location.LocationState
 import org.maplibre.compose.location.LocationTrackingEffect
@@ -78,6 +79,7 @@ import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.rememberMapState
 import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
+import org.maplibre.compose.sources.rememberRasterTileSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.util.DpPadding
 import org.maplibre.spatialk.geojson.BoundingBox
@@ -88,6 +90,10 @@ import org.maplibre.spatialk.geojson.Position
 // shortcut: a frozen copy of the style, re-download and re-patch it if OpenFreeMap retires its sprite or font paths.
 private val STYLE_URL = Res.getUri("files/map_style.json")
 private val STYLE_DARK_URL = Res.getUri("files/map_style_dark.json") // OpenFreeMap "fiord", patched the same way
+
+// Pilot satellite imagery: Esri World Imagery, no key, attribution shown in the credit line. Swap to Vietmap
+// `maps.vietmap.vn/maps/tiles/st/{z}/{x}/{y}.png?apikey=...` when the tilemap key is in the app build.
+private const val SATELLITE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 
 // Light: the water colour of the bundled style, so the coast is seamless. Dark: darker than the style's water, whose
 // colour is too close to the land for the country to stand out.
@@ -150,6 +156,16 @@ fun RouteMap(
         baseStyle = style ?: BaseStyle.Uri(if (Theme.dark) STYLE_DARK_URL else STYLE_URL),
         initialCameraPosition = CameraPosition(center = Position(latitude = 10.785, longitude = 106.715), zoom = 12.0),
     ) {
+        if (view == MapView.Satellite) RasterLayer(
+            id = "satellite",
+            source = rememberRasterTileSource(
+                tiles = listOf(SATELLITE_TILES),
+                tileSize = 256,
+                // Esri World Imagery has no tiles above z19 here and answers with its grey "Map data not yet
+                // available" tile. Cap the source and let MapLibre overzoom z19 for the eye-level preview.
+                block = { maxZoom = 19 },
+            ),
+        )
         if (maskJson != null) FillLayer(id = "mask", source = rememberGeoJsonSource(GeoJsonData.JsonString(maskJson)), color = const(MASK_COLOR))
         // GeoJsonSource is immutable in maplibre-compose 0.20.0: key() recreates source + layer when the data changes.
         if (sketch != null) key(sketch) { LineLayer(id = "plan-sketch", source = rememberGeoJsonSource(GeoJsonData.JsonString(sketch)), color = const(Palette.Muted), width = const(3.dp), dasharray = const(listOf(2, 2))) }
@@ -208,7 +224,7 @@ fun RouteMap(
         )
         // ODbL / OpenMapTiles credit: always visible, small, clear of the cards (plain text, nothing to mis-tap).
         Text(
-            credit,
+            if (view == MapView.Satellite) Strings.SATELLITE_CREDIT else credit,
             Modifier.align(Alignment.BottomEnd).padding(insets).padding(end = 8.dp, bottom = 4.dp)
                 .clip(RoundedCornerShape(6.dp)).background(Palette.Bg.copy(alpha = 0.85f)).padding(horizontal = 6.dp, vertical = 2.dp),
             size = 10.sp, color = Palette.Muted,
@@ -239,7 +255,6 @@ fun MapViewSwitch(
     buttonPadding: PaddingValues = PaddingValues(0.dp),
     onChange: (MapView) -> Unit,
 ) {
-    var satelliteNote by remember(open) { mutableStateOf(false) }
     Box(modifier) {
         if (open) Box(
             Modifier.fillMaxSize().semantics { contentDescription = Strings.CLOSE_PANEL }
@@ -263,10 +278,8 @@ fun MapViewSwitch(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ViewTile(KitIcons.map, Strings.VIEW_2D, null, view == MapView.Flat, Modifier.weight(1f)) { onChange(MapView.Flat); onOpenChange(false) }
                     ViewTile(ExtraIcons.cube, Strings.VIEW_3D, null, view == MapView.Tilted, Modifier.weight(1f)) { onChange(MapView.Tilted); onOpenChange(false) }
-                    // Owner, 14-11-2026: show the satellite choice now; it only explains until a provider is chosen (PIPELINE mock register).
-                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, null, false, Modifier.weight(1f)) { satelliteNote = true }
+                    ViewTile(KitIcons.globe, Strings.VIEW_SATELLITE, null, view == MapView.Satellite, Modifier.weight(1f)) { onChange(MapView.Satellite); onOpenChange(false) }
                 }
-                if (satelliteNote) Note(Strings.SATELLITE_PENDING, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
     }

@@ -69,6 +69,7 @@ fun feedbackContext(nav: AppNav, placeName: String? = null): String = when (val 
     is Screen.FindPlace -> "Tìm địa điểm"
     Screen.PortfolioEdit -> "Thiết kế portfolio"
     Screen.Settings -> "Cài đặt"
+    Screen.Language -> "Ngôn ngữ"
     Screen.SearchHistory -> "Lịch sử tìm kiếm"
     Screen.AccountWelcome, Screen.SignIn, Screen.Register, Screen.VerifyEmail, Screen.ForgotPassword ->
         "Tài khoản · đăng nhập"

@@ -5,11 +5,17 @@ import com.gowander.api.Line
 import com.gowander.api.Route
 import com.gowander.api.RoutePlace
 import com.gowander.api.Step
+import com.gowander.ui.Lang
+import com.gowander.ui.Language
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class NavigationTest {
+    @BeforeTest
+    fun vietnamese() = Language.set(Lang.VI)
+
     @Test
     fun stepTextReadsLikeSpokenDirections() {
         assertEquals("Rẽ trái vào Quang Trung", stepText("LEFT", "Quang Trung").second)

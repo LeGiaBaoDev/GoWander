@@ -17,3 +17,5 @@ actual object Prefs {
     actual fun getString(key: String): String? = prefs?.getString(key, null)
     actual fun setString(key: String, value: String) { prefs?.edit()?.putString(key, value)?.apply() }
 }
+
+actual fun systemLanguageCode(): String = java.util.Locale.getDefault().language
